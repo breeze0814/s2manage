@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { logActionLabel } from "@/lib/log-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,7 +78,7 @@ export function LogsPanel() {
   const utils = trpc.useUtils();
   const { showToast } = useToast();
   const { data: connections } = trpc.connections.list.useQuery();
-  const { data: settings, isLoading: settingsLoading } = trpc.sync.logSettings.useQuery();
+  const { data: settings, isLoading: settingsLoading, error: settingsQueryError } = trpc.sync.logSettings.useQuery();
 
   const [enabled, setEnabled] = useState(true);
   const [retentionDays, setRetentionDays] = useState("30");
@@ -161,6 +162,10 @@ export function LogsPanel() {
 
   const handleSaveSettings = () => {
     setSettingsError("");
+    if (!settingsReady) {
+      setSettingsError("日志设置尚未加载成功，请刷新后再保存");
+      return;
+    }
     const days = Number(retentionDays);
     if (!Number.isInteger(days) || days < 1 || days > 3650) {
       setSettingsError("保存天数必须是 1-3650 的整数");
@@ -184,6 +189,8 @@ export function LogsPanel() {
   const logs = useMemo(() => logsQuery.data?.pages.flatMap((page) => page.logs) ?? [], [logsQuery.data]);
   const scannedTotal = logsQuery.data?.pages[0]?.total ?? 0;
   const isBusy = saveSettings.isPending || cleanupLogs.isPending || clearLogs.isPending;
+  const settingsReady = Boolean(settings) && !settingsQueryError;
+  const settingsControlsDisabled = isBusy || !settingsReady;
 
   if (settingsLoading) {
     return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中...</div>;
@@ -212,15 +219,15 @@ export function LogsPanel() {
               <Label htmlFor="logs-enabled">日志开关</Label>
               <p className="text-xs text-muted-foreground">关闭后不再写入新的任务日志，已有日志不受影响。</p>
             </div>
-            <Switch id="logs-enabled" checked={enabled} onCheckedChange={setEnabled} disabled={isBusy} />
+            <Switch id="logs-enabled" checked={enabled} onCheckedChange={setEnabled} disabled={settingsControlsDisabled} />
           </div>
           <div className="space-y-2">
             <Label>保存天数</Label>
-            <Input type="number" min="1" max="3650" step="1" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value)} disabled={isBusy} />
+            <Input type="number" min="1" max="3650" step="1" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value)} disabled={settingsControlsDisabled} />
           </div>
           <div className="space-y-2">
             <Label>记录级别</Label>
-            <Select value={minLevel} onValueChange={(value) => setMinLevel(value as LogLevel)} disabled={isBusy}>
+            <Select value={minLevel} onValueChange={(value) => setMinLevel(value as LogLevel)} disabled={settingsControlsDisabled}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {levelOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
@@ -228,17 +235,18 @@ export function LogsPanel() {
             </Select>
           </div>
           <div className="flex items-end">
-            <Button onClick={handleSaveSettings} disabled={isBusy}>
+            <Button onClick={handleSaveSettings} disabled={settingsControlsDisabled}>
               {saveSettings.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               保存设置
             </Button>
           </div>
           <div className="flex items-end">
-            <Button variant="outline" onClick={() => cleanupLogs.mutate({ retentionDays: Number(retentionDays) || undefined })} disabled={isBusy}>
+            <Button variant="outline" onClick={() => cleanupLogs.mutate({ retentionDays: Number(retentionDays) || undefined })} disabled={settingsControlsDisabled}>
               <Trash2 className="h-4 w-4" />
               清理过期
             </Button>
           </div>
+          {settingsQueryError ? <p className="text-sm text-destructive lg:col-span-5">加载日志设置失败：{settingsQueryError.message}</p> : null}
           {settingsError ? <p className="text-sm text-destructive lg:col-span-5">{settingsError}</p> : null}
         </CardContent>
       </Card>
@@ -354,7 +362,7 @@ export function LogsPanel() {
                   <TableCell className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
                   <TableCell>{levelBadge(log.level)}</TableCell>
                   <TableCell>{statusBadge(log.status)}</TableCell>
-                  <TableCell className="font-mono text-xs">{log.action}</TableCell>
+                  <TableCell className="text-xs" title={log.action}>{logActionLabel(log.action)}</TableCell>
                   <TableCell className="font-mono text-xs">{log.target || "-"}</TableCell>
                   <TableCell className="max-w-[520px]">
                     {log.error ? (

@@ -3,6 +3,7 @@ import { appendFile, mkdir, open, readdir, readFile, rm, writeFile } from "node:
 import { createInterface } from "node:readline";
 import path from "node:path";
 import { getSetting, setSetting } from "@/server/settings";
+import { logActionLabel } from "@/shared/log-actions";
 
 export const logLevels = ["info", "warning", "error"] as const;
 export type LogLevel = (typeof logLevels)[number];
@@ -501,11 +502,15 @@ function includesText(value: string | null | undefined, query: string) {
   return (value ?? "").toLowerCase().includes(query);
 }
 
+function includesAction(action: string, query: string) {
+  return includesText(action, query) || includesText(logActionLabel(action), query);
+}
+
 function matchLog(row: FileSyncLog, input: LogQueryInput) {
   if (input.connectionId && row.connectionId !== input.connectionId) return false;
   if (input.levels?.length && !input.levels.includes(row.level)) return false;
   if (input.statuses?.length && !input.statuses.includes(row.status)) return false;
-  if (input.action && !includesText(row.action, input.action.toLowerCase())) return false;
+  if (input.action && !includesAction(row.action, input.action.toLowerCase())) return false;
   if (input.target && !includesText(row.target, input.target.toLowerCase())) return false;
 
   const createdAt = safeParseDate(row.createdAt);
@@ -517,7 +522,7 @@ function matchLog(row: FileSyncLog, input: LogQueryInput) {
 
   if (input.search) {
     const query = input.search.toLowerCase();
-    return includesText(row.action, query)
+    return includesAction(row.action, query)
       || includesText(row.target, query)
       || includesText(row.detail, query)
       || includesText(row.error, query);
