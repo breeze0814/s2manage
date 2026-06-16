@@ -1,0 +1,1 @@
+-- PostgreSQL baseline includes upstream monitor tables in 0001_init.

@@ -1,0 +1,1 @@
+-- PostgreSQL baseline includes bl_group_rate_rules.enabled in 0001_init.

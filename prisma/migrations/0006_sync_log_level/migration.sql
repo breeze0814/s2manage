@@ -1,0 +1,1 @@
+-- Runtime task logs are stored in local JSONL files instead of the database.

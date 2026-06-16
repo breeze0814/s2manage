@@ -1,0 +1,79 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 199 89% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 30% 93%;
+    --secondary-foreground: 222 47% 16%;
+    --muted: 210 32% 94%;
+    --muted-foreground: 215 16% 45%;
+    --accent: 43 96% 56%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 214 32% 88%;
+    --input: 214 32% 88%;
+    --ring: 199 89% 38%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { @apply bg-background text-foreground; }
+  body {
+    @apply min-h-screen bg-background text-foreground antialiased;
+    background:
+      linear-gradient(135deg, hsl(199 89% 96%) 0%, transparent 34%),
+      linear-gradient(225deg, hsl(43 96% 93%) 0%, transparent 28%),
+      hsl(var(--background));
+  }
+  ::selection { @apply bg-primary/20 text-foreground; }
+}
+
+@layer components {
+  .app-shell {
+    background:
+      linear-gradient(135deg, hsl(199 89% 96%) 0%, transparent 28%),
+      linear-gradient(225deg, hsl(43 96% 92%) 0%, transparent 24%),
+      hsl(var(--background));
+  }
+
+  .auth-screen {
+    background:
+      linear-gradient(135deg, hsl(199 89% 92%) 0%, transparent 40%),
+      linear-gradient(225deg, hsl(43 96% 88%) 0%, transparent 35%),
+      hsl(var(--background));
+  }
+}

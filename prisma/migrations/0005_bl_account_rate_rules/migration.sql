@@ -1,0 +1,1 @@
+-- PostgreSQL baseline includes account rate rule tables in 0001_init.

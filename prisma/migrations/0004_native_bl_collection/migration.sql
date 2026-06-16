@@ -1,0 +1,1 @@
+-- PostgreSQL baseline includes native BL collection tables in 0001_init.
