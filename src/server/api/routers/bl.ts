@@ -19,6 +19,7 @@ import {
 import { collectBlCollectionSite, collectDueBlCollectionSites } from "@/server/bl-collection/collector";
 import { blCollectionHealth, blCollectionPlatforms } from "@/server/bl-collection/data";
 import { deleteBlCollectionSite, getBlCollectionSite, listBlCollectionSites, saveBlCollectionSite, testBlCollectionSite } from "@/server/bl-collection/sites";
+import { applyBoundRateRulesForConnection } from "@/server/bl-rate-sync";
 import { publishRateChangeAnnouncements } from "@/server/announcement-rules";
 import { normalizeRateMultiplier } from "@/server/rates";
 
@@ -45,15 +46,35 @@ async function safeLogSync(connectionId: number, action: string, target: string,
   }
 }
 
-function newestChangeByTarget(changes: BlChange[]) {
-  const result = new Map<string, BlChange>();
-  for (const change of changes) {
-    const current = result.get(change.group_id);
-    if (!current || new Date(change.created_at).getTime() > new Date(current.created_at).getTime()) {
-      result.set(change.group_id, change);
-    }
+async function applyRulesAfterCollection(connectionId: number, sourceSiteIds: number[]) {
+  try {
+    return await applyBoundRateRulesForConnection({ db, connectionId, sourceSiteIds });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await safeLogSync(connectionId, "auto_bl_apply_bound_rules_after_collection", `connection:${connectionId}`, { sourceSiteIds }, "failed", message);
+    return {
+      ok: false,
+      skipped: false,
+      message,
+      summary: {
+        appliedGroupRules: 0,
+        appliedAccountRules: 0,
+        skippedGroupRules: 0,
+        skippedAccountRules: 0,
+        failedGroupRules: 1,
+        failedAccountRules: 1,
+      },
+    };
   }
-  return Array.from(result.values());
+}
+
+function changeTime(change: BlChange) {
+  const timestamp = new Date(change.created_at).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function newestChangesFirst(changes: BlChange[]) {
+  return [...changes].sort((left, right) => changeTime(right) - changeTime(left));
 }
 
 function toFiniteNumber(value: unknown) {
@@ -125,13 +146,18 @@ export const blRouter = createTRPCRouter({
     .mutation(async ({ input }) => {
       const site = await getBlCollectionSite(input.id);
       if (!site || site.connectionId !== input.connectionId) throw new Error("采集源站不存在");
-      return collectBlCollectionSite(site);
+      const result = await collectBlCollectionSite(site);
+      if (!result.ok) return result;
+      const ruleSync = await applyRulesAfterCollection(input.connectionId, [site.id]);
+      return { ...result, ruleSync };
     }),
   collectAll: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const results = await collectDueBlCollectionSites({ connectionId: input.connectionId, forceAll: true });
-      return { ok: true, total: results.length, success: results.filter((row) => row.result.ok).length, results };
+      const successfulSiteIds = results.filter((row) => row.result.ok).map((row) => row.site.id);
+      const ruleSync = successfulSiteIds.length > 0 ? await applyRulesAfterCollection(input.connectionId, successfulSiteIds) : null;
+      return { ok: true, total: results.length, success: results.filter((row) => row.result.ok).length, results, ruleSync };
     }),
   platforms: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive().optional() }).optional())
@@ -397,16 +423,20 @@ export const blRouter = createTRPCRouter({
       }
       const results: Array<{ sourceGroupId: string; targetGroupId?: number; ok: boolean; message: string }> = [];
 
-      for (const change of newestChangeByTarget(changes)) {
-        const parsed = resolveBlChangeNewValue(change);
-        if (parsed === null) {
-          results.push({ sourceGroupId: change.group_id, ok: false, message: "新倍率不是有效数字" });
-          continue;
-        }
+      const processedTargetIds = new Set<number>();
 
+      for (const change of newestChangesFirst(changes)) {
         const target = groupsById.get(change.group_id) ?? (change.group_name ? groupsByName.get(change.group_name.trim()) : undefined);
         if (!target) {
           results.push({ sourceGroupId: change.group_id, ok: false, message: "未找到同 ID 或同名目标分组" });
+          continue;
+        }
+        if (processedTargetIds.has(target.id)) continue;
+        processedTargetIds.add(target.id);
+
+        const parsed = resolveBlChangeNewValue(change);
+        if (parsed === null) {
+          results.push({ sourceGroupId: change.group_id, targetGroupId: target.id, ok: false, message: "新倍率不是有效数字" });
           continue;
         }
 
@@ -425,7 +455,7 @@ export const blRouter = createTRPCRouter({
             db,
             client: targetClient,
             context: {
-              action: "auto_bl_sync_group_rate",
+              action: "bl_sync_group_rate",
               connectionId: input.connectionId,
               groupId: target.id,
               groupName: group.name ?? target.name,
@@ -439,11 +469,11 @@ export const blRouter = createTRPCRouter({
               changedAt: new Date(),
             },
           });
-          await safeLogSync(input.connectionId, "auto_bl_sync_group_rate", `group:${target.id}`, detail, "success");
+          await safeLogSync(input.connectionId, "bl_sync_group_rate", `group:${target.id}`, detail, "success");
           results.push({ sourceGroupId: change.group_id, targetGroupId: target.id, ok: true, message: "已同步" });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          await safeLogSync(input.connectionId, "auto_bl_sync_group_rate", `group:${target.id}`, detail, "failed", message);
+          await safeLogSync(input.connectionId, "bl_sync_group_rate", `group:${target.id}`, detail, "failed", message);
           results.push({ sourceGroupId: change.group_id, targetGroupId: target.id, ok: false, message });
         }
       }

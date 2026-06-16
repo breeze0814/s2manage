@@ -178,6 +178,13 @@ function siteTypeLabel(value: string) {
   return value === "new_api" ? "New API" : "Sub2API";
 }
 
+function ruleSyncStatus(result: unknown) {
+  const ruleSync = (result as { ruleSync?: { ok?: boolean; summary?: Record<string, unknown> } | null })?.ruleSync;
+  const summary = ruleSync?.summary;
+  const failed = Number(summary?.failedGroupRules ?? 0) + Number(summary?.failedAccountRules ?? 0);
+  return { ok: ruleSync?.ok !== false, failed };
+}
+
 export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const utils = trpc.useUtils();
   const { showToast } = useToast();
@@ -215,6 +222,11 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
       utils.bl.changes.invalidate({ connectionId }),
       utils.bl.health.invalidate({ connectionId }),
       utils.serviceStatus.overview.invalidate({ connectionId }),
+      utils.groups.list.invalidate({ connectionId }),
+      utils.accounts.list.invalidate({ connectionId }),
+      utils.bl.bindings.invalidate({ connectionId, targetType: "group" }),
+      utils.bl.bindings.invalidate({ connectionId, targetType: "account" }),
+      utils.sync.logs.invalidate(),
     ]);
   };
 
@@ -249,14 +261,24 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const collectSite = trpc.bl.collectSite.useMutation({
     onSuccess: async (result) => {
       await invalidateCollection();
-      showToast({ title: result.ok ? "采集完成" : "采集失败", description: result.message, variant: result.ok ? "success" : "error" });
+      const ruleSync = ruleSyncStatus(result);
+      showToast({
+        title: result.ok && ruleSync.ok ? "采集完成" : result.ok ? "采集完成，规则应用失败" : "采集失败",
+        description: ruleSync.failed > 0 ? `${result.message}；${ruleSync.failed} 条倍率规则应用失败` : result.message,
+        variant: result.ok && ruleSync.ok ? "success" : "error",
+      });
     },
     onError: (error) => showToast({ title: "采集失败", description: error.message, variant: "error" }),
   });
   const collectAll = trpc.bl.collectAll.useMutation({
     onSuccess: async (result) => {
       await invalidateCollection();
-      showToast({ title: "采集任务完成", description: `成功 ${result.success}/${result.total}`, variant: result.success === result.total ? "success" : "error" });
+      const ruleSync = ruleSyncStatus(result);
+      showToast({
+        title: result.success === result.total && ruleSync.ok ? "采集任务完成" : "采集任务完成，存在失败",
+        description: ruleSync.failed > 0 ? `成功 ${result.success}/${result.total}；${ruleSync.failed} 条倍率规则应用失败` : `成功 ${result.success}/${result.total}`,
+        variant: result.success === result.total && ruleSync.ok ? "success" : "error",
+      });
     },
     onError: (error) => showToast({ title: "批量采集失败", description: error.message, variant: "error" }),
   });

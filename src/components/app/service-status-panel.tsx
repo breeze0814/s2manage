@@ -3,6 +3,7 @@
 import type React from "react";
 import { Activity, AlertTriangle, CheckCircle2, Database, Loader2, RefreshCw, ServerCog, WifiOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { logActionLabel } from "@/lib/log-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -282,7 +283,7 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
               ) : data.recentLogs.items.map((log) => (
                 <TableRow key={log.id}>
                   <TableCell className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
-                  <TableCell className="font-mono text-xs">{log.action}</TableCell>
+                  <TableCell className="text-xs" title={log.action}>{logActionLabel(log.action)}</TableCell>
                   <TableCell className="font-mono text-xs">{log.target || "-"}</TableCell>
                   <TableCell>{log.status === "success" ? statusBadge("ok", "成功") : statusBadge("bad", "失败")}</TableCell>
                   <TableCell className="max-w-[360px] truncate text-sm text-muted-foreground" title={log.error ?? ""}>{log.error || "-"}</TableCell>

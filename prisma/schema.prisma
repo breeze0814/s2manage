@@ -11,8 +11,8 @@ model AdminUser {
   id           Int      @id @default(autoincrement())
   email        String   @unique
   passwordHash String   @map("password_hash")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("admin_users")
 }
@@ -24,9 +24,9 @@ model Connection {
   adminApiKey String    @map("admin_api_key")
   enabled     Boolean   @default(true)
   syncMode    String    @default("manual") @map("sync_mode")
-  lastCheckAt DateTime? @map("last_check_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  lastCheckAt DateTime? @map("last_check_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   blSourceBindings BlSourceBinding[]
   blGroupRateRules BlGroupRateRule[]
   blAccountRateRules BlAccountRateRule[]
@@ -45,7 +45,7 @@ model Connection {
 model Setting {
   key       String   @id
   value     String
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("settings")
 }
@@ -60,8 +60,8 @@ model BlSourceBinding {
   sourceGroupId   String     @map("source_group_id")
   sourceGroupName String?    @map("source_group_name")
   sourcePlatform  String?    @map("source_platform")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   connection      Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, targetType, targetId, sourceSiteId, sourceGroupId])
@@ -77,8 +77,8 @@ model BlGroupRateRule {
   mode         String     @default("first")
   offset       Float      @default(0)
   expression   String?
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, groupId])
@@ -94,8 +94,8 @@ model BlAccountRateRule {
   mode         String     @default("first")
   offset       Float      @default(0)
   expression   String?
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, accountId])
@@ -118,13 +118,13 @@ model BlCollectionSite {
   accessToken         String?                 @map("access_token")
   refreshToken        String?                 @map("refresh_token")
   tokenExpire         BigInt?                 @map("token_expire")
-  lastRunAt           DateTime?               @map("last_run_at")
+  lastRunAt           DateTime?               @map("last_run_at") @db.Timestamptz(3)
   lastStatus          String?                 @map("last_status")
   lastError           String?                 @map("last_error")
   consecutiveFailures Int                     @default(0) @map("consecutive_failures")
-  lastSuccessAt       DateTime?               @map("last_success_at")
-  createdAt           DateTime                @default(now()) @map("created_at")
-  updatedAt           DateTime                @updatedAt @map("updated_at")
+  lastSuccessAt       DateTime?               @map("last_success_at") @db.Timestamptz(3)
+  createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
   connection          Connection              @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   runs                BlCollectionRun[]
   groupRates          BlCollectedGroupRate[]
@@ -145,8 +145,8 @@ model BlCollectionRun {
   groupCount  Int                     @default(0) @map("group_count")
   modelCount  Int                     @default(0) @map("model_count")
   changeCount Int                     @default(0) @map("change_count")
-  startedAt   DateTime                @default(now()) @map("started_at")
-  finishedAt  DateTime?               @map("finished_at")
+  startedAt   DateTime                @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt  DateTime?               @map("finished_at") @db.Timestamptz(3)
   connection  Connection              @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   site        BlCollectionSite        @relation(fields: [siteId], references: [id], onDelete: Cascade)
   groupRates  BlCollectedGroupRate[]
@@ -172,7 +172,7 @@ model BlCollectedGroupRate {
   userRate         Float?           @map("user_rate")
   effectiveRate    Float?           @map("effective_rate")
   raw              String?
-  collectedAt      DateTime         @default(now()) @map("collected_at")
+  collectedAt      DateTime         @default(now()) @map("collected_at") @db.Timestamptz(3)
   connection       Connection       @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   site             BlCollectionSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
   run              BlCollectionRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -204,7 +204,7 @@ model BlCollectedModelPrice {
   vendorName       String?          @map("vendor_name")
   description      String?
   raw              String?
-  collectedAt      DateTime         @default(now()) @map("collected_at")
+  collectedAt      DateTime         @default(now()) @map("collected_at") @db.Timestamptz(3)
   connection       Connection       @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   site             BlCollectionSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
   run              BlCollectionRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -226,7 +226,7 @@ model BlCollectedChange {
   newValue    String?          @map("new_value")
   changeType  String           @map("change_type")
   raw         String?
-  createdAt   DateTime         @default(now()) @map("created_at")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   connection  Connection       @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   site        BlCollectionSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
   run         BlCollectionRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -245,8 +245,8 @@ model AnnouncementRule {
   contentTemplate String   @map("content_template")
   status        String     @default("active")
   notifyMode    String     @default("silent") @map("notify_mode")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   connection    Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@index([connectionId, enabled])
@@ -270,12 +270,12 @@ model UpstreamMonitorRule {
   lastStatus            String?    @map("last_status")
   lastMessage           String?    @map("last_message")
   lastLatencyMs         Int?       @map("last_latency_ms")
-  lastCheckedAt         DateTime?  @map("last_checked_at")
-  nextCheckAt           DateTime?  @map("next_check_at")
-  pausedUntil           DateTime?  @map("paused_until")
-  pauseStartedAt        DateTime?  @map("pause_started_at")
-  createdAt             DateTime   @default(now()) @map("created_at")
-  updatedAt             DateTime   @updatedAt @map("updated_at")
+  lastCheckedAt         DateTime?  @map("last_checked_at") @db.Timestamptz(3)
+  nextCheckAt           DateTime?  @map("next_check_at") @db.Timestamptz(3)
+  pausedUntil           DateTime?  @map("paused_until") @db.Timestamptz(3)
+  pauseStartedAt        DateTime?  @map("pause_started_at") @db.Timestamptz(3)
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   connection            Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   results               UpstreamMonitorResult[]
 
@@ -294,9 +294,9 @@ model UpstreamMonitorResult {
   message      String?
   latencyMs    Int?                @map("latency_ms")
   model        String?
-  startedAt    DateTime            @map("started_at")
-  finishedAt   DateTime            @map("finished_at")
-  createdAt    DateTime            @default(now()) @map("created_at")
+  startedAt    DateTime            @map("started_at") @db.Timestamptz(3)
+  finishedAt   DateTime            @map("finished_at") @db.Timestamptz(3)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   rule         UpstreamMonitorRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
   connection   Connection          @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
