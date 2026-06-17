@@ -50,6 +50,7 @@ type BlRate = {
   actual_effective_rate?: number | null;
 };
 type BlChange = {
+  id?: number;
   created_at: string;
   site_id: number;
   site_name: string;
@@ -60,6 +61,15 @@ type BlChange = {
   new_value: string | null;
   actual_old_value: number | null;
   actual_new_value: number | null;
+};
+
+type PagerProps = {
+  page: number;
+  pageSize: number;
+  total: number;
+  pageSizeLabel: string;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
 };
 
 type SiteForm = {
@@ -92,6 +102,11 @@ const defaultForm: SiteForm = {
   refreshToken: "",
   tokenExpire: "",
 };
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 50;
+const RATE_PAGE_SIZE_STORAGE_KEY = "s2a.blSync.ratePageSize";
+const CHANGE_PAGE_SIZE_STORAGE_KEY = "s2a.blSync.changePageSize";
 
 function finiteNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -178,11 +193,65 @@ function siteTypeLabel(value: string) {
   return value === "new_api" ? "New API" : "Sub2API";
 }
 
+function clampPageSize(value: unknown, fallback = DEFAULT_PAGE_SIZE) {
+  const numeric = Number(value);
+  return PAGE_SIZE_OPTIONS.includes(numeric as (typeof PAGE_SIZE_OPTIONS)[number]) ? numeric : fallback;
+}
+
+function readStoredPageSize(key: string, fallback = DEFAULT_PAGE_SIZE) {
+  if (typeof window === "undefined") return fallback;
+  return clampPageSize(window.localStorage.getItem(key), fallback);
+}
+
+function writeStoredPageSize(key: string, value: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, String(value));
+}
+
 function ruleSyncStatus(result: unknown) {
   const ruleSync = (result as { ruleSync?: { ok?: boolean; summary?: Record<string, unknown> } | null })?.ruleSync;
   const summary = ruleSync?.summary;
   const failed = Number(summary?.failedGroupRules ?? 0) + Number(summary?.failedAccountRules ?? 0);
   return { ok: ruleSync?.ok !== false, failed };
+}
+
+function PaginationControls({ page, pageSize, total, pageSizeLabel, onPageChange, onPageSizeChange }: PagerProps) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page, 1), pageCount);
+  const start = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const end = Math.min(total, safePage * pageSize);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-3 text-sm">
+      <div className="text-muted-foreground">
+        显示 {start}-{end} / {total} 条
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground">{pageSizeLabel}</span>
+        <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(clampPageSize(value))}>
+          <SelectTrigger className="h-8 w-[92px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <SelectItem key={option} value={String(option)}>
+                {option} 条
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={() => onPageChange(safePage - 1)} disabled={safePage <= 1}>
+          上一页
+        </Button>
+        <span className="min-w-16 text-center text-muted-foreground">
+          {safePage}/{pageCount}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => onPageChange(safePage + 1)} disabled={safePage >= pageCount}>
+          下一页
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function BlSyncPanel({ connectionId }: { connectionId: number }) {
@@ -197,14 +266,24 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const [selectedPlatform, setSelectedPlatform] = useState<string>("__all__");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [selectedRateKey, setSelectedRateKey] = useState<string>("");
+  const [ratePage, setRatePage] = useState(1);
+  const [ratePageSize, setRatePageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [changePage, setChangePage] = useState(1);
+  const [changePageSize, setChangePageSize] = useState(DEFAULT_PAGE_SIZE);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [syncError, setSyncError] = useState("");
 
   const siteId = selectedSiteId === "__all__" ? undefined : Number(selectedSiteId);
+  const changeOffset = (changePage - 1) * changePageSize;
   const { data: sites, isLoading: sitesLoading } = trpc.bl.collectionSites.useQuery({ connectionId });
   const { data: rates, isLoading: ratesLoading, refetch: refetchRates } = trpc.bl.rates.useQuery({ connectionId, siteId });
-  const { data: changes, isLoading: changesLoading } = trpc.bl.changes.useQuery({ connectionId, siteId, limit: 50 });
+  const { data: changesResult, isLoading: changesLoading } = trpc.bl.changes.useQuery({ connectionId, siteId, limit: changePageSize, offset: changeOffset });
   const { data: groups, isLoading: groupsLoading } = trpc.groups.list.useQuery({ connectionId });
+
+  useEffect(() => {
+    setRatePageSize(readStoredPageSize(RATE_PAGE_SIZE_STORAGE_KEY));
+    setChangePageSize(readStoredPageSize(CHANGE_PAGE_SIZE_STORAGE_KEY));
+  }, []);
 
   useEffect(() => {
     setSelectedSiteId("__all__");
@@ -212,6 +291,8 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
     setSelectedPlatform("__all__");
     setSelectedGroupId("");
     setSelectedRateKey("");
+    setRatePage(1);
+    setChangePage(1);
   }, [connectionId]);
 
   const invalidateCollection = async () => {
@@ -219,7 +300,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
       utils.bl.collectionSites.invalidate({ connectionId }),
       utils.bl.sites.invalidate({ connectionId }),
       utils.bl.rates.invalidate({ connectionId }),
-      utils.bl.changes.invalidate({ connectionId }),
+      utils.bl.changes.invalidate(),
       utils.bl.health.invalidate({ connectionId }),
       utils.serviceStatus.overview.invalidate({ connectionId }),
       utils.groups.list.invalidate({ connectionId }),
@@ -260,6 +341,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   });
   const collectSite = trpc.bl.collectSite.useMutation({
     onSuccess: async (result) => {
+      setChangePage(1);
       await invalidateCollection();
       const ruleSync = ruleSyncStatus(result);
       showToast({
@@ -272,6 +354,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   });
   const collectAll = trpc.bl.collectAll.useMutation({
     onSuccess: async (result) => {
+      setChangePage(1);
       await invalidateCollection();
       const ruleSync = ruleSyncStatus(result);
       showToast({
@@ -301,7 +384,8 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
 
   const sitesList = useMemo<CollectionSite[]>(() => (Array.isArray(sites) ? sites : []), [sites]);
   const ratesList = useMemo<BlRate[]>(() => (Array.isArray(rates) ? rates : []), [rates]);
-  const changesList = useMemo<BlChange[]>(() => (Array.isArray(changes) ? changes : []), [changes]);
+  const changesList = useMemo<BlChange[]>(() => (Array.isArray(changesResult?.changes) ? changesResult.changes : []), [changesResult]);
+  const changesTotal = changesResult?.total ?? 0;
   const groupsList: TargetGroup[] = Array.isArray(groups) ? groups : (groups as unknown as { data?: TargetGroup[] })?.data ?? [];
   const rateQuery = rateSearch.trim().toLowerCase();
   const platformOptions = useMemo(
@@ -335,6 +419,11 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
     [rateQuery, ratesList, selectedPlatform],
   );
   const ratesWithKeys = useMemo(() => filteredRatesList.map((rate, index) => ({ key: `${rate.site_id}-${rate.group_id}-${index}`, rate })), [filteredRatesList]);
+  const ratePageCount = Math.max(1, Math.ceil(ratesWithKeys.length / ratePageSize));
+  const pagedRatesWithKeys = useMemo(
+    () => ratesWithKeys.slice((ratePage - 1) * ratePageSize, ratePage * ratePageSize),
+    [ratePage, ratePageSize, ratesWithKeys],
+  );
   const selectedRate = ratesWithKeys.find((item) => item.key === selectedRateKey)?.rate;
   const selectedTarget = groupsList.find((group) => group.id === Number.parseInt(selectedGroupId, 10));
   const nextRate = getRateValue(selectedRate);
@@ -344,6 +433,35 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
       setSelectedRateKey("");
     }
   }, [ratesWithKeys, selectedRateKey]);
+
+  useEffect(() => {
+    setRatePage(1);
+  }, [ratePageSize, rateQuery, selectedPlatform, selectedSiteId]);
+
+  useEffect(() => {
+    if (ratePage > ratePageCount) setRatePage(ratePageCount);
+  }, [ratePage, ratePageCount]);
+
+  useEffect(() => {
+    setChangePage(1);
+  }, [changePageSize, connectionId, selectedSiteId]);
+
+  useEffect(() => {
+    const pageCount = Math.max(1, Math.ceil(changesTotal / changePageSize));
+    if (changePage > pageCount) setChangePage(pageCount);
+  }, [changePage, changePageSize, changesTotal]);
+
+  const handleRatePageSizeChange = (pageSize: number) => {
+    setRatePage(1);
+    setRatePageSize(pageSize);
+    writeStoredPageSize(RATE_PAGE_SIZE_STORAGE_KEY, pageSize);
+  };
+
+  const handleChangePageSizeChange = (pageSize: number) => {
+    setChangePage(1);
+    setChangePageSize(pageSize);
+    writeStoredPageSize(CHANGE_PAGE_SIZE_STORAGE_KEY, pageSize);
+  };
 
   const openCreate = () => {
     setEditingSite(null);
@@ -675,59 +793,72 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
               </Button>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12" />
-                  <TableHead>采集源 / 分组</TableHead>
-                  <TableHead>平台</TableHead>
-                  <TableHead className="text-right">写入倍率</TableHead>
-                  <TableHead className="text-right">原始倍率</TableHead>
-                  <TableHead className="text-right">生效倍率</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ratesWithKeys.map(({ key, rate }) => {
-                  const canSync = getRateValue(rate) !== null;
-                  return (
-                    <TableRow
-                      key={key}
-                      className={selectedRateKey === key ? "bg-primary/5" : ""}
-                      onClick={() => {
-                        if (!canSync) return;
-                        setSelectedRateKey(key);
-                        setSyncError("");
-                      }}
-                    >
-                      <TableCell>
-                        <input
-                          type="radio"
-                          checked={selectedRateKey === key}
-                          disabled={!canSync}
-                          onChange={() => setSelectedRateKey(key)}
-                          aria-label="选择采集倍率"
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <span className="block">{rate.name || rate.group_id}</span>
-                        <span className="block text-xs text-muted-foreground">{rate.site_name} / #{rate.group_id}</span>
-                      </TableCell>
-                      <TableCell>{rate.platform || "-"}</TableCell>
-                      <TableCell className="text-right font-mono">{formatRate(getRateValue(rate))}</TableCell>
-                      <TableCell className="text-right font-mono">{formatRate(rate.rate_multiplier)}</TableCell>
-                      <TableCell className="text-right font-mono">{formatRate(getEffectiveRateValue(rate))}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12" />
+                    <TableHead>采集源 / 分组</TableHead>
+                    <TableHead>平台</TableHead>
+                    <TableHead className="text-right">写入倍率</TableHead>
+                    <TableHead className="text-right">原始倍率</TableHead>
+                    <TableHead className="text-right">生效倍率</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedRatesWithKeys.map(({ key, rate }) => {
+                    const canSync = getRateValue(rate) !== null;
+                    return (
+                      <TableRow
+                        key={key}
+                        className={selectedRateKey === key ? "bg-primary/5" : ""}
+                        onClick={() => {
+                          if (!canSync) return;
+                          setSelectedRateKey(key);
+                          setSyncError("");
+                        }}
+                      >
+                        <TableCell>
+                          <input
+                            type="radio"
+                            checked={selectedRateKey === key}
+                            disabled={!canSync}
+                            onChange={() => setSelectedRateKey(key)}
+                            aria-label="选择采集倍率"
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <span className="block">{rate.name || rate.group_id}</span>
+                          <span className="block text-xs text-muted-foreground">{rate.site_name} / #{rate.group_id}</span>
+                        </TableCell>
+                        <TableCell>{rate.platform || "-"}</TableCell>
+                        <TableCell className="text-right font-mono">{formatRate(getRateValue(rate))}</TableCell>
+                        <TableCell className="text-right font-mono">{formatRate(rate.rate_multiplier)}</TableCell>
+                        <TableCell className="text-right font-mono">{formatRate(getEffectiveRateValue(rate))}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              <PaginationControls
+                page={ratePage}
+                pageSize={ratePageSize}
+                total={ratesWithKeys.length}
+                pageSizeLabel="每页倍率"
+                onPageChange={setRatePage}
+                onPageSizeChange={handleRatePageSizeChange}
+              />
+            </>
           )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">倍率变更</CardTitle>
+          <div className="text-sm text-muted-foreground">
+            共 {changesTotal} 条
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {changesLoading ? (
@@ -738,31 +869,41 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
           ) : changesList.length === 0 ? (
             <div className="p-5 text-sm text-muted-foreground">暂无倍率变更记录。</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>采集源 / 分组</TableHead>
-                  <TableHead>平台</TableHead>
-                  <TableHead className="text-right">旧倍率</TableHead>
-                  <TableHead className="text-right">新倍率</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {changesList.map((change, index) => (
-                  <TableRow key={`${change.site_id}-${change.group_id}-${change.created_at}-${index}`}>
-                    <TableCell className="text-xs text-muted-foreground">{formatDateTime(change.created_at)}</TableCell>
-                    <TableCell>
-                      <span className="block font-medium">{change.group_name || change.group_id}</span>
-                      <span className="block text-xs text-muted-foreground">{change.site_name} / #{change.group_id}</span>
-                    </TableCell>
-                    <TableCell>{change.platform || "-"}</TableCell>
-                    <TableCell className="text-right font-mono">{formatRate(change.actual_old_value ?? change.old_value)}</TableCell>
-                    <TableCell className="text-right font-mono">{formatRate(change.actual_new_value ?? change.new_value)}</TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>时间</TableHead>
+                    <TableHead>采集源 / 分组</TableHead>
+                    <TableHead>平台</TableHead>
+                    <TableHead className="text-right">旧倍率</TableHead>
+                    <TableHead className="text-right">新倍率</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {changesList.map((change, index) => (
+                    <TableRow key={change.id ?? `${change.site_id}-${change.group_id}-${change.created_at}-${index}`}>
+                      <TableCell className="text-xs text-muted-foreground">{formatDateTime(change.created_at)}</TableCell>
+                      <TableCell>
+                        <span className="block font-medium">{change.group_name || change.group_id}</span>
+                        <span className="block text-xs text-muted-foreground">{change.site_name} / #{change.group_id}</span>
+                      </TableCell>
+                      <TableCell>{change.platform || "-"}</TableCell>
+                      <TableCell className="text-right font-mono">{formatRate(change.actual_old_value ?? change.old_value)}</TableCell>
+                      <TableCell className="text-right font-mono">{formatRate(change.actual_new_value ?? change.new_value)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <PaginationControls
+                page={changePage}
+                pageSize={changePageSize}
+                total={changesTotal}
+                pageSizeLabel="每页变更"
+                onPageChange={setChangePage}
+                onPageSizeChange={handleChangePageSizeChange}
+              />
+            </>
           )}
         </CardContent>
       </Card>

@@ -92,6 +92,7 @@ export async function blCollectionChanges(filters: BlCollectionChangeFilters = {
 
   return db.$queryRaw<
     Array<{
+      id: number;
       created_at: Date;
       site_id: number;
       site_name: string;
@@ -106,7 +107,7 @@ export async function blCollectionChanges(filters: BlCollectionChangeFilters = {
       actual_new_value: number | null;
     }>
   >`
-    SELECT c.created_at, c.site_id, s.name as site_name, s.site_type, s.recharge_ratio,
+    SELECT c.id, c.created_at, c.site_id, s.name as site_name, s.site_type, s.recharge_ratio,
            c.entity_key as group_id, gr.name as group_name, gr.platform,
            c.old_value, c.new_value,
            CASE WHEN c.old_value IS NULL OR c.old_value = '' THEN NULL ELSE CAST(c.old_value AS REAL) / s.recharge_ratio END as actual_old_value,
@@ -115,9 +116,30 @@ export async function blCollectionChanges(filters: BlCollectionChangeFilters = {
     JOIN bl_collection_sites s ON s.id = c.site_id
     LEFT JOIN bl_collected_group_rates gr ON gr.site_id = c.site_id AND gr.run_id = c.run_id AND gr.group_id = c.entity_key
     WHERE ${Prisma.join(where, " AND ")}
-    ORDER BY c.created_at DESC
+    ORDER BY c.created_at DESC, c.id DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
+}
+
+export async function blCollectionChangesCount(filters: BlCollectionChangeFilters = {}) {
+  const where: Prisma.Sql[] = [Prisma.sql`c.entity_type = 'group'`, Prisma.sql`c.field = 'rateMultiplier'`];
+  if (filters.connectionId) where.push(Prisma.sql`c.connection_id = ${filters.connectionId}`);
+  if (filters.siteId) where.push(Prisma.sql`c.site_id = ${filters.siteId}`);
+  if (filters.siteType) where.push(Prisma.sql`s.site_type = ${filters.siteType}`);
+  if (filters.platform) where.push(Prisma.sql`gr.platform = ${filters.platform}`);
+  if (filters.q) {
+    const q = `%${filters.q}%`;
+    where.push(Prisma.sql`(gr.name LIKE ${q} OR c.entity_key LIKE ${q} OR s.name LIKE ${q})`);
+  }
+
+  const rows = await db.$queryRaw<Array<{ total: bigint | number }>>`
+    SELECT COUNT(DISTINCT c.id) as total
+    FROM bl_collected_changes c
+    JOIN bl_collection_sites s ON s.id = c.site_id
+    LEFT JOIN bl_collected_group_rates gr ON gr.site_id = c.site_id AND gr.run_id = c.run_id AND gr.group_id = c.entity_key
+    WHERE ${Prisma.join(where, " AND ")}
+  `;
+  return Number(rows[0]?.total ?? 0);
 }
 
 export async function blCollectionPlatforms(connectionId?: number) {

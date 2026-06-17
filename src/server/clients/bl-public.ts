@@ -1,7 +1,8 @@
-import { blCollectionChanges, blCollectionHealth, blCollectionRates, publicBlCollectionSites } from "@/server/bl-collection/data";
+import { blCollectionChanges, blCollectionChangesCount, blCollectionHealth, blCollectionRates, publicBlCollectionSites } from "@/server/bl-collection/data";
 import { normalizeRateMultiplier } from "@/server/rates";
 
 export type BlChange = {
+  id: number;
   created_at: string;
   site_id: number;
   site_name: string;
@@ -85,9 +86,10 @@ export class BlPublicClient {
     }));
   }
 
-  async fetchChanges(siteId?: number, limit = 100) {
-    const rows = await blCollectionChanges({ connectionId: this.connectionId, siteId, limit });
+  async fetchChanges(siteId?: number, limit = 100, offset = 0) {
+    const rows = await blCollectionChanges({ connectionId: this.connectionId, siteId, limit, offset });
     return rows.map<BlChange>((row) => ({
+      id: row.id,
       created_at: row.created_at.toISOString(),
       site_id: row.site_id,
       site_name: row.site_name,
@@ -101,6 +103,10 @@ export class BlPublicClient {
       actual_old_value: row.actual_old_value,
       actual_new_value: row.actual_new_value,
     }));
+  }
+
+  async countChanges(siteId?: number) {
+    return blCollectionChangesCount({ connectionId: this.connectionId, siteId });
   }
 
   async fetchRates(siteId?: number, options?: { bypassCache?: boolean }) {

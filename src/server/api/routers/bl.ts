@@ -146,10 +146,19 @@ export const blRouter = createTRPCRouter({
     .input(z.object({ connectionId: z.number().int().positive().optional() }).optional())
     .query(({ input }) => blCollectionHealth(input?.connectionId)),
   changes: protectedProcedure
-    .input(z.object({ connectionId: z.number().int().positive().optional(), siteId: z.number().int().positive().optional(), limit: z.number().int().min(1).max(200).default(100) }))
+    .input(z.object({
+      connectionId: z.number().int().positive().optional(),
+      siteId: z.number().int().positive().optional(),
+      limit: z.number().int().min(1).max(200).default(100),
+      offset: z.number().int().min(0).default(0),
+    }))
     .query(async ({ input }) => {
       const client = getBlClient(input.connectionId);
-      return client.fetchChanges(input.siteId, input.limit);
+      const [changes, total] = await Promise.all([
+        client.fetchChanges(input.siteId, input.limit, input.offset),
+        client.countChanges(input.siteId),
+      ]);
+      return { changes, total, limit: input.limit, offset: input.offset };
     }),
   rates: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive().optional(), siteId: z.number().int().positive().optional() }))
