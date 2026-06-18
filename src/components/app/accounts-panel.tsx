@@ -160,9 +160,12 @@ type AccountTableRowProps = {
   bindings: BlBindingWithRate[];
   rule?: AccountRateRule;
   balance?: AccountBalanceRow;
+  balanceThresholdInput: string;
+  balanceLow: boolean;
   groupById: Map<number, GroupRow>;
   bindingsLoading: boolean;
   balanceLoading: boolean;
+  balanceThresholdSaving: boolean;
   isSaving: boolean;
   isTesting: boolean;
   isSchedulablePending: boolean;
@@ -177,6 +180,8 @@ type AccountTableRowProps = {
   onClearError: (row: AccountRow) => void;
   onRefreshCredentials: (row: AccountRow) => void;
   onDelete: (row: AccountRow) => void;
+  onBalanceThresholdInputChange: (accountId: number, value: string) => void;
+  onBalanceThresholdCommit: (accountId: number) => void;
 };
 
 const defaultRule: Omit<AccountRateRule, "accountId"> = {
@@ -333,6 +338,22 @@ function formatBalanceNumber(value: number | null | undefined) {
   return value.toFixed(4).replace(/\.?0+$/, "");
 }
 
+function parseBalanceThresholdInput(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function isNewApiBalance(balance?: AccountBalanceRow) {
+  return balance?.provider?.toLowerCase() === "new-api";
+}
+
+function isLowBalance(balance: AccountBalanceRow | undefined, threshold: number | null) {
+  if (threshold === null || !balance || balance.status !== "ok" || isNewApiBalance(balance)) return false;
+  return typeof balance.remaining === "number" && Number.isFinite(balance.remaining) && balance.remaining < threshold;
+}
+
 function jsonText(value: unknown) {
   if (!value || typeof value !== "object") return "{}";
   return JSON.stringify(value, null, 2);
@@ -480,9 +501,12 @@ const AccountTableRow = memo(function AccountTableRow({
   bindings,
   rule,
   balance,
+  balanceThresholdInput,
+  balanceLow,
   groupById,
   bindingsLoading,
   balanceLoading,
+  balanceThresholdSaving,
   isSaving,
   isTesting,
   isSchedulablePending,
@@ -497,6 +521,8 @@ const AccountTableRow = memo(function AccountTableRow({
   onClearError,
   onRefreshCredentials,
   onDelete,
+  onBalanceThresholdInputChange,
+  onBalanceThresholdCommit,
 }: AccountTableRowProps) {
   const accountGroups = resolveAccountGroups(row, groupById);
   const renderGroups = () => {
@@ -520,28 +546,71 @@ const AccountTableRow = memo(function AccountTableRow({
   };
 
   const renderBalance = () => {
+    const thresholdDisabled = balanceThresholdSaving || isNewApiBalance(balance);
+    const thresholdControl = (
+      <div className="flex items-center gap-1.5">
+        <span className="shrink-0 text-xs text-muted-foreground">预警</span>
+        <Input
+          type="number"
+          min="0"
+          step="any"
+          value={balanceThresholdInput}
+          placeholder={isNewApiBalance(balance) ? "不预警" : "未设"}
+          disabled={thresholdDisabled}
+          title={isNewApiBalance(balance) ? "New API 余额暂不参与预警" : "余额低于该值时提示充值"}
+          className="h-7 w-20 px-2 font-mono text-xs"
+          onChange={(event) => onBalanceThresholdInputChange(row.id, event.target.value)}
+          onBlur={() => onBalanceThresholdCommit(row.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {balanceThresholdSaving ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> : null}
+      </div>
+    );
+
     if (balanceLoading) {
-      return <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />查询中</span>;
+      return (
+        <div className="min-w-[144px] space-y-2">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />查询中</span>
+          {thresholdControl}
+        </div>
+      );
     }
-    if (!balance) return <span className="text-sm text-muted-foreground">-</span>;
+    if (!balance) {
+      return (
+        <div className="min-w-[144px] space-y-2">
+          <span className="text-sm text-muted-foreground">-</span>
+          {thresholdControl}
+        </div>
+      );
+    }
     const title = [balance.provider, balance.planName, balance.message, balance.checkedAt].filter(Boolean).join(" / ");
 
     if (balance.status !== "ok") {
       const label = balance.status === "unsupported" ? "不支持" : balance.status === "invalid" ? "无效" : "失败";
-      return <span title={title} className="text-sm text-muted-foreground">{label}</span>;
+      return (
+        <div title={title} className="min-w-[144px] space-y-2">
+          <span className="text-sm text-muted-foreground">{label}</span>
+          {thresholdControl}
+        </div>
+      );
     }
 
     const unit = balance.unit || "USD";
     const used = typeof balance.used === "number" && Number.isFinite(balance.used) ? `已用 ${formatBalanceNumber(balance.used)}${unit}` : "";
     const total = typeof balance.total === "number" && Number.isFinite(balance.total) ? `总 ${formatBalanceNumber(balance.total)}${unit}` : "";
     return (
-      <div title={title} className="min-w-[92px]">
-        <div className="font-mono text-sm">{formatBalanceNumber(balance.remaining)} {unit}</div>
+      <div title={title} className="min-w-[144px] space-y-2">
+        <div className={`font-mono text-sm ${balanceLow ? "font-semibold text-destructive" : ""}`}>{formatBalanceNumber(balance.remaining)} {unit}</div>
         {[balance.planName, used, total].filter(Boolean).length > 0 ? (
           <div className="max-w-[132px] truncate text-xs text-muted-foreground">
             {[balance.planName, used, total].filter(Boolean).join(" / ")}
           </div>
         ) : null}
+        {thresholdControl}
       </div>
     );
   };
@@ -626,12 +695,18 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const [deleteError, setDeleteError] = useState("");
   const [testDialog, setTestDialog] = useState<TestDialogState | null>(null);
   const [testingAccountIds, setTestingAccountIds] = useState<number[]>([]);
+  const [balanceThresholdInputs, setBalanceThresholdInputs] = useState<Record<number, string>>({});
+  const [savingBalanceThresholdIds, setSavingBalanceThresholdIds] = useState<number[]>([]);
 
   const accountList = useMemo(() => normalizeAccountList(accounts), [accounts]);
   const accountIds = useMemo(() => accountList.map((account) => account.id).filter((id) => Number.isInteger(id) && id > 0), [accountList]);
   const balancesQuery = trpc.accounts.balances.useQuery(
     { connectionId, accountIds, force: false },
     { enabled: accountIds.length > 0, staleTime: 60_000, refetchOnWindowFocus: false, retry: 0 },
+  );
+  const balanceThresholdsQuery = trpc.accounts.balanceThresholds.useQuery(
+    { connectionId },
+    { staleTime: 30_000, refetchOnWindowFocus: false },
   );
   const { data: bindingData, isLoading: bindingsLoading } = trpc.bl.bindings.useQuery(
     { connectionId, targetType: "account", targetIds: accountIds },
@@ -664,6 +739,17 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
     }
     return map;
   }, [balancesQuery.data]);
+  const savingBalanceThresholdIdSet = useMemo(() => new Set(savingBalanceThresholdIds), [savingBalanceThresholdIds]);
+  const lowBalanceAccounts = useMemo(() => {
+    const lowAccounts: Array<{ account: AccountRow; balance: AccountBalanceRow; threshold: number }> = [];
+    for (const account of accountList) {
+      const balance = balancesByAccount.get(account.id);
+      const threshold = parseBalanceThresholdInput(balanceThresholdInputs[account.id]);
+      if (!balance || threshold === null || !isLowBalance(balance, threshold)) continue;
+      lowAccounts.push({ account, balance, threshold });
+    }
+    return lowAccounts;
+  }, [accountList, balanceThresholdInputs, balancesByAccount]);
   const [groupSearch, setGroupSearch] = useState("");
   const selectedGroupIdSet = useMemo(() => new Set(selectedGroupIds), [selectedGroupIds]);
   const filteredGroupList = useMemo(() => {
@@ -708,9 +794,19 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
     }));
   }, [bindingsByAccount, dirty.rateRule, dirty.sourceBindings, editingAccount, formMode, rulesByAccount]);
 
+  useEffect(() => {
+    const next: Record<number, string> = {};
+    for (const [accountId, threshold] of Object.entries(balanceThresholdsQuery.data ?? {})) {
+      const numeric = parseBalanceThresholdInput(threshold);
+      if (numeric !== null) next[Number(accountId)] = String(numeric);
+    }
+    setBalanceThresholdInputs(next);
+  }, [balanceThresholdsQuery.data]);
+
   const createAccount = trpc.accounts.create.useMutation();
   const updateAccount = trpc.accounts.update.useMutation();
   const removeAccount = trpc.accounts.deleteAccount.useMutation();
+  const saveBalanceThreshold = trpc.accounts.saveBalanceThreshold.useMutation();
   const testAccount = trpc.accounts.test.useMutation();
   const testAccountModels = trpc.accounts.models.useQuery(
     { connectionId, accountId: testDialog?.account.id ?? 0 },
@@ -781,6 +877,44 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
     markRateRuleDirty();
     setFormValue(key, value);
   };
+
+  const handleBalanceThresholdInputChange = useCallback((accountId: number, value: string) => {
+    setBalanceThresholdInputs((current) => ({ ...current, [accountId]: value }));
+  }, []);
+
+  const handleBalanceThresholdCommit = useCallback(async (accountId: number) => {
+    const raw = balanceThresholdInputs[accountId] ?? "";
+    const trimmed = raw.trim();
+    const savedValue = balanceThresholdsQuery.data?.[String(accountId)];
+    const savedInput = savedValue === undefined ? "" : String(savedValue);
+    if (trimmed === savedInput) return;
+
+    const threshold = parseBalanceThresholdInput(trimmed);
+    if (trimmed && threshold === null) {
+      showToast({ title: "余额预警阈值无效", description: "请输入大于等于 0 的数字，或留空关闭预警", variant: "error" });
+      return;
+    }
+
+    setSavingBalanceThresholdIds((current) => current.includes(accountId) ? current : [...current, accountId]);
+    try {
+      const next = await saveBalanceThreshold.mutateAsync({
+        connectionId,
+        accountId,
+        threshold,
+      });
+      setBalanceThresholdInputs((current) => ({
+        ...current,
+        [accountId]: threshold === null ? "" : String(threshold),
+      }));
+      utils.accounts.balanceThresholds.setData({ connectionId }, next);
+      showToast({ title: threshold === null ? "余额预警已关闭" : "余额预警阈值已保存", variant: "success" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast({ title: "保存余额预警阈值失败", description: message, variant: "error" });
+    } finally {
+      setSavingBalanceThresholdIds((current) => current.filter((id) => id !== accountId));
+    }
+  }, [balanceThresholdInputs, balanceThresholdsQuery.data, connectionId, saveBalanceThreshold, showToast, utils.accounts.balanceThresholds]);
 
   const updateSourceBindings = useCallback((next: BlBindingValue[]) => {
     setDirty((current) => ({ ...current, sourceBindings: true }));
@@ -1069,6 +1203,27 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
 
       {error ? <p className="text-sm text-destructive">加载账号失败：{error.message}</p> : null}
       {bindingData?.rateError ? <p className="text-sm text-destructive">加载采集当前倍率失败：{bindingData.rateError}</p> : null}
+      {balanceThresholdsQuery.error ? <p className="text-sm text-destructive">加载余额预警配置失败：{balanceThresholdsQuery.error.message}</p> : null}
+
+      {lowBalanceAccounts.length > 0 ? (
+        <div className="flex flex-col gap-2 rounded-md border border-destructive/20 bg-destructive/8 px-3 py-2 text-sm text-destructive lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="font-medium">有 {lowBalanceAccounts.length} 个账号余额低于预警阈值，请及时充值</span>
+          </div>
+          <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs">
+            {lowBalanceAccounts.slice(0, 4).map(({ account, balance, threshold }) => {
+              const unit = balance.unit || "USD";
+              return (
+                <span key={account.id} className="max-w-[240px] truncate">
+                  {getAccountLabel(account)}：{formatBalanceNumber(balance.remaining)} {unit} / {formatBalanceNumber(threshold)} {unit}
+                </span>
+              );
+            })}
+            {lowBalanceAccounts.length > 4 ? <span>另有 {lowBalanceAccounts.length - 4} 个</span> : null}
+          </div>
+        </div>
+      ) : null}
 
       <Card>
         <CardContent className="p-0">
@@ -1082,7 +1237,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 <TableHead>采集源分组 / 当前倍率</TableHead>
                 <TableHead className="w-24">账号倍率</TableHead>
                 <TableHead>规则</TableHead>
-                <TableHead className="w-32">账号余额</TableHead>
+                <TableHead className="w-44">账号余额</TableHead>
                 <TableHead>调度状态</TableHead>
                 <TableHead>错误</TableHead>
                 <TableHead className="w-64">操作</TableHead>
@@ -1092,33 +1247,42 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
               {accountList.length === 0 ? (
                 <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground">暂无账号</TableCell></TableRow>
               ) : (
-                accountList.map((row, idx) => (
-                  <AccountTableRow
-                    key={row.id ?? idx}
-                    row={row}
-                    index={idx}
-                    bindings={bindingsByAccount.get(row.id) ?? EMPTY_BINDINGS}
-                    rule={rulesByAccount.get(row.id)}
-                    balance={balancesByAccount.get(row.id)}
-                    groupById={groupById}
-                    bindingsLoading={bindingsLoading && accountIds.length > 0}
-                    balanceLoading={balancesQuery.isLoading || balancesQuery.isFetching}
-                    isSaving={isSaving}
-                    isTesting={testingAccountIdSet.has(row.id)}
-                    isSchedulablePending={setSchedulable.isPending}
-                    isApplyRulePending={applyRule.isPending}
-                    isClearErrorPending={clearError.isPending}
-                    isRefreshPending={refresh.isPending}
-                    isDeletePending={removeAccount.isPending}
-                    onEdit={openEditor}
-                    onApplyRule={handleApplyRule}
-                    onTest={openTestDialog}
-                    onToggleSchedulable={handleToggleSchedulable}
-                    onClearError={handleClearErrorRow}
-                    onRefreshCredentials={handleRefreshCredentials}
-                    onDelete={handleDeleteRequest}
-                  />
-                ))
+                accountList.map((row, idx) => {
+                  const balance = balancesByAccount.get(row.id);
+                  const thresholdInput = balanceThresholdInputs[row.id] ?? "";
+                  return (
+                    <AccountTableRow
+                      key={row.id ?? idx}
+                      row={row}
+                      index={idx}
+                      bindings={bindingsByAccount.get(row.id) ?? EMPTY_BINDINGS}
+                      rule={rulesByAccount.get(row.id)}
+                      balance={balance}
+                      balanceThresholdInput={thresholdInput}
+                      balanceLow={isLowBalance(balance, parseBalanceThresholdInput(thresholdInput))}
+                      groupById={groupById}
+                      bindingsLoading={bindingsLoading && accountIds.length > 0}
+                      balanceLoading={balancesQuery.isLoading || balancesQuery.isFetching}
+                      balanceThresholdSaving={savingBalanceThresholdIdSet.has(row.id)}
+                      isSaving={isSaving}
+                      isTesting={testingAccountIdSet.has(row.id)}
+                      isSchedulablePending={setSchedulable.isPending}
+                      isApplyRulePending={applyRule.isPending}
+                      isClearErrorPending={clearError.isPending}
+                      isRefreshPending={refresh.isPending}
+                      isDeletePending={removeAccount.isPending}
+                      onEdit={openEditor}
+                      onApplyRule={handleApplyRule}
+                      onTest={openTestDialog}
+                      onToggleSchedulable={handleToggleSchedulable}
+                      onClearError={handleClearErrorRow}
+                      onRefreshCredentials={handleRefreshCredentials}
+                      onDelete={handleDeleteRequest}
+                      onBalanceThresholdInputChange={handleBalanceThresholdInputChange}
+                      onBalanceThresholdCommit={handleBalanceThresholdCommit}
+                    />
+                  );
+                })
               )}
             </TableBody>
           </Table>

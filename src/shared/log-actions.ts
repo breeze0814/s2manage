@@ -9,6 +9,7 @@ export const actionLabels: Record<string, string> = {
   apply_bl_group_rate_rule: "应用分组倍率规则",
   bl_sync_group_rate: "手动同步采集倍率",
   clear_error: "清除账号错误",
+  cleanup_invalid_data: "清理无效数据",
   clear_user_rate_multipliers: "清空用户倍率",
   create_account: "创建账号",
   create_announcement: "创建公告",

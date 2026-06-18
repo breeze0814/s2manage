@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { db } from "@/server/db";
+import { cleanupInvalidData } from "@/server/invalid-data-cleanup";
 import { listSyncLogs } from "@/server/sync-logs";
 import { workerRuntimeSettingsFromRows } from "@/server/worker-settings";
 
@@ -18,6 +19,11 @@ function secondsSince(date: Date | null) {
 }
 
 export const serviceStatusRouter = createTRPCRouter({
+  cleanupInvalidData: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive().optional() }).optional())
+    .mutation(async ({ input }) => {
+      return cleanupInvalidData({ db, connectionId: input?.connectionId });
+    }),
   overview: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive().optional() }).optional())
     .query(async ({ input }) => {

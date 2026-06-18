@@ -7,6 +7,7 @@ import { Sub2ApiAdminClient } from "@/server/clients/sub2api-admin";
 import { normalizeRateMultiplier } from "@/server/rates";
 import { fetchAccountBalances } from "@/server/account-balance";
 import { getAccountId } from "@/server/account-utils";
+import { getSetting, setSetting } from "@/server/settings";
 
 async function getClient(connectionId: number) {
   const conn = await db.connection.findUniqueOrThrow({ where: { id: connectionId } });
@@ -68,6 +69,48 @@ const accountCreateInput = z.object({
   confirmMixedChannelRisk: z.boolean().optional(),
 });
 
+function balanceThresholdsSettingKey(connectionId: number) {
+  return `account_balance_thresholds:${connectionId}`;
+}
+
+function normalizeBalanceThresholds(value: unknown) {
+  const thresholds: Record<string, number> = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return thresholds;
+
+  for (const [rawAccountId, rawThreshold] of Object.entries(value)) {
+    const accountId = Number(rawAccountId);
+    const threshold = Number(rawThreshold);
+    if (!Number.isInteger(accountId) || accountId <= 0) continue;
+    if (!Number.isFinite(threshold) || threshold < 0) continue;
+    thresholds[String(accountId)] = threshold;
+  }
+
+  return thresholds;
+}
+
+async function readBalanceThresholds(connectionId: number) {
+  const raw = await getSetting(balanceThresholdsSettingKey(connectionId), "{}");
+  try {
+    return normalizeBalanceThresholds(JSON.parse(raw) as unknown);
+  } catch {
+    return {};
+  }
+}
+
+async function writeBalanceThresholds(connectionId: number, thresholds: Record<string, number>) {
+  const sorted = Object.fromEntries(
+    Object.entries(normalizeBalanceThresholds(thresholds)).sort(([left], [right]) => Number(left) - Number(right)),
+  );
+  await setSetting(balanceThresholdsSettingKey(connectionId), JSON.stringify(sorted));
+}
+
+async function removeBalanceThreshold(connectionId: number, accountId: number) {
+  const thresholds = await readBalanceThresholds(connectionId);
+  if (!(String(accountId) in thresholds)) return;
+  delete thresholds[String(accountId)];
+  await writeBalanceThresholds(connectionId, thresholds);
+}
+
 const accountUpdateInput = z.object({
   connectionId: z.number().int().positive(),
   accountId: z.number().int().positive(),
@@ -115,6 +158,25 @@ export const accountsRouter = createTRPCRouter({
         accountIds: input.accountIds,
         force: input.force,
       });
+    }),
+  balanceThresholds: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive() }))
+    .query(async ({ input }) => readBalanceThresholds(input.connectionId)),
+  saveBalanceThreshold: protectedProcedure
+    .input(z.object({
+      connectionId: z.number().int().positive(),
+      accountId: z.number().int().positive(),
+      threshold: z.number().finite().min(0).nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const thresholds = await readBalanceThresholds(input.connectionId);
+      if (input.threshold === null) {
+        delete thresholds[String(input.accountId)];
+      } else {
+        thresholds[String(input.accountId)] = input.threshold;
+      }
+      await writeBalanceThresholds(input.connectionId, thresholds);
+      return thresholds;
     }),
   create: protectedProcedure
     .input(accountCreateInput)
@@ -185,6 +247,7 @@ export const accountsRouter = createTRPCRouter({
         await Promise.all([
           db.blSourceBinding.deleteMany({ where: { connectionId: input.connectionId, targetType: "account", targetId: input.accountId } }),
           db.blAccountRateRule.deleteMany({ where: { connectionId: input.connectionId, accountId: input.accountId } }),
+          removeBalanceThreshold(input.connectionId, input.accountId),
         ]);
         await safeLogSync(input.connectionId, "delete_account", `account:${input.accountId}`, { accountId: input.accountId }, "success");
         return result;

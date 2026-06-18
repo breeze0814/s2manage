@@ -69,8 +69,12 @@ export async function blCollectionRates(filters: BlCollectionRateFilters = {}) {
            CASE WHEN gr.effective_rate IS NULL THEN NULL ELSE gr.effective_rate / s.recharge_ratio END as actual_effective_rate
     FROM bl_collected_group_rates gr
     JOIN bl_collection_sites s ON s.id = gr.site_id
-    WHERE gr.id IN (
-      SELECT MAX(id) FROM bl_collected_group_rates GROUP BY connection_id, site_id, group_id
+    WHERE gr.run_id = (
+      SELECT MAX(r.id)
+      FROM bl_collection_runs r
+      WHERE r.connection_id = gr.connection_id
+        AND r.site_id = gr.site_id
+        AND r.status = 'success'
     )
       AND ${Prisma.join(where, " AND ")}
     ORDER BY s.site_type, s.name, gr.platform, gr.name

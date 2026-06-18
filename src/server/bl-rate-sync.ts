@@ -8,7 +8,7 @@ import { ratesEqual } from "@/server/rates";
 import { writeSyncLog } from "@/server/sync-logs";
 import { getAccountId, getAccountName, getAccountRate } from "@/server/account-utils";
 
-type RateRuleDb = Pick<Prisma.TransactionClient, "blSourceBinding" | "blGroupRateRule" | "blAccountRateRule" | "connection" | "announcementRule" | "blCollectedChange">;
+type RateRuleDb = Pick<Prisma.TransactionClient, "blSourceBinding" | "blGroupRateRule" | "blAccountRateRule" | "connection" | "announcementRule" | "blCollectedChange" | "blCollectionSite" | "blCollectionRun" | "blCollectedGroupRate">;
 type LockableRateSyncDb = RateRuleDb & Pick<PrismaClient, "$transaction">;
 
 type LoggableDb = Pick<PrismaClient, "connection">;
@@ -27,8 +27,19 @@ export type ChangedBlSource = {
   sourceGroupId: string;
 };
 
+type SourceBindingCleanupSummary = {
+  removedBindings: number;
+  updatedBindings: number;
+  disabledRules: number;
+  checkedSourceSiteIds: number[];
+};
+
 function sourceKey(siteId: number, groupId: string) {
   return `${siteId}:${groupId}`;
+}
+
+function nameChanged(left: string | null | undefined, right: string | null | undefined) {
+  return (left ?? "").trim() !== (right ?? "").trim();
 }
 
 function changedSourceSet(changedSources?: ChangedBlSource[]) {
@@ -103,6 +114,166 @@ async function groupRuleTargets(input: {
   return { allBindings, targetGroupIds, rules };
 }
 
+async function latestSourceGroups(input: {
+  db: RateRuleDb;
+  connectionId: number;
+  sourceSiteIds?: number[];
+}) {
+  const siteWhere = {
+    connectionId: input.connectionId,
+    ...(input.sourceSiteIds?.length ? { id: { in: input.sourceSiteIds } } : {}),
+  };
+  const sites = await input.db.blCollectionSite.findMany({
+    where: siteWhere,
+    select: { id: true, name: true, lastStatus: true },
+    orderBy: { id: "asc" },
+  });
+  const latest = new Map<string, { siteId: number; siteName: string; groupId: string; groupName: string; platform: string | null }>();
+  const checkedSourceSiteIds: number[] = [];
+  for (const site of sites) {
+    if (site.lastStatus !== "online") continue;
+    const run = await input.db.blCollectionRun.findFirst({
+      where: { connectionId: input.connectionId, siteId: site.id, status: "success" },
+      select: { id: true },
+      orderBy: { id: "desc" },
+    });
+    if (!run) continue;
+    checkedSourceSiteIds.push(site.id);
+    const groups = await input.db.blCollectedGroupRate.findMany({
+      where: { connectionId: input.connectionId, siteId: site.id, runId: run.id },
+      select: { groupId: true, name: true, platform: true },
+    });
+    for (const group of groups) {
+      latest.set(sourceKey(site.id, group.groupId), {
+        siteId: site.id,
+        siteName: site.name,
+        groupId: group.groupId,
+        groupName: group.name,
+        platform: group.platform,
+      });
+    }
+  }
+  return { latest, checkedSourceSiteIds };
+}
+
+async function disableRulesWithoutBindings(input: {
+  db: RateRuleDb;
+  connectionId: number;
+}) {
+  const [groupTargets, accountTargets] = await Promise.all([
+    input.db.blSourceBinding.findMany({
+      where: { connectionId: input.connectionId, targetType: "group" },
+      select: { targetId: true },
+      distinct: ["targetId"],
+    }),
+    input.db.blSourceBinding.findMany({
+      where: { connectionId: input.connectionId, targetType: "account" },
+      select: { targetId: true },
+      distinct: ["targetId"],
+    }),
+  ]);
+  const groupIds = groupTargets.map((row) => row.targetId);
+  const accountIds = accountTargets.map((row) => row.targetId);
+  let disabled = 0;
+
+  disabled += (await input.db.blGroupRateRule.updateMany({
+    where: {
+      connectionId: input.connectionId,
+      enabled: true,
+      ...(groupIds.length > 0 ? { groupId: { notIn: groupIds } } : {}),
+    },
+    data: { enabled: false },
+  })).count;
+
+  disabled += (await input.db.blAccountRateRule.updateMany({
+    where: {
+      connectionId: input.connectionId,
+      enabled: true,
+      ...(accountIds.length > 0 ? { accountId: { notIn: accountIds } } : {}),
+    },
+    data: { enabled: false },
+  })).count;
+
+  return disabled;
+}
+
+async function cleanupSourceBindings(input: {
+  db: RateRuleDb;
+  connectionId: number;
+  sourceSiteIds?: number[];
+}): Promise<SourceBindingCleanupSummary> {
+  const { latest: sources, checkedSourceSiteIds } = await latestSourceGroups(input);
+  if (checkedSourceSiteIds.length === 0) {
+    return { removedBindings: 0, updatedBindings: 0, disabledRules: 0, checkedSourceSiteIds };
+  }
+
+  const bindings = await input.db.blSourceBinding.findMany({
+    where: {
+      connectionId: input.connectionId,
+      sourceSiteId: { in: checkedSourceSiteIds },
+    },
+    orderBy: [{ sourceSiteId: "asc" }, { sourceGroupId: "asc" }],
+  });
+
+  const missingBindingIds: number[] = [];
+  let updatedBindings = 0;
+  const renamed: Array<{ targetType: string; targetId: number; sourceSiteId: number; sourceGroupId: string; oldName: string | null; newName: string }> = [];
+  const removed: Array<{ targetType: string; targetId: number; sourceSiteId: number; sourceGroupId: string; sourceGroupName: string | null }> = [];
+
+  for (const binding of bindings) {
+    const source = sources.get(sourceKey(binding.sourceSiteId, binding.sourceGroupId));
+    if (!source) {
+      missingBindingIds.push(binding.id);
+      removed.push({
+        targetType: binding.targetType,
+        targetId: binding.targetId,
+        sourceSiteId: binding.sourceSiteId,
+        sourceGroupId: binding.sourceGroupId,
+        sourceGroupName: binding.sourceGroupName,
+      });
+      continue;
+    }
+
+    if (nameChanged(binding.sourceGroupName, source.groupName) || nameChanged(binding.sourceSiteName, source.siteName)) {
+      await input.db.blSourceBinding.update({
+        where: { id: binding.id },
+        data: {
+          sourceSiteName: source.siteName,
+          sourceGroupName: source.groupName,
+          sourcePlatform: source.platform,
+        },
+      });
+      updatedBindings += 1;
+      renamed.push({
+        targetType: binding.targetType,
+        targetId: binding.targetId,
+        sourceSiteId: binding.sourceSiteId,
+        sourceGroupId: binding.sourceGroupId,
+        oldName: binding.sourceGroupName,
+        newName: source.groupName,
+      });
+    }
+  }
+
+  if (missingBindingIds.length > 0) {
+    await input.db.blSourceBinding.deleteMany({ where: { id: { in: missingBindingIds } } });
+  }
+  const disabledRules = await disableRulesWithoutBindings(input);
+  const summary = { removedBindings: missingBindingIds.length, updatedBindings, disabledRules, checkedSourceSiteIds };
+
+  if (summary.removedBindings > 0 || summary.updatedBindings > 0 || summary.disabledRules > 0) {
+    await logSync(input.db, input.connectionId, "cleanup_invalid_data", `connection:${input.connectionId}`, {
+      reason: "source group changed",
+      sourceSiteIds: input.sourceSiteIds ?? null,
+      ...summary,
+      renamed,
+      removed,
+    }, "success");
+  }
+
+  return summary;
+}
+
 async function unavailableGroupRuleSummary(input: {
   db: RateRuleDb;
   connectionId: number;
@@ -160,7 +331,22 @@ async function applyBoundGroupRules(input: {
     const rule = rulesByGroup.get(groupId);
     if (!target) {
       const message = "No target group found for bound BL rule";
-      await logSync(input.db, input.connectionId, "auto_bl_bound_group_rule", `group:${groupId}`, { groupId }, "failed", message);
+      await Promise.all([
+        input.db.blSourceBinding.deleteMany({ where: { connectionId: input.connectionId, targetType: "group", targetId: groupId } }),
+        input.db.blGroupRateRule.deleteMany({ where: { connectionId: input.connectionId, groupId } }),
+      ]);
+      await logSync(input.db, input.connectionId, "auto_bl_bound_group_rule", `group:${groupId}`, {
+        groupId,
+        deletedInvalidBinding: true,
+        deletedInvalidRule: true,
+        reason: "target group missing",
+        sources: bindings.map((binding) => ({
+          sourceSiteId: binding.sourceSiteId,
+          sourceSiteName: binding.sourceSiteName,
+          sourceGroupId: binding.sourceGroupId,
+          sourceGroupName: binding.sourceGroupName ?? "",
+        })),
+      }, "failed", message);
       summary.failedGroupRules += 1;
       continue;
     }
@@ -348,7 +534,22 @@ async function applyBoundAccountRules(input: {
     const bindings = bindingsByAccount.get(accountId) ?? [];
     const rule = rulesByAccount.get(accountId);
     if (!target) {
-      await logSync(input.db, input.connectionId, "auto_bl_bound_account_rule", `account:${accountId}`, { accountId }, "failed", "No target account found for bound BL rule");
+      await Promise.all([
+        input.db.blSourceBinding.deleteMany({ where: { connectionId: input.connectionId, targetType: "account", targetId: accountId } }),
+        input.db.blAccountRateRule.deleteMany({ where: { connectionId: input.connectionId, accountId } }),
+      ]);
+      await logSync(input.db, input.connectionId, "auto_bl_bound_account_rule", `account:${accountId}`, {
+        accountId,
+        deletedInvalidBinding: true,
+        deletedInvalidRule: true,
+        reason: "target account missing",
+        sources: bindings.map((binding) => ({
+          sourceSiteId: binding.sourceSiteId,
+          sourceSiteName: binding.sourceSiteName,
+          sourceGroupId: binding.sourceGroupId,
+          sourceGroupName: binding.sourceGroupName ?? "",
+        })),
+      }, "failed", "No target account found for bound BL rule");
       summary.failedAccountRules += 1;
       continue;
     }
@@ -516,6 +717,11 @@ export async function applyBoundRateRulesForConnection(input: {
       accountsError = error instanceof Error ? error.message : String(error);
     }
     const changedSources = input.changedSources ?? await changedSourcesForRuns(tx, conn.id, input.changedRunIds);
+    await cleanupSourceBindings({
+      db: tx,
+      connectionId: conn.id,
+      sourceSiteIds: input.sourceSiteIds,
+    });
     const result = await applyBoundRateRules({
       db: tx,
       connectionId: conn.id,

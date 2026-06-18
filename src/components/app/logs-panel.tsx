@@ -18,9 +18,9 @@ type LogLevel = "info" | "warning" | "error";
 type LogStatus = "success" | "failed";
 
 const levelOptions: Array<{ value: LogLevel; label: string }> = [
-  { value: "info", label: "Info" },
-  { value: "warning", label: "Warning" },
-  { value: "error", label: "Error" },
+  { value: "info", label: "信息" },
+  { value: "warning", label: "警告" },
+  { value: "error", label: "错误" },
 ];
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -32,9 +32,9 @@ function formatDateTime(value: unknown) {
 }
 
 function levelBadge(level?: string | null) {
-  if (level === "error") return <Badge variant="destructive">Error</Badge>;
-  if (level === "warning") return <Badge variant="warning">Warning</Badge>;
-  return <Badge variant="secondary">Info</Badge>;
+  if (level === "error") return <Badge variant="destructive">错误</Badge>;
+  if (level === "warning") return <Badge variant="warning">警告</Badge>;
+  return <Badge variant="secondary">信息</Badge>;
 }
 
 function statusBadge(status?: string | null) {
@@ -51,6 +51,219 @@ function compactJson(value?: string | null) {
   } catch {
     return value;
   }
+}
+
+type DisplayLog = {
+  action?: string | null;
+  actionLabel?: string | null;
+  target?: string | null;
+  detail?: string | null;
+  error?: string | null;
+  status?: string | null;
+};
+
+function parseDetail(value?: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringField(record: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!record) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function numberField(record: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return null;
+}
+
+function booleanField(record: Record<string, unknown> | null | undefined, key: string) {
+  return record?.[key] === true ? true : record?.[key] === false ? false : null;
+}
+
+function formatNumber(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  if (Math.abs(value) >= 100) return value.toFixed(0);
+  if (Math.abs(value) >= 1) return value.toFixed(3).replace(/\.?0+$/, "");
+  return value.toFixed(4).replace(/\.?0+$/, "");
+}
+
+function reasonLabel(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  const labels: Record<string, string> = {
+    scheduled: "定时检测",
+    manual: "手动触发",
+    monitor_recovered: "检测恢复",
+    "target group missing": "目标分组不存在",
+    "target account missing": "目标账号不存在",
+    "source group changed": "采集源分组已变化",
+    connection_unavailable: "连接不可用",
+  };
+  return labels[value] ?? value;
+}
+
+function statusLabel(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  const labels: Record<string, string> = {
+    success: "成功",
+    failed: "失败",
+    error: "错误",
+    invalid: "无效",
+    unsupported: "不支持",
+    paused: "已暂停",
+    resumed: "已恢复",
+    resume_failed: "恢复失败",
+  };
+  return labels[value] ?? value;
+}
+
+function ruleModeLabel(value: unknown) {
+  const labels: Record<string, string> = {
+    first: "首个源倍率",
+    average: "平均源倍率",
+    min: "最低源倍率",
+    max: "最高源倍率",
+    custom: "自定义公式",
+  };
+  return typeof value === "string" ? labels[value] ?? value : "";
+}
+
+function humanError(error?: string | null) {
+  if (!error) return "";
+  if (error.includes("No target group found for bound BL rule")) {
+    return "目标分组不存在：该倍率规则绑定的目标分组已被删除或重建。系统已清理本地无效绑定和规则；如需继续同步，请重新绑定目标分组。";
+  }
+  if (error.includes("No target account found for bound BL rule")) {
+    return "目标账号不存在：该倍率规则绑定的账号已被删除或重建。系统已清理本地无效绑定和规则；如需继续同步，请重新绑定目标账号。";
+  }
+  if (error === "connection disabled") return "连接已停用，任务已跳过。";
+  if (error === "connection not found") return "连接不存在，任务无法执行。";
+  return error;
+}
+
+function sourceLabels(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const source = item as Record<string, unknown>;
+    const siteName = stringField(source, ["sourceSiteName", "siteName"]) || "采集源";
+    const groupName = stringField(source, ["sourceGroupName", "groupName"]);
+    const rate = numberField(source, ["currentRate", "rateMultiplier", "rawRate"]);
+    const label = groupName ? `${siteName} / ${groupName}` : siteName;
+    return rate === null ? label : `${label}（倍率 ${formatNumber(rate)}）`;
+  });
+}
+
+function targetLabel(log: DisplayLog) {
+  const detail = parseDetail(log.detail);
+  const target = log.target ?? "";
+  const groupName = stringField(detail, ["targetGroupName", "groupName", "name"]);
+  const accountName = stringField(detail, ["targetAccountName", "accountName", "name", "username"]);
+  const connectionName = stringField(detail, ["connectionName", "name"]);
+  const title = stringField(detail, ["title", "ruleName"]);
+
+  if (target.startsWith("group:")) {
+    if (target === "group:new") return "新建分组";
+    if (groupName) return `分组：${groupName}`;
+    if (log.error?.includes("No target group") || detail?.reason === "target group missing") return "已删除的分组";
+    return "分组";
+  }
+
+  if (target.startsWith("account:")) {
+    if (target === "account:new") return "新建账号";
+    if (accountName) return `账号：${accountName}`;
+    if (log.error?.includes("No target account") || detail?.reason === "target account missing") return "已删除的账号";
+    return "账号";
+  }
+
+  if (target.startsWith("connection:")) return connectionName ? `连接：${connectionName}` : "连接";
+  if (target.startsWith("rule:")) return title ? `规则：${title}` : "规则";
+  if (target.startsWith("id:")) return title ? `公告：${title}` : "记录";
+  if (log.action?.includes("account") || log.action === "upstream_monitor_check") return accountName ? `账号：${accountName}` : "账号";
+  if (log.action?.includes("group")) return groupName ? `分组：${groupName}` : "分组";
+  return target ? target.replace(":", "：") : "-";
+}
+
+function detailLines(log: DisplayLog) {
+  const detail = parseDetail(log.detail);
+  const lines: string[] = [];
+  const error = humanError(log.error);
+  if (error) lines.push(`错误说明：${error}`);
+
+  if (log.action === "upstream_monitor_check") {
+    const status = statusLabel(detail?.status);
+    const model = stringField(detail, ["model"]);
+    const latencyMs = numberField(detail, ["latencyMs"]);
+    const consecutiveFailures = numberField(detail, ["consecutiveFailures"]);
+    const reason = reasonLabel(detail?.reason);
+    const pauseApplied = booleanField(detail, "pauseApplied");
+    const resumeApplied = booleanField(detail, "resumeApplied");
+    if (status) lines.push(`检测结果：${status}`);
+    if (model) lines.push(`模型：${model}`);
+    if (latencyMs !== null) lines.push(`耗时：${Math.round(latencyMs)} ms`);
+    if (consecutiveFailures !== null) lines.push(`连续失败次数：${consecutiveFailures}`);
+    if (reason) lines.push(`触发方式：${reason}`);
+    if (pauseApplied === true) lines.push("处理结果：已暂停该账号调度");
+    if (resumeApplied === true) lines.push("处理结果：已恢复该账号调度");
+    return lines.length > 0 ? lines : ["检测详情暂无补充信息"];
+  }
+
+  if (detail) {
+    const status = statusLabel(detail.status);
+    const reason = reasonLabel(detail.reason);
+    const fields = Array.isArray(detail.fields) ? detail.fields.map(String).join("、") : "";
+    const rule = detail.rule && typeof detail.rule === "object" && !Array.isArray(detail.rule) ? detail.rule as Record<string, unknown> : null;
+    const sources = sourceLabels(detail.sources);
+    const currentRate = numberField(detail, ["currentRate", "oldRate"]);
+    const newRate = numberField(detail, ["rateMultiplier", "newRate"]);
+    const enabled = booleanField(detail, "enabled");
+    const schedulable = booleanField(detail, "schedulable");
+    const skipped = booleanField(detail, "skipped");
+    const deletedBinding = booleanField(detail, "deletedInvalidBinding");
+    const deletedRule = booleanField(detail, "deletedInvalidRule");
+
+    if (status) lines.push(`状态：${status}`);
+    if (reason) lines.push(`原因：${reason}`);
+    if (fields) lines.push(`更新字段：${fields}`);
+    if (rule) {
+      const mode = ruleModeLabel(rule.mode);
+      const expression = stringField(rule, ["expression"]);
+      const offset = numberField(rule, ["offset"]);
+      const parts = [mode, expression ? `公式 ${expression}` : "", offset ? `偏移 ${formatNumber(offset)}` : ""].filter(Boolean);
+      if (parts.length > 0) lines.push(`倍率规则：${parts.join("，")}`);
+    }
+    if (currentRate !== null && newRate !== null) lines.push(`倍率变化：${formatNumber(currentRate)} → ${formatNumber(newRate)}`);
+    else if (newRate !== null) lines.push(`目标倍率：${formatNumber(newRate)}`);
+    if (enabled !== null) lines.push(`开关状态：${enabled ? "启用" : "停用"}`);
+    if (schedulable !== null) lines.push(`调度状态：${schedulable ? "启用" : "停用"}`);
+    if (skipped === true) lines.push("处理结果：已跳过，当前状态无需变更");
+    if (deletedBinding || deletedRule) {
+      const cleaned = [
+        deletedBinding ? "采集源绑定" : "",
+        deletedRule ? "倍率规则" : "",
+      ].filter(Boolean).join("、");
+      lines.push(`清理结果：已移除无效${cleaned}`);
+    }
+    if (sources.length > 0) lines.push(`采集源：${sources.slice(0, 3).join("；")}${sources.length > 3 ? `；另有 ${sources.length - 3} 个` : ""}`);
+  }
+
+  if (lines.length > 0) return lines;
+  const fallback = compactJson(log.detail);
+  return fallback === "-" ? ["暂无详情"] : [`详情：${fallback}`];
 }
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
@@ -302,7 +515,7 @@ export function LogsPanel() {
             </div>
             <div className="space-y-2">
               <Label>目标</Label>
-              <Input value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)} placeholder="group:1 / account:2" />
+              <Input value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)} placeholder="分组名称、账号名称或连接名称" />
             </div>
             <div className="space-y-2">
               <Label>开始时间</Label>
@@ -357,25 +570,34 @@ export function LogsPanel() {
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground"><Loader2 className="mr-1 inline h-4 w-4 animate-spin" />加载中...</TableCell></TableRow>
               ) : logs.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">暂无日志</TableCell></TableRow>
-              ) : logs.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
-                  <TableCell>{levelBadge(log.level)}</TableCell>
-                  <TableCell>{statusBadge(log.status)}</TableCell>
-                  <TableCell className="text-xs" title={log.action}>{log.actionLabel || logActionLabel(log.action)}</TableCell>
-                  <TableCell className="font-mono text-xs">{log.target || "-"}</TableCell>
-                  <TableCell className="max-w-[520px]">
-                    {log.error ? (
-                      <div className="flex items-start gap-2 text-sm text-destructive">
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span className="truncate" title={log.error}>{log.error}</span>
+              ) : logs.map((log) => {
+                const lines = detailLines(log);
+                const title = lines.join("\n");
+                return (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
+                    <TableCell>{levelBadge(log.level)}</TableCell>
+                    <TableCell>{statusBadge(log.status)}</TableCell>
+                    <TableCell className="text-xs" title={log.action}>{log.actionLabel || logActionLabel(log.action)}</TableCell>
+                    <TableCell className="max-w-[180px] truncate text-sm" title={targetLabel(log)}>{targetLabel(log)}</TableCell>
+                    <TableCell className="max-w-[640px]">
+                      <div className={`min-w-0 space-y-1 text-sm ${log.error ? "text-destructive" : "text-muted-foreground"}`} title={title}>
+                        {log.error ? (
+                          <div className="flex min-w-0 items-start gap-2">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span className="truncate">{lines[0]}</span>
+                          </div>
+                        ) : (
+                          <span className="block truncate">{lines[0]}</span>
+                        )}
+                        {lines.length > 1 ? (
+                          <div className="truncate text-xs opacity-85">{lines.slice(1).join("；")}</div>
+                        ) : null}
                       </div>
-                    ) : (
-                      <span className="block truncate text-sm text-muted-foreground" title={compactJson(log.detail)}>{compactJson(log.detail)}</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           {logsQuery.hasNextPage ? (
