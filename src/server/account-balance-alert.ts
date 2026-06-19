@@ -1,0 +1,423 @@
+import { fetchAccountBalances, type AccountBalanceResult } from "@/server/account-balance";
+import { getAccountId, getAccountName } from "@/server/account-utils";
+import type { Sub2ApiAdminClient } from "@/server/clients/sub2api-admin";
+import { requestText } from "@/server/http";
+import { getSetting, setSetting } from "@/server/settings";
+import { writeSyncLog } from "@/server/sync-logs";
+
+export type AccountBalanceWebhookConfig = {
+  enabled: boolean;
+  url: string;
+  cooldownMinutes: number;
+  template: string;
+  updatedAt?: string | null;
+};
+
+export type AccountBalanceAlertAccount = {
+  accountId: number;
+  accountName: string;
+  threshold: number;
+  remaining: number;
+  unit: string;
+  provider: string | null;
+  planName: string | null;
+  checkedAt: string;
+};
+
+export type AccountBalanceAlertResult = {
+  ok: boolean;
+  enabled: boolean;
+  checked: number;
+  low: number;
+  sent: number;
+  skippedCooldown: number;
+  failed: number;
+  accounts: AccountBalanceAlertAccount[];
+  message: string;
+};
+
+type AlertState = Record<string, { lastSentAt?: string; lastRemaining?: number; lastThreshold?: number }>;
+
+const defaultTemplate = [
+  "S2A Manager 账号余额预警",
+  "连接：{{connectionName}}",
+  "账号：{{accountName}} (#{{accountId}})",
+  "余额：{{remaining}} {{unit}}",
+  "阈值：{{threshold}} {{unit}}",
+  "来源：{{provider}} {{planName}}",
+  "检测时间：{{checkedAt}}",
+].join("\n");
+
+export const defaultAccountBalanceWebhookConfig: AccountBalanceWebhookConfig = {
+  enabled: false,
+  url: "",
+  cooldownMinutes: 360,
+  template: defaultTemplate,
+  updatedAt: null,
+};
+
+function thresholdsSettingKey(connectionId: number) {
+  return `account_balance_thresholds:${connectionId}`;
+}
+
+function webhookSettingKey(connectionId: number) {
+  return `account_balance_webhook:${connectionId}`;
+}
+
+function stateSettingKey(connectionId: number) {
+  return `account_balance_alert_state:${connectionId}`;
+}
+
+function finiteNonNegativeNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function normalizeUrl(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeCooldownMinutes(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return defaultAccountBalanceWebhookConfig.cooldownMinutes;
+  return Math.min(Math.max(Math.trunc(numeric), 0), 30 * 24 * 60);
+}
+
+export function normalizeBalanceThresholds(value: unknown) {
+  const thresholds: Record<string, number> = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return thresholds;
+
+  for (const [rawAccountId, rawThreshold] of Object.entries(value)) {
+    const accountId = Number(rawAccountId);
+    const threshold = finiteNonNegativeNumber(rawThreshold);
+    if (!Number.isInteger(accountId) || accountId <= 0 || threshold === null) continue;
+    thresholds[String(accountId)] = threshold;
+  }
+
+  return thresholds;
+}
+
+export async function readBalanceThresholds(connectionId: number) {
+  const raw = await getSetting(thresholdsSettingKey(connectionId), "{}");
+  try {
+    return normalizeBalanceThresholds(JSON.parse(raw) as unknown);
+  } catch {
+    return {};
+  }
+}
+
+export async function writeBalanceThresholds(connectionId: number, thresholds: Record<string, number>) {
+  const sorted = Object.fromEntries(
+    Object.entries(normalizeBalanceThresholds(thresholds)).sort(([left], [right]) => Number(left) - Number(right)),
+  );
+  await setSetting(thresholdsSettingKey(connectionId), JSON.stringify(sorted));
+  return sorted;
+}
+
+export async function removeBalanceThreshold(connectionId: number, accountId: number) {
+  const thresholds = await readBalanceThresholds(connectionId);
+  if (!(String(accountId) in thresholds)) return thresholds;
+  delete thresholds[String(accountId)];
+  return writeBalanceThresholds(connectionId, thresholds);
+}
+
+export function normalizeAccountBalanceWebhookConfig(value: unknown): AccountBalanceWebhookConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaultAccountBalanceWebhookConfig;
+  const raw = value as Partial<AccountBalanceWebhookConfig>;
+  const template = typeof raw.template === "string" && raw.template.trim()
+    ? raw.template
+    : defaultAccountBalanceWebhookConfig.template;
+
+  return {
+    enabled: raw.enabled === true,
+    url: normalizeUrl(raw.url),
+    cooldownMinutes: normalizeCooldownMinutes(raw.cooldownMinutes),
+    template,
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
+  };
+}
+
+export async function readAccountBalanceWebhookConfig(connectionId: number) {
+  const raw = await getSetting(webhookSettingKey(connectionId), "");
+  if (!raw.trim()) return defaultAccountBalanceWebhookConfig;
+  try {
+    return normalizeAccountBalanceWebhookConfig(JSON.parse(raw) as unknown);
+  } catch {
+    return defaultAccountBalanceWebhookConfig;
+  }
+}
+
+export async function saveAccountBalanceWebhookConfig(
+  connectionId: number,
+  config: Pick<AccountBalanceWebhookConfig, "enabled" | "url" | "cooldownMinutes" | "template">,
+) {
+  const normalized = normalizeAccountBalanceWebhookConfig({
+    ...config,
+    updatedAt: new Date().toISOString(),
+  });
+  if (normalized.enabled && !normalized.url) {
+    throw new Error("启用余额 webhook 预警时必须填写 Webhook URL");
+  }
+  if (normalized.url && !/^https?:\/\//i.test(normalized.url)) {
+    throw new Error("Webhook URL 必须以 http:// 或 https:// 开头");
+  }
+  await setSetting(webhookSettingKey(connectionId), JSON.stringify(normalized));
+  return normalized;
+}
+
+function normalizeState(value: unknown): AlertState {
+  const state: AlertState = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return state;
+  for (const [accountId, raw] of Object.entries(value)) {
+    if (!Number.isInteger(Number(accountId)) || Number(accountId) <= 0) continue;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const row = raw as AlertState[string];
+    state[accountId] = {
+      lastSentAt: typeof row.lastSentAt === "string" ? row.lastSentAt : undefined,
+      lastRemaining: typeof row.lastRemaining === "number" && Number.isFinite(row.lastRemaining) ? row.lastRemaining : undefined,
+      lastThreshold: typeof row.lastThreshold === "number" && Number.isFinite(row.lastThreshold) ? row.lastThreshold : undefined,
+    };
+  }
+  return state;
+}
+
+async function readAlertState(connectionId: number) {
+  const raw = await getSetting(stateSettingKey(connectionId), "{}");
+  try {
+    return normalizeState(JSON.parse(raw) as unknown);
+  } catch {
+    return {};
+  }
+}
+
+async function writeAlertState(connectionId: number, state: AlertState) {
+  await setSetting(stateSettingKey(connectionId), JSON.stringify(state));
+}
+
+function isLowBalance(balance: AccountBalanceResult | undefined, threshold: number | undefined) {
+  return balance?.status === "ok"
+    && threshold !== undefined
+    && typeof balance.remaining === "number"
+    && Number.isFinite(balance.remaining)
+    && balance.remaining < threshold;
+}
+
+function formatNumber(value: number) {
+  if (Math.abs(value) >= 1000) return value.toFixed(0);
+  if (Math.abs(value) >= 1) return value.toFixed(2).replace(/\.?0+$/, "");
+  return value.toFixed(4).replace(/\.?0+$/, "");
+}
+
+function renderTemplate(template: string, variables: Record<string, string>) {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
+}
+
+function buildWebhookPayload(input: {
+  connectionId: number;
+  connectionName: string;
+  alert: AccountBalanceAlertAccount;
+  template: string;
+}) {
+  const variables = {
+    connectionId: String(input.connectionId),
+    connectionName: input.connectionName,
+    accountId: String(input.alert.accountId),
+    accountName: input.alert.accountName,
+    remaining: formatNumber(input.alert.remaining),
+    threshold: formatNumber(input.alert.threshold),
+    unit: input.alert.unit,
+    provider: input.alert.provider ?? "",
+    planName: input.alert.planName ?? "",
+    checkedAt: input.alert.checkedAt,
+  };
+  const text = renderTemplate(input.template, variables);
+  return {
+    text,
+    content: text,
+    msgtype: "text",
+    markdown: text,
+    title: "S2A Manager 账号余额预警",
+    event: "account_balance_low",
+    ...variables,
+  };
+}
+
+async function sendWebhook(url: string, payload: Record<string, unknown>) {
+  const { status, body } = await requestText({
+    method: "POST",
+    url,
+    headers: { "Content-Type": "application/json; charset=utf-8", Accept: "application/json, text/plain, */*" },
+    body: JSON.stringify(payload),
+    timeoutMs: 15_000,
+  });
+  if (status < 200 || status >= 300) {
+    throw new Error(`HTTP ${status}: ${body.slice(0, 240)}`);
+  }
+  return { status, body: body.slice(0, 500) };
+}
+
+function accountNameById(accounts: unknown[]) {
+  const map = new Map<number, string>();
+  for (const account of accounts) {
+    const accountId = getAccountId(account);
+    if (accountId) map.set(accountId, getAccountName(account, accountId));
+  }
+  return map;
+}
+
+function shouldSkipCooldown(lastSentAt: string | undefined, cooldownMinutes: number, now: Date) {
+  if (!lastSentAt || cooldownMinutes <= 0) return false;
+  const sentAt = new Date(lastSentAt).getTime();
+  if (!Number.isFinite(sentAt)) return false;
+  return now.getTime() - sentAt < cooldownMinutes * 60_000;
+}
+
+export async function checkAccountBalanceAlerts(input: {
+  db: unknown;
+  connectionId: number;
+  connectionName?: string | null;
+  s2Client: Sub2ApiAdminClient;
+  accounts?: unknown[];
+  force?: boolean;
+  ignoreCooldown?: boolean;
+  action?: string;
+}): Promise<AccountBalanceAlertResult> {
+  const config = await readAccountBalanceWebhookConfig(input.connectionId);
+  const thresholds = await readBalanceThresholds(input.connectionId);
+  const thresholdEntries = Object.entries(thresholds)
+    .map(([accountId, threshold]) => ({ accountId: Number(accountId), threshold }))
+    .filter((row) => Number.isInteger(row.accountId) && row.accountId > 0 && Number.isFinite(row.threshold));
+
+  if (!config.enabled || !config.url || thresholdEntries.length === 0) {
+    return {
+      ok: true,
+      enabled: config.enabled,
+      checked: 0,
+      low: 0,
+      sent: 0,
+      skippedCooldown: 0,
+      failed: 0,
+      accounts: [],
+      message: !config.enabled ? "balance webhook disabled" : thresholdEntries.length === 0 ? "no balance thresholds" : "webhook url missing",
+    };
+  }
+
+  const accounts = input.accounts ?? await input.s2Client.listAccounts();
+  const names = accountNameById(accounts);
+  const balances = await fetchAccountBalances({
+    client: input.s2Client,
+    accountIds: thresholdEntries.map((row) => row.accountId),
+    force: input.force,
+  });
+  const balancesById = new Map(balances.map((balance) => [balance.accountId, balance]));
+  const lowAccounts = thresholdEntries.flatMap((row): AccountBalanceAlertAccount[] => {
+    const balance = balancesById.get(row.accountId);
+    if (!balance || !isLowBalance(balance, row.threshold)) return [];
+    return [{
+      accountId: row.accountId,
+      accountName: names.get(row.accountId) ?? `#${row.accountId}`,
+      threshold: row.threshold,
+      remaining: balance.remaining ?? 0,
+      unit: balance.unit || "USD",
+      provider: balance.provider ?? null,
+      planName: balance.planName ?? null,
+      checkedAt: balance.checkedAt,
+    }];
+  });
+
+  const state = await readAlertState(input.connectionId);
+  const now = new Date();
+  let sent = 0;
+  let skippedCooldown = 0;
+  let failed = 0;
+  const failures: Array<{ accountId: number; error: string }> = [];
+
+  for (const alert of lowAccounts) {
+    const key = String(alert.accountId);
+    if (!input.ignoreCooldown && shouldSkipCooldown(state[key]?.lastSentAt, config.cooldownMinutes, now)) {
+      skippedCooldown += 1;
+      continue;
+    }
+
+    try {
+      await sendWebhook(config.url, buildWebhookPayload({
+        connectionId: input.connectionId,
+        connectionName: input.connectionName || `connection:${input.connectionId}`,
+        alert,
+        template: config.template,
+      }));
+      state[key] = {
+        lastSentAt: now.toISOString(),
+        lastRemaining: alert.remaining,
+        lastThreshold: alert.threshold,
+      };
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      failures.push({ accountId: alert.accountId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (sent > 0) await writeAlertState(input.connectionId, state);
+
+  const action = input.action ?? "account_balance_webhook_alert";
+  const shouldLog = action.startsWith("manual_") || sent > 0 || failed > 0;
+  if (shouldLog) {
+    await writeSyncLog(input.db, {
+      connectionId: input.connectionId,
+      action,
+      target: `connection:${input.connectionId}`,
+      detail: {
+        checked: thresholdEntries.length,
+        low: lowAccounts.length,
+        sent,
+        skippedCooldown,
+        failed,
+        accounts: lowAccounts.slice(0, 80),
+        failures: failures.slice(0, 40),
+      },
+      status: failed > 0 ? "failed" : "success",
+      level: lowAccounts.length > 0 ? "warning" : "info",
+      error: failed > 0 ? `${failed} 个余额预警 webhook 发送失败` : undefined,
+    });
+  }
+
+  return {
+    ok: failed === 0,
+    enabled: true,
+    checked: thresholdEntries.length,
+    low: lowAccounts.length,
+    sent,
+    skippedCooldown,
+    failed,
+    accounts: lowAccounts,
+    message: failed > 0 ? "balance alerts partially failed" : "balance alerts checked",
+  };
+}
+
+export async function sendAccountBalanceWebhookTest(input: {
+  connectionId: number;
+  connectionName?: string | null;
+  config?: AccountBalanceWebhookConfig;
+}) {
+  const config = input.config ?? await readAccountBalanceWebhookConfig(input.connectionId);
+  if (!config.url) throw new Error("请先填写 Webhook URL");
+  const checkedAt = new Date().toISOString();
+  const alert: AccountBalanceAlertAccount = {
+    accountId: 0,
+    accountName: "Webhook Test",
+    threshold: 10,
+    remaining: 1.23,
+    unit: "USD",
+    provider: "test",
+    planName: "test",
+    checkedAt,
+  };
+  await sendWebhook(config.url, buildWebhookPayload({
+    connectionId: input.connectionId,
+    connectionName: input.connectionName || `connection:${input.connectionId}`,
+    alert,
+    template: config.template || defaultTemplate,
+  }));
+  return { ok: true, checkedAt };
+}

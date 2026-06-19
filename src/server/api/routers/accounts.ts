@@ -7,8 +7,16 @@ import { Sub2ApiAdminClient } from "@/server/clients/sub2api-admin";
 import { normalizeRateMultiplier } from "@/server/rates";
 import { fetchAccountBalances } from "@/server/account-balance";
 import { getAccountId } from "@/server/account-utils";
-import { getSetting, setSetting } from "@/server/settings";
 import { applyAccountPriorityRule, readAccountPriorityRule, saveAccountPriorityRule } from "@/server/account-priority-rule";
+import {
+  checkAccountBalanceAlerts,
+  readAccountBalanceWebhookConfig,
+  readBalanceThresholds,
+  removeBalanceThreshold,
+  saveAccountBalanceWebhookConfig,
+  sendAccountBalanceWebhookTest,
+  writeBalanceThresholds,
+} from "@/server/account-balance-alert";
 
 async function getClient(connectionId: number) {
   const conn = await db.connection.findUniqueOrThrow({ where: { id: connectionId } });
@@ -70,47 +78,13 @@ const accountCreateInput = z.object({
   confirmMixedChannelRisk: z.boolean().optional(),
 });
 
-function balanceThresholdsSettingKey(connectionId: number) {
-  return `account_balance_thresholds:${connectionId}`;
-}
-
-function normalizeBalanceThresholds(value: unknown) {
-  const thresholds: Record<string, number> = {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) return thresholds;
-
-  for (const [rawAccountId, rawThreshold] of Object.entries(value)) {
-    const accountId = Number(rawAccountId);
-    const threshold = Number(rawThreshold);
-    if (!Number.isInteger(accountId) || accountId <= 0) continue;
-    if (!Number.isFinite(threshold) || threshold < 0) continue;
-    thresholds[String(accountId)] = threshold;
-  }
-
-  return thresholds;
-}
-
-async function readBalanceThresholds(connectionId: number) {
-  const raw = await getSetting(balanceThresholdsSettingKey(connectionId), "{}");
-  try {
-    return normalizeBalanceThresholds(JSON.parse(raw) as unknown);
-  } catch {
-    return {};
-  }
-}
-
-async function writeBalanceThresholds(connectionId: number, thresholds: Record<string, number>) {
-  const sorted = Object.fromEntries(
-    Object.entries(normalizeBalanceThresholds(thresholds)).sort(([left], [right]) => Number(left) - Number(right)),
-  );
-  await setSetting(balanceThresholdsSettingKey(connectionId), JSON.stringify(sorted));
-}
-
-async function removeBalanceThreshold(connectionId: number, accountId: number) {
-  const thresholds = await readBalanceThresholds(connectionId);
-  if (!(String(accountId) in thresholds)) return;
-  delete thresholds[String(accountId)];
-  await writeBalanceThresholds(connectionId, thresholds);
-}
+const webhookConfigInput = z.object({
+  connectionId: z.number().int().positive(),
+  enabled: z.boolean(),
+  url: z.string().trim().max(2_000),
+  cooldownMinutes: z.number().int().min(0).max(30 * 24 * 60),
+  template: z.string().max(4_000),
+});
 
 const accountUpdateInput = z.object({
   connectionId: z.number().int().positive(),
@@ -163,6 +137,61 @@ export const accountsRouter = createTRPCRouter({
   balanceThresholds: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive() }))
     .query(async ({ input }) => readBalanceThresholds(input.connectionId)),
+  balanceWebhookConfig: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive() }))
+    .query(async ({ input }) => readAccountBalanceWebhookConfig(input.connectionId)),
+  saveBalanceWebhookConfig: protectedProcedure
+    .input(webhookConfigInput)
+    .mutation(async ({ input }) => {
+      const saved = await saveAccountBalanceWebhookConfig(input.connectionId, input);
+      await safeLogSync(input.connectionId, "save_account_balance_webhook", `connection:${input.connectionId}`, {
+        enabled: saved.enabled,
+        hasUrl: Boolean(saved.url),
+        cooldownMinutes: saved.cooldownMinutes,
+      }, "success");
+      return saved;
+    }),
+  testBalanceWebhook: protectedProcedure
+    .input(z.object({
+      connectionId: z.number().int().positive(),
+      url: z.string().trim().max(2_000).optional(),
+      template: z.string().max(4_000).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const conn = await db.connection.findUniqueOrThrow({ where: { id: input.connectionId } });
+      const saved = await readAccountBalanceWebhookConfig(input.connectionId);
+      const config = {
+        ...saved,
+        url: input.url ?? saved.url,
+        template: input.template ?? saved.template,
+      };
+      const result = await sendAccountBalanceWebhookTest({
+        connectionId: input.connectionId,
+        connectionName: conn.name,
+        config,
+      });
+      await safeLogSync(input.connectionId, "test_account_balance_webhook", `connection:${input.connectionId}`, { hasUrl: Boolean(config.url) }, "success");
+      return result;
+    }),
+  checkBalanceAlerts: protectedProcedure
+    .input(z.object({
+      connectionId: z.number().int().positive(),
+      force: z.boolean().default(true),
+      ignoreCooldown: z.boolean().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      const conn = await db.connection.findUniqueOrThrow({ where: { id: input.connectionId } });
+      const client = new Sub2ApiAdminClient(conn.baseUrl, decrypt(conn.adminApiKey));
+      return checkAccountBalanceAlerts({
+        db,
+        connectionId: input.connectionId,
+        connectionName: conn.name,
+        s2Client: client,
+        force: input.force,
+        ignoreCooldown: input.ignoreCooldown,
+        action: "manual_account_balance_webhook_alert",
+      });
+    }),
   priorityRule: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive() }))
     .query(async ({ input }) => readAccountPriorityRule(input.connectionId)),

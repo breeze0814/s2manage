@@ -137,6 +137,14 @@ type AccountBalanceRow = {
   checkedAt: string;
 };
 
+type AccountBalanceWebhookConfig = {
+  enabled: boolean;
+  url: string;
+  cooldownMinutes: number;
+  template: string;
+  updatedAt?: string | null;
+};
+
 type AccountRateRule = {
   accountId: number;
   enabled: boolean;
@@ -205,6 +213,15 @@ const prioritizedGeminiModels = [
   "gemini-2.0-flash",
 ];
 const EMPTY_BINDINGS: BlBindingWithRate[] = [];
+const defaultBalanceWebhookTemplate = [
+  "S2A Manager 账号余额预警",
+  "连接：{{connectionName}}",
+  "账号：{{accountName}} (#{{accountId}})",
+  "余额：{{remaining}} {{unit}}",
+  "阈值：{{threshold}} {{unit}}",
+  "来源：{{provider}} {{planName}}",
+  "检测时间：{{checkedAt}}",
+].join("\n");
 
 function normalizeAccountList(response: unknown): AccountRow[] {
   if (Array.isArray(response)) return response as AccountRow[];
@@ -353,12 +370,8 @@ function parseBalanceThresholdInput(value: string | number | null | undefined) {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
 }
 
-function isNewApiBalance(balance?: AccountBalanceRow) {
-  return balance?.provider?.toLowerCase() === "new-api";
-}
-
 function isLowBalance(balance: AccountBalanceRow | undefined, threshold: number | null) {
-  if (threshold === null || !balance || balance.status !== "ok" || isNewApiBalance(balance)) return false;
+  if (threshold === null || !balance || balance.status !== "ok") return false;
   return typeof balance.remaining === "number" && Number.isFinite(balance.remaining) && balance.remaining < threshold;
 }
 
@@ -554,7 +567,7 @@ const AccountTableRow = memo(function AccountTableRow({
   };
 
   const renderBalance = () => {
-    const thresholdDisabled = balanceThresholdSaving || isNewApiBalance(balance);
+    const thresholdDisabled = balanceThresholdSaving;
     const thresholdControl = (
       <div className="flex items-center gap-1.5">
         <span className="shrink-0 text-xs text-muted-foreground">预警</span>
@@ -563,9 +576,9 @@ const AccountTableRow = memo(function AccountTableRow({
           min="0"
           step="any"
           value={balanceThresholdInput}
-          placeholder={isNewApiBalance(balance) ? "不预警" : "未设"}
+          placeholder="未设"
           disabled={thresholdDisabled}
-          title={isNewApiBalance(balance) ? "New API 余额暂不参与预警" : "余额低于该值时提示充值"}
+          title="余额低于该值时提示充值"
           className="h-7 w-20 px-2 font-mono text-xs"
           onChange={(event) => onBalanceThresholdInputChange(row.id, event.target.value)}
           onBlur={() => onBalanceThresholdCommit(row.id)}
@@ -710,6 +723,11 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const [priorityRuleGroupIds, setPriorityRuleGroupIds] = useState<number[]>([]);
   const [priorityRuleSearch, setPriorityRuleSearch] = useState("");
   const [priorityRuleDirty, setPriorityRuleDirty] = useState(false);
+  const [balanceWebhookEnabled, setBalanceWebhookEnabled] = useState(false);
+  const [balanceWebhookUrl, setBalanceWebhookUrl] = useState("");
+  const [balanceWebhookCooldown, setBalanceWebhookCooldown] = useState("360");
+  const [balanceWebhookTemplate, setBalanceWebhookTemplate] = useState(defaultBalanceWebhookTemplate);
+  const [balanceWebhookDirty, setBalanceWebhookDirty] = useState(false);
 
   const accountList = useMemo(() => normalizeAccountList(accounts), [accounts]);
   const accountIds = useMemo(() => accountList.map((account) => account.id).filter((id) => Number.isInteger(id) && id > 0), [accountList]);
@@ -718,6 +736,10 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
     { enabled: accountIds.length > 0, staleTime: 60_000, refetchOnWindowFocus: false, retry: 0 },
   );
   const balanceThresholdsQuery = trpc.accounts.balanceThresholds.useQuery(
+    { connectionId },
+    { staleTime: 30_000, refetchOnWindowFocus: false },
+  );
+  const balanceWebhookQuery = trpc.accounts.balanceWebhookConfig.useQuery(
     { connectionId },
     { staleTime: 30_000, refetchOnWindowFocus: false },
   );
@@ -852,6 +874,15 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   }, [balanceThresholdsQuery.data]);
 
   useEffect(() => {
+    const config = balanceWebhookQuery.data as AccountBalanceWebhookConfig | undefined;
+    if (!config || balanceWebhookDirty) return;
+    setBalanceWebhookEnabled(config.enabled === true);
+    setBalanceWebhookUrl(config.url ?? "");
+    setBalanceWebhookCooldown(String(config.cooldownMinutes ?? 360));
+    setBalanceWebhookTemplate(config.template?.trim() ? config.template : defaultBalanceWebhookTemplate);
+  }, [balanceWebhookDirty, balanceWebhookQuery.data]);
+
+  useEffect(() => {
     const rule = priorityRuleQuery.data;
     if (!rule || priorityRuleDirty) return;
     setPriorityRuleEnabled(rule.enabled === true);
@@ -862,6 +893,9 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const updateAccount = trpc.accounts.update.useMutation();
   const removeAccount = trpc.accounts.deleteAccount.useMutation();
   const saveBalanceThreshold = trpc.accounts.saveBalanceThreshold.useMutation();
+  const saveBalanceWebhookConfig = trpc.accounts.saveBalanceWebhookConfig.useMutation();
+  const testBalanceWebhook = trpc.accounts.testBalanceWebhook.useMutation();
+  const checkBalanceAlerts = trpc.accounts.checkBalanceAlerts.useMutation();
   const testAccount = trpc.accounts.test.useMutation();
   const testAccountModels = trpc.accounts.models.useQuery(
     { connectionId, accountId: testDialog?.account.id ?? 0 },
@@ -895,6 +929,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   });
 
   const isPriorityRuleSaving = savePriorityRule.isPending || applyPriorityRule.isPending;
+  const isBalanceWebhookSaving = saveBalanceWebhookConfig.isPending || testBalanceWebhook.isPending || checkBalanceAlerts.isPending;
   const isSaving = createAccount.isPending || updateAccount.isPending || saveBindings.isPending || saveRule.isPending || applyRule.isPending || isPriorityRuleSaving;
   const testingAccountIdSet = useMemo(() => new Set(testingAccountIds), [testingAccountIds]);
   const dialogAvailableModels = useMemo(() => {
@@ -973,6 +1008,90 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
       setSavingBalanceThresholdIds((current) => current.filter((id) => id !== accountId));
     }
   }, [balanceThresholdInputs, balanceThresholdsQuery.data, connectionId, saveBalanceThreshold, showToast, utils.accounts.balanceThresholds]);
+
+  const buildBalanceWebhookPayload = useCallback(() => {
+    const cooldownMinutes = Number(balanceWebhookCooldown);
+    if (!Number.isInteger(cooldownMinutes) || cooldownMinutes < 0) {
+      throw new Error("冷却时间必须是大于等于 0 的整数分钟");
+    }
+    const url = balanceWebhookUrl.trim();
+    const template = balanceWebhookTemplate.trim() || defaultBalanceWebhookTemplate;
+    if (balanceWebhookEnabled && !url) {
+      throw new Error("启用 Webhook 预警时必须填写 Webhook URL");
+    }
+    return {
+      connectionId,
+      enabled: balanceWebhookEnabled,
+      url,
+      cooldownMinutes,
+      template,
+    };
+  }, [balanceWebhookCooldown, balanceWebhookEnabled, balanceWebhookTemplate, balanceWebhookUrl, connectionId]);
+
+  const handleSaveBalanceWebhook = useCallback(async () => {
+    try {
+      const saved = await saveBalanceWebhookConfig.mutateAsync(buildBalanceWebhookPayload());
+      setBalanceWebhookDirty(false);
+      setBalanceWebhookEnabled(saved.enabled);
+      setBalanceWebhookUrl(saved.url ?? "");
+      setBalanceWebhookCooldown(String(saved.cooldownMinutes ?? 360));
+      setBalanceWebhookTemplate(saved.template?.trim() ? saved.template : defaultBalanceWebhookTemplate);
+      await Promise.all([
+        balanceWebhookQuery.refetch(),
+        utils.sync.logs.invalidate(),
+      ]);
+      showToast({ title: "余额 Webhook 预警已保存", variant: "success" });
+      return saved;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast({ title: "保存余额 Webhook 失败", description: message, variant: "error" });
+      return null;
+    }
+  }, [balanceWebhookQuery, buildBalanceWebhookPayload, saveBalanceWebhookConfig, showToast, utils.sync.logs]);
+
+  const handleTestBalanceWebhook = useCallback(async () => {
+    try {
+      const payload = buildBalanceWebhookPayload();
+      await testBalanceWebhook.mutateAsync({
+        connectionId,
+        url: payload.url,
+        template: payload.template,
+      });
+      await utils.sync.logs.invalidate();
+      showToast({ title: "测试 Webhook 已发送", variant: "success" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast({ title: "测试 Webhook 失败", description: message, variant: "error" });
+    }
+  }, [buildBalanceWebhookPayload, connectionId, showToast, testBalanceWebhook, utils.sync.logs]);
+
+  const handleCheckBalanceAlerts = useCallback(async () => {
+    const saved = await handleSaveBalanceWebhook();
+    if (!saved) return;
+    if (!saved.enabled) {
+      showToast({ title: "余额 Webhook 预警未启用", variant: "error" });
+      return;
+    }
+    try {
+      const result = await checkBalanceAlerts.mutateAsync({
+        connectionId,
+        force: true,
+        ignoreCooldown: true,
+      });
+      await Promise.all([
+        balancesQuery.refetch(),
+        utils.sync.logs.invalidate(),
+      ]);
+      showToast({
+        title: result.failed > 0 ? "余额预警部分发送失败" : "余额预警检查完成",
+        description: `检查 ${result.checked} 个阈值，低余额 ${result.low} 个，发送 ${result.sent} 条`,
+        variant: result.failed > 0 ? "error" : "success",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast({ title: "检查余额预警失败", description: message, variant: "error" });
+    }
+  }, [balancesQuery, checkBalanceAlerts, connectionId, handleSaveBalanceWebhook, showToast, utils.sync.logs]);
 
   const updateSourceBindings = useCallback((next: BlBindingValue[]) => {
     setDirty((current) => ({ ...current, sourceBindings: true }));
@@ -1217,6 +1336,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
     }
     await utils.bl.bindings.invalidate({ connectionId, targetType: "account" });
     await priorityRuleQuery.refetch();
+    await balanceWebhookQuery.refetch();
     await balancesQuery.refetch();
     showToast({ title: "账号列表已刷新", variant: "success" });
   };
@@ -1324,6 +1444,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
       {error ? <p className="text-sm text-destructive">加载账号失败：{error.message}</p> : null}
       {bindingData?.rateError ? <p className="text-sm text-destructive">加载采集当前倍率失败：{bindingData.rateError}</p> : null}
       {balanceThresholdsQuery.error ? <p className="text-sm text-destructive">加载余额预警配置失败：{balanceThresholdsQuery.error.message}</p> : null}
+      {balanceWebhookQuery.error ? <p className="text-sm text-destructive">加载余额 Webhook 配置失败：{balanceWebhookQuery.error.message}</p> : null}
 
       {lowBalanceAccounts.length > 0 ? (
         <div className="flex flex-col gap-2 rounded-md border border-destructive/20 bg-destructive/8 px-3 py-2 text-sm text-destructive lg:flex-row lg:items-center lg:justify-between">
@@ -1344,6 +1465,104 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
           </div>
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader className="gap-3 pb-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <CardTitle>余额 Webhook 预警</CardTitle>
+              <CardDescription>账号余额低于表格中设置的预警阈值时，向自定义 Webhook 发送提醒。</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">{balanceWebhookEnabled ? "已启用" : "已停用"}</span>
+              <Switch
+                checked={balanceWebhookEnabled}
+                onCheckedChange={(checked) => {
+                  setBalanceWebhookDirty(true);
+                  setBalanceWebhookEnabled(checked);
+                }}
+                disabled={isBalanceWebhookSaving || balanceWebhookQuery.isLoading}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="space-y-3">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">
+                <div className="space-y-2">
+                  <Label>Webhook URL</Label>
+                  <Input
+                    value={balanceWebhookUrl}
+                    onChange={(event) => {
+                      setBalanceWebhookDirty(true);
+                      setBalanceWebhookUrl(event.target.value);
+                    }}
+                    placeholder="https://example.com/webhook"
+                    disabled={isBalanceWebhookSaving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>冷却分钟</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={balanceWebhookCooldown}
+                    onChange={(event) => {
+                      setBalanceWebhookDirty(true);
+                      setBalanceWebhookCooldown(event.target.value);
+                    }}
+                    disabled={isBalanceWebhookSaving}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>消息模板</Label>
+                <Textarea
+                  className="min-h-36 font-mono text-xs"
+                  value={balanceWebhookTemplate}
+                  onChange={(event) => {
+                    setBalanceWebhookDirty(true);
+                    setBalanceWebhookTemplate(event.target.value);
+                  }}
+                  disabled={isBalanceWebhookSaving}
+                />
+              </div>
+            </div>
+            <div className="space-y-3 rounded-md border border-border/70 p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">预警阈值</div>
+                  <div className="mt-1 text-2xl font-semibold">{Object.keys(balanceThresholdsQuery.data ?? {}).length}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">当前低余额</div>
+                  <div className="mt-1 text-2xl font-semibold">{lowBalanceAccounts.length}</div>
+                </div>
+              </div>
+              <div className="text-xs leading-5 text-muted-foreground">
+                后台 worker 每轮会自动检查；同一账号在冷却时间内不会重复发送。
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={handleSaveBalanceWebhook} disabled={isBalanceWebhookSaving || balanceWebhookQuery.isLoading}>
+                  {saveBalanceWebhookConfig.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  保存配置
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleTestBalanceWebhook} disabled={isBalanceWebhookSaving || !balanceWebhookUrl.trim()}>
+                  {testBalanceWebhook.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  测试发送
+                </Button>
+                <Button size="sm" onClick={handleCheckBalanceAlerts} disabled={isBalanceWebhookSaving || !balanceWebhookEnabled}>
+                  {checkBalanceAlerts.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                  立即检查
+                </Button>
+              </div>
+              {balanceWebhookDirty ? <p className="text-xs text-amber-600 dark:text-amber-300">配置有未保存修改。</p> : null}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="gap-3 pb-3">

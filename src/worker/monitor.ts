@@ -9,6 +9,7 @@ import { runDueUpstreamMonitors } from "@/server/upstream-monitor";
 import { normalizeWorkerIntervalSeconds, workerRuntimeSettingsFromRows } from "@/server/worker-settings";
 import { normalizeRateMultiplier, ratesEqual } from "@/server/rates";
 import { cleanupOldLogs, writeSyncLog } from "@/server/sync-logs";
+import { checkAccountBalanceAlerts } from "@/server/account-balance-alert";
 
 const db = new PrismaClient();
 const runOnce = process.env.S2A_WORKER_ONCE === "1";
@@ -280,6 +281,30 @@ async function runCycle() {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`  Connection error: ${message}`);
       await logSync(conn.id, "auto_bl_sync_connection", `connection:${conn.id}`, {}, "failed", message);
+    }
+    await writeWorkerState({ worker_heartbeat_at: new Date() });
+  }
+
+  const balanceAlertConns = await db.connection.findMany({ where: { enabled: true } });
+  for (const conn of balanceAlertConns) {
+    try {
+      const s2Client = new Sub2ApiAdminClient(conn.baseUrl, decrypt(conn.adminApiKey));
+      const alertResult = await checkAccountBalanceAlerts({
+        db,
+        connectionId: conn.id,
+        connectionName: conn.name,
+        s2Client,
+        force: false,
+        ignoreCooldown: false,
+        action: "auto_account_balance_webhook_alert",
+      });
+      if (alertResult.enabled) {
+        console.log(`[worker] Balance alerts for connection ${conn.id}: checked=${alertResult.checked}, low=${alertResult.low}, sent=${alertResult.sent}, cooldown=${alertResult.skippedCooldown}, failed=${alertResult.failed}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[worker] Balance alerts failed for connection ${conn.id}: ${message}`);
+      await logSync(conn.id, "auto_account_balance_webhook_alert", `connection:${conn.id}`, {}, "failed", message);
     }
     await writeWorkerState({ worker_heartbeat_at: new Date() });
   }
