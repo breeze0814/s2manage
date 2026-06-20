@@ -8,8 +8,14 @@ import { ratesEqual } from "@/server/rates";
 import { writeSyncLog } from "@/server/sync-logs";
 import { getAccountId, getAccountName, getAccountRate } from "@/server/account-utils";
 import { applyAccountPriorityRule } from "@/server/account-priority-rule";
+import {
+  groupMonitorRateExclusionsBySource,
+  monitorGroupRateExclusionKey,
+  readActiveMonitorRateExclusions,
+  type ChangedMonitorRateSource,
+} from "@/server/upstream-monitor-rate-exclusions";
 
-type RateRuleDb = Pick<Prisma.TransactionClient, "blSourceBinding" | "blGroupRateRule" | "blAccountRateRule" | "connection" | "announcementRule" | "blCollectedChange" | "blCollectionSite" | "blCollectionRun" | "blCollectedGroupRate">;
+type RateRuleDb = Pick<Prisma.TransactionClient, "blSourceBinding" | "blGroupRateRule" | "blAccountRateRule" | "connection" | "announcementRule" | "blCollectedChange" | "blCollectionSite" | "blCollectionRun" | "blCollectedGroupRate" | "upstreamMonitorRateExclusion">;
 type LockableRateSyncDb = RateRuleDb & Pick<PrismaClient, "$transaction">;
 
 type LoggableDb = Pick<PrismaClient, "connection">;
@@ -46,7 +52,7 @@ function nameChanged(left: string | null | undefined, right: string | null | und
   return (left ?? "").trim() !== (right ?? "").trim();
 }
 
-function changedSourceSet(changedSources?: ChangedBlSource[]) {
+function changedSourceSet(changedSources?: Array<ChangedBlSource | ChangedMonitorRateSource>) {
   if (!changedSources?.length) return null;
   return new Set(changedSources.map((source) => sourceKey(source.sourceSiteId, source.sourceGroupId)));
 }
@@ -101,9 +107,14 @@ async function groupRuleTargets(input: {
   db: RateRuleDb;
   connectionId: number;
   sourceSiteIds?: number[];
+  targetGroupIds?: number[];
 }) {
   const allBindings = await input.db.blSourceBinding.findMany({
-    where: { connectionId: input.connectionId, targetType: "group" },
+    where: {
+      connectionId: input.connectionId,
+      targetType: "group",
+      ...(input.targetGroupIds?.length ? { targetId: { in: input.targetGroupIds } } : {}),
+    },
     orderBy: [{ targetId: "asc" }, { sourceSiteName: "asc" }, { sourceGroupName: "asc" }],
   });
   const sourceSites = sourceSiteSet(input.sourceSiteIds);
@@ -286,6 +297,7 @@ async function unavailableGroupRuleSummary(input: {
   connectionId: number;
   message: string;
   sourceSiteIds?: number[];
+  targetGroupIds?: number[];
 }) {
   const { targetGroupIds, rules } = await groupRuleTargets(input);
   const summary = emptySummary();
@@ -312,6 +324,7 @@ async function applyBoundGroupRules(input: {
   s2Client: Sub2ApiAdminClient;
   groups: Sub2ApiGroup[];
   sourceSiteIds?: number[];
+  targetGroupIds?: number[];
 }): Promise<{ boundGroupIds: Set<number>; summary: BoundRateSyncSummary }> {
   const { allBindings, targetGroupIds: boundGroupIds, rules } = await groupRuleTargets(input);
   const enabledRuleGroupIds = new Set(rules.map((rule) => rule.groupId));
@@ -323,6 +336,11 @@ async function applyBoundGroupRules(input: {
   const rulesByGroup = new Map(rules.map((rule) => [rule.groupId, rule]));
   const groupsById = new Map(input.groups.map((group) => [group.id, group]));
   const ratesBySource = new Map(rates.map((rate) => [sourceKey(rate.site_id, rate.group_id), rate]));
+  const exclusionsBySource = groupMonitorRateExclusionsBySource(await readActiveMonitorRateExclusions({
+    db: input.db,
+    connectionId: input.connectionId,
+    groupIds: Array.from(enabledRuleGroupIds),
+  }));
   const bindingsByGroup = new Map<number, typeof allBindings>();
   for (const binding of allBindings) {
     const current = bindingsByGroup.get(binding.targetId) ?? [];
@@ -361,6 +379,7 @@ async function applyBoundGroupRules(input: {
 
     const sources = bindings.map((binding) => {
       const rate = ratesBySource.get(sourceKey(binding.sourceSiteId, binding.sourceGroupId));
+      const monitorExclusions = exclusionsBySource.get(monitorGroupRateExclusionKey(binding.targetId, binding.sourceSiteId, binding.sourceGroupId)) ?? [];
       return {
         sourceSiteId: binding.sourceSiteId,
         sourceSiteName: binding.sourceSiteName,
@@ -369,14 +388,33 @@ async function applyBoundGroupRules(input: {
         currentRate: resolveBlRateMultiplier(rate),
         rawRate: typeof rate?.rate_multiplier === "number" ? rate.rate_multiplier : null,
         rechargeRatio: typeof rate?.recharge_ratio === "number" ? rate.recharge_ratio : null,
+        monitorExcluded: monitorExclusions.length > 0,
+        monitorExclusions: monitorExclusions.map((exclusion) => ({
+          accountId: exclusion.accountId,
+          accountName: exclusion.accountName,
+          reason: exclusion.reason,
+        })),
       };
     });
 
     try {
+      const activeSources = sources.filter((source) => !source.monitorExcluded);
+      if (activeSources.length === 0) {
+        await logSync(input.db, input.connectionId, "auto_bl_bound_group_rule", `group:${target.id}`, {
+          targetGroupId: target.id,
+          targetGroupName: target.name,
+          rule: { enabled: rule.enabled, mode: rule.mode, offset: rule.offset, expression: rule.expression },
+          sources,
+          skipped: true,
+          reason: "all bound sources are temporarily excluded by upstream monitor pauses",
+        }, "success");
+        summary.skippedGroupRules += 1;
+        continue;
+      }
       const currentRate = typeof target.rate_multiplier === "number" ? target.rate_multiplier : 1;
       const rateMultiplier = evaluateGroupRateRule({
         rule: { enabled: rule.enabled, mode: rule.mode as "first" | "average" | "min" | "max" | "custom", offset: rule.offset, expression: rule.expression },
-        sourceRates: sources.map((source) => source.currentRate),
+        sourceRates: activeSources.map((source) => source.currentRate),
         currentRate,
       });
       const latestTarget = await input.s2Client.getGroup(target.id).catch(() => target);
@@ -386,6 +424,7 @@ async function applyBoundGroupRules(input: {
         targetGroupName: target.name,
         rule: { enabled: rule.enabled, mode: rule.mode, offset: rule.offset, expression: rule.expression },
         sources,
+        excludedSources: sources.filter((source) => source.monitorExcluded),
         currentRate: latestRate,
         rateMultiplier,
       };
@@ -511,7 +550,7 @@ async function applyBoundAccountRules(input: {
   s2Client: Sub2ApiAdminClient;
   accounts: unknown[];
   sourceSiteIds?: number[];
-  changedSources?: ChangedBlSource[];
+  changedSources?: Array<ChangedBlSource | ChangedMonitorRateSource>;
 }): Promise<BoundRateSyncSummary> {
   const { allBindings, rules } = await accountRuleTargets(input);
   if (rules.length === 0) {
@@ -693,8 +732,11 @@ export async function applyBoundRateRules(input: {
   accounts?: unknown[];
   accountsError?: string | null;
   sourceSiteIds?: number[];
-  changedSources?: ChangedBlSource[];
+  changedSources?: Array<ChangedBlSource | ChangedMonitorRateSource>;
   groupsError?: string | null;
+  targetGroupIds?: number[];
+  includeAccountRules?: boolean;
+  includePriorityRules?: boolean;
 }) {
   const groupResult = input.groupsError
     ? await unavailableGroupRuleSummary({
@@ -702,6 +744,7 @@ export async function applyBoundRateRules(input: {
         connectionId: input.connectionId,
         message: input.groupsError,
         sourceSiteIds: input.sourceSiteIds,
+        targetGroupIds: input.targetGroupIds,
       })
     : await applyBoundGroupRules({
         db: input.db,
@@ -711,8 +754,13 @@ export async function applyBoundRateRules(input: {
         s2Client: input.s2Client,
         groups: input.groups,
         sourceSiteIds: input.sourceSiteIds,
+        targetGroupIds: input.targetGroupIds,
       });
-  const accountSummary = input.accounts
+  const includeAccountRules = input.includeAccountRules ?? true;
+  const includePriorityRules = input.includePriorityRules ?? true;
+  const accountSummary = !includeAccountRules
+    ? emptySummary()
+    : input.accounts
     ? await applyBoundAccountRules({
         db: input.db,
         connectionId: input.connectionId,
@@ -730,14 +778,16 @@ export async function applyBoundRateRules(input: {
           sourceSiteIds: input.sourceSiteIds,
         })
       : emptySummary();
-  const prioritySummary = await applyBoundAccountPriorityRule({
-    db: input.db,
-    connectionId: input.connectionId,
-    s2Client: input.s2Client,
-    groups: input.groups,
-    accounts: input.accounts,
-    refreshAccounts: accountSummary.appliedAccountRules > 0,
-  });
+  const prioritySummary = includePriorityRules
+    ? await applyBoundAccountPriorityRule({
+        db: input.db,
+        connectionId: input.connectionId,
+        s2Client: input.s2Client,
+        groups: input.groups,
+        accounts: input.accounts,
+        refreshAccounts: accountSummary.appliedAccountRules > 0,
+      })
+    : emptySummary();
 
   return {
     boundGroupIds: groupResult.boundGroupIds,
@@ -750,7 +800,11 @@ export async function applyBoundRateRulesForConnection(input: {
   connectionId: number;
   sourceSiteIds?: number[];
   changedRunIds?: number[];
-  changedSources?: ChangedBlSource[];
+  changedSources?: Array<ChangedBlSource | ChangedMonitorRateSource>;
+  targetGroupIds?: number[];
+  includeAccountRules?: boolean;
+  includePriorityRules?: boolean;
+  cleanupBindings?: boolean;
 }) {
   return withConnectionLock(input.db, input.connectionId, async (tx) => {
     const conn = await tx.connection.findUnique({ where: { id: input.connectionId } });
@@ -781,11 +835,13 @@ export async function applyBoundRateRulesForConnection(input: {
       accountsError = error instanceof Error ? error.message : String(error);
     }
     const changedSources = input.changedSources ?? await changedSourcesForRuns(tx, conn.id, input.changedRunIds);
-    await cleanupSourceBindings({
-      db: tx,
-      connectionId: conn.id,
-      sourceSiteIds: input.sourceSiteIds,
-    });
+    if (input.cleanupBindings !== false) {
+      await cleanupSourceBindings({
+        db: tx,
+        connectionId: conn.id,
+        sourceSiteIds: input.sourceSiteIds,
+      });
+    }
     const result = await applyBoundRateRules({
       db: tx,
       connectionId: conn.id,
@@ -798,6 +854,9 @@ export async function applyBoundRateRulesForConnection(input: {
       accountsError,
       sourceSiteIds: input.sourceSiteIds,
       changedSources,
+      targetGroupIds: input.targetGroupIds,
+      includeAccountRules: input.includeAccountRules,
+      includePriorityRules: input.includePriorityRules,
     });
 
     return {

@@ -23,6 +23,7 @@ import { applyBoundRateRulesForConnection } from "@/server/bl-rate-sync";
 import { publishRateChangeAnnouncements } from "@/server/announcement-rules";
 import { normalizeRateMultiplier } from "@/server/rates";
 import { getAccountId, getAccountName, getAccountRate } from "@/server/account-utils";
+import { groupMonitorRateExclusionsBySource, monitorGroupRateExclusionKey, readActiveMonitorRateExclusions } from "@/server/upstream-monitor-rate-exclusions";
 
 const rateMultiplierInput = z.number().finite().gt(0).max(100_000);
 
@@ -249,22 +250,40 @@ export const blRouter = createTRPCRouter({
       });
       const rule = rules[0];
       if (!rule?.enabled) throw new Error("该分组未启用倍率规则");
+      const exclusionsBySource = groupMonitorRateExclusionsBySource(await readActiveMonitorRateExclusions({
+        db,
+        connectionId: input.connectionId,
+        groupIds: [input.groupId],
+      }));
+      const sources = bindings.map((binding) => {
+        const monitorExclusions = exclusionsBySource.get(monitorGroupRateExclusionKey(input.groupId, binding.sourceSiteId, binding.sourceGroupId)) ?? [];
+        return {
+          sourceSiteId: binding.sourceSiteId,
+          sourceSiteName: binding.sourceSiteName,
+          sourceGroupId: binding.sourceGroupId,
+          sourceGroupName: binding.sourceGroupName,
+          currentRate: binding.currentRate,
+          monitorExcluded: monitorExclusions.length > 0,
+          monitorExclusions: monitorExclusions.map((exclusion) => ({
+            accountId: exclusion.accountId,
+            accountName: exclusion.accountName,
+            reason: exclusion.reason,
+          })),
+        };
+      });
+      const activeSources = sources.filter((source) => !source.monitorExcluded);
+      if (activeSources.length === 0) throw new Error("该分组绑定的采集源分组都因上游监测暂停被临时排除，无法计算倍率");
       const rateMultiplier = evaluateGroupRateRule({
         rule,
-        sourceRates: bindings.map((binding) => binding.currentRate),
+        sourceRates: activeSources.map((source) => source.currentRate),
         currentRate,
       });
       const detail = {
         groupId: input.groupId,
         rule,
         rateMultiplier,
-        sources: bindings.map((binding) => ({
-          sourceSiteId: binding.sourceSiteId,
-          sourceSiteName: binding.sourceSiteName,
-          sourceGroupId: binding.sourceGroupId,
-          sourceGroupName: binding.sourceGroupName,
-          currentRate: binding.currentRate,
-        })),
+        sources,
+        excludedSources: sources.filter((source) => source.monitorExcluded),
       };
 
       try {
@@ -289,7 +308,7 @@ export const blRouter = createTRPCRouter({
           },
         });
         await safeLogSync(input.connectionId, "apply_bl_group_rate_rule", `group:${input.groupId}`, detail, "success");
-        return { ok: true, group, rule, sources: bindings, rateMultiplier };
+        return { ok: true, group, rule, sources, rateMultiplier };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         await safeLogSync(input.connectionId, "apply_bl_group_rate_rule", `group:${input.groupId}`, detail, "failed", message);

@@ -55,6 +55,9 @@ export type Sub2ApiGroup = {
 };
 
 export type Sub2ApiDataAccount = {
+  id?: number | string | null;
+  account_id?: number | string | null;
+  accountId?: number | string | null;
   name?: string | null;
   platform?: string | null;
   type?: string | null;

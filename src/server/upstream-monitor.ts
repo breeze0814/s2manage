@@ -3,8 +3,29 @@ import { decrypt } from "@/server/crypto";
 import { Sub2ApiAdminClient } from "@/server/clients/sub2api-admin";
 import { writeSyncLog } from "@/server/sync-logs";
 import { getAccountId } from "@/server/account-utils";
+import { applyBoundRateRulesForConnection } from "@/server/bl-rate-sync";
+import {
+  pauseAccountMonitorRateSources,
+  restoreAccountMonitorRateSources,
+  type MonitorRateExclusionSyncResult,
+} from "@/server/upstream-monitor-rate-exclusions";
 
-type MonitorDb = Pick<PrismaClient, "connection" | "upstreamMonitorRule" | "upstreamMonitorResult">;
+type MonitorDb = Pick<
+  PrismaClient,
+  | "connection"
+  | "upstreamMonitorRule"
+  | "upstreamMonitorResult"
+  | "blSourceBinding"
+  | "blGroupRateRule"
+  | "blAccountRateRule"
+  | "announcementRule"
+  | "blCollectedChange"
+  | "blCollectionSite"
+  | "blCollectionRun"
+  | "blCollectedGroupRate"
+  | "upstreamMonitorRateExclusion"
+  | "$transaction"
+>;
 
 type RemoteAccount = {
   id?: number | string | null;
@@ -73,6 +94,122 @@ async function safeLogSync(db: MonitorDb, connectionId: number, action: string, 
     await writeSyncLog(db, { connectionId, action, target, detail, status, error });
   } catch {
     // Monitor logging must not stop account recovery or checks.
+  }
+}
+
+async function applyMonitorRateExclusionChanges(input: {
+  db: MonitorDb;
+  connectionId: number;
+  accountId: number;
+  action: "pause" | "restore";
+  result: MonitorRateExclusionSyncResult;
+}) {
+  if (input.result.count === 0) return;
+
+  try {
+    const sync = await applyBoundRateRulesForConnection({
+      db: input.db,
+      connectionId: input.connectionId,
+      sourceSiteIds: input.result.sourceSiteIds,
+      changedSources: input.result.changedSources,
+      targetGroupIds: input.result.affectedGroupIds,
+      cleanupBindings: false,
+    });
+    await safeLogSync(
+      input.db,
+      input.connectionId,
+      input.action === "pause" ? "upstream_monitor_exclude_group_rate_sources" : "upstream_monitor_restore_group_rate_sources",
+      `account:${input.accountId}`,
+      {
+        accountId: input.accountId,
+        affectedGroupIds: input.result.affectedGroupIds,
+        changedSources: input.result.changedSources,
+        exclusions: input.result.exclusions.slice(0, 80),
+        rateRuleSync: sync.summary,
+      },
+      sync.ok ? "success" : "failed",
+      sync.ok ? undefined : sync.message,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await safeLogSync(
+      input.db,
+      input.connectionId,
+      input.action === "pause" ? "upstream_monitor_exclude_group_rate_sources" : "upstream_monitor_restore_group_rate_sources",
+      `account:${input.accountId}`,
+      {
+        accountId: input.accountId,
+        affectedGroupIds: input.result.affectedGroupIds,
+        changedSources: input.result.changedSources,
+        exclusions: input.result.exclusions.slice(0, 80),
+      },
+      "failed",
+      message,
+    );
+  }
+}
+
+async function pauseMonitorRateSources(input: {
+  db: MonitorDb;
+  connectionId: number;
+  accountId: number;
+  accountName?: string | null;
+  reason?: string | null;
+  pausedAt?: Date;
+}) {
+  try {
+    const result = await pauseAccountMonitorRateSources(input);
+    await applyMonitorRateExclusionChanges({ ...input, action: "pause", result });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await safeLogSync(
+      input.db,
+      input.connectionId,
+      "upstream_monitor_exclude_group_rate_sources",
+      `account:${input.accountId}`,
+      { accountId: input.accountId },
+      "failed",
+      message,
+    );
+    return {
+      affectedGroupIds: [],
+      changedSources: [],
+      sourceSiteIds: [],
+      count: 0,
+      exclusions: [],
+    };
+  }
+}
+
+export async function restoreMonitorRateSources(input: {
+  db: MonitorDb;
+  connectionId: number;
+  accountId: number;
+  restoredAt?: Date;
+}) {
+  try {
+    const result = await restoreAccountMonitorRateSources(input);
+    await applyMonitorRateExclusionChanges({ ...input, action: "restore", result });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await safeLogSync(
+      input.db,
+      input.connectionId,
+      "upstream_monitor_restore_group_rate_sources",
+      `account:${input.accountId}`,
+      { accountId: input.accountId },
+      "failed",
+      message,
+    );
+    return {
+      affectedGroupIds: [],
+      changedSources: [],
+      sourceSiteIds: [],
+      count: 0,
+      exclusions: [],
+    };
   }
 }
 
@@ -151,6 +288,12 @@ export async function executeUpstreamMonitorRule(options: ExecuteMonitorOptions)
   if (success && wasPaused) {
     try {
       await client.setSchedulable(options.rule.accountId, true);
+      await restoreMonitorRateSources({
+        db: options.db,
+        connectionId: options.rule.connectionId,
+        accountId: options.rule.accountId,
+        restoredAt: now,
+      });
       pausedUntil = null;
       pauseStartedAt = null;
       resumeApplied = true;
@@ -200,6 +343,14 @@ export async function executeUpstreamMonitorRule(options: ExecuteMonitorOptions)
         pauseStartedAt = now;
         consecutiveFailures = 0;
         pauseApplied = true;
+        const rateExclusions = await pauseMonitorRateSources({
+          db: options.db,
+          connectionId: options.rule.connectionId,
+          accountId: options.rule.accountId,
+          accountName: accountLabel(account, options.rule.accountId),
+          reason: "upstream_monitor_pause",
+          pausedAt: now,
+        });
         message = `${message}；已连续失败 ${options.rule.failureThreshold} 次，已暂停调度至 ${targetPausedUntil.toLocaleString()}，期间继续按检测间隔监测`;
         await safeLogSync(
           options.db,
@@ -212,6 +363,8 @@ export async function executeUpstreamMonitorRule(options: ExecuteMonitorOptions)
             failureThreshold: options.rule.failureThreshold,
             pauseMinutes: options.rule.pauseMinutes,
             pausedUntil: targetPausedUntil,
+            excludedGroupRateSources: rateExclusions.count,
+            affectedGroupIds: rateExclusions.affectedGroupIds,
             reason: message,
           },
           "success",
@@ -307,6 +460,12 @@ export async function resumeExpiredMonitorPauses(db: MonitorDb, now = new Date()
         clients.set(rule.connectionId, client);
       }
       await client.setSchedulable(rule.accountId, true);
+      await restoreMonitorRateSources({
+        db,
+        connectionId: rule.connectionId,
+        accountId: rule.accountId,
+        restoredAt: now,
+      });
       const finishedAt = new Date();
       await createResult({
         db,

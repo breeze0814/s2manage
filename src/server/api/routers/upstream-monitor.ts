@@ -3,7 +3,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { db } from "@/server/db";
 import { decrypt } from "@/server/crypto";
 import { Sub2ApiAdminClient } from "@/server/clients/sub2api-admin";
-import { executeUpstreamMonitorRule } from "@/server/upstream-monitor";
+import { executeUpstreamMonitorRule, restoreMonitorRateSources } from "@/server/upstream-monitor";
 import { getWorkerRuntimeSettings } from "@/server/worker-settings";
 import { getAccountId } from "@/server/account-utils";
 
@@ -182,6 +182,11 @@ export const upstreamMonitorRouter = createTRPCRouter({
       if (rule.pausedUntil) {
         const connection = await db.connection.findUniqueOrThrow({ where: { id: input.connectionId } });
         await getClient(connection).setSchedulable(input.accountId, true);
+        await restoreMonitorRateSources({
+          db,
+          connectionId: input.connectionId,
+          accountId: input.accountId,
+        });
       }
 
       await db.upstreamMonitorRule.delete({ where: { id: rule.id } });
@@ -225,6 +230,11 @@ export const upstreamMonitorRouter = createTRPCRouter({
         }),
       ]);
       await getClient(connection).setSchedulable(input.accountId, true);
+      await restoreMonitorRateSources({
+        db,
+        connectionId: input.connectionId,
+        accountId: input.accountId,
+      });
       return db.upstreamMonitorRule.update({
         where: { id: rule.id },
         data: {

@@ -38,6 +38,13 @@ export type BlBindingWithRate = BlBindingValue & {
   currentRate?: number | null;
   actualRate?: number | null;
   effectiveRate?: number | null;
+  monitorExcluded?: boolean;
+  monitorExclusions?: Array<{
+    accountId: number;
+    accountName?: string | null;
+    reason?: string | null;
+    pausedAt?: Date | string | null;
+  }>;
 };
 
 const MAX_RENDERED_SOURCE_ROWS = 160;
@@ -128,11 +135,21 @@ export const BlSourceBadges = memo(function BlSourceBadges({ bindings, loading }
 
   return (
     <div className="flex max-w-[280px] flex-wrap gap-1">
-      {display.map((binding) => (
-        <Badge key={blSourceKey(binding)} variant="outline" className="max-w-[132px] overflow-hidden text-ellipsis whitespace-nowrap">
-          {getSourceLabel(binding)} / {formatRate(binding.currentRate)}
-        </Badge>
-      ))}
+      {display.map((binding) => {
+        const excludedBy = binding.monitorExclusions
+          ?.map((exclusion) => exclusion.accountName?.trim() || `#${exclusion.accountId}`)
+          .join(", ");
+        return (
+          <Badge
+            key={blSourceKey(binding)}
+            variant={binding.monitorExcluded ? "warning" : "outline"}
+            className="max-w-[132px] overflow-hidden text-ellipsis whitespace-nowrap"
+            title={binding.monitorExcluded ? `上游监测暂停，暂不参与计算：${excludedBy || "未知账号"}` : undefined}
+          >
+            {getSourceLabel(binding)} / {formatRate(binding.currentRate)}{binding.monitorExcluded ? " / 排除" : ""}
+          </Badge>
+        );
+      })}
       {hiddenCount > 0 ? <Badge variant="secondary">+{hiddenCount}</Badge> : null}
     </div>
   );

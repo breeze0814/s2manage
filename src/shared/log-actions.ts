@@ -45,7 +45,9 @@ export const actionLabels: Record<string, string> = {
   update_site_settings: "更新站点设置",
   upstream_monitor_check: "上游账号检测",
   upstream_monitor_connection: "上游检测连接",
+  upstream_monitor_exclude_group_rate_sources: "上游监测排除分组倍率源",
   upstream_monitor_pause_account: "暂停账号调度",
+  upstream_monitor_restore_group_rate_sources: "上游监测恢复分组倍率源",
   upstream_monitor_resume_account: "恢复账号调度",
 };
 

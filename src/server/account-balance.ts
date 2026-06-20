@@ -1,5 +1,6 @@
 import { requestText } from "@/server/http";
 import type { Sub2ApiAdminClient, Sub2ApiDataAccount } from "@/server/clients/sub2api-admin";
+import { getAccountId } from "@/server/account-utils";
 
 export type AccountBalanceStatus = "ok" | "unsupported" | "invalid" | "error";
 
@@ -269,7 +270,14 @@ async function queryNewApiUsageToken(accountId: number, credentials: Record<stri
 function accountByIdFromExport(accountIds: number[], accounts: Sub2ApiDataAccount[] | undefined): ExportAccountMap {
   const map: ExportAccountMap = new Map();
   const rows = accounts ?? [];
-  for (let index = 0; index < rows.length && index < accountIds.length; index += 1) {
+  for (const account of rows) {
+    const accountId = getAccountId(account);
+    if (accountId && accountIds.includes(accountId)) map.set(accountId, account);
+  }
+
+  if (map.size > 0 || rows.length !== accountIds.length) return map;
+
+  for (let index = 0; index < accountIds.length; index += 1) {
     map.set(accountIds[index], rows[index]);
   }
   return map;

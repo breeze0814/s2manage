@@ -34,6 +34,7 @@ model Connection {
   announcementRules AnnouncementRule[]
   upstreamMonitorRules UpstreamMonitorRule[]
   upstreamMonitorResults UpstreamMonitorResult[]
+  upstreamMonitorRateExclusions UpstreamMonitorRateExclusion[]
   blCollectionSites BlCollectionSite[]
   blCollectionRuns BlCollectionRun[]
   blCollectedGroupRates BlCollectedGroupRate[]
@@ -305,4 +306,30 @@ model UpstreamMonitorResult {
   @@index([ruleId, createdAt])
   @@index([connectionId, accountId, createdAt])
   @@map("upstream_monitor_results")
+}
+
+model UpstreamMonitorRateExclusion {
+  id              Int        @id @default(autoincrement())
+  connectionId    Int        @map("connection_id")
+  accountId       Int        @map("account_id")
+  accountName     String?    @map("account_name")
+  groupId         Int        @map("group_id")
+  sourceSiteId    Int        @map("source_site_id")
+  sourceSiteName  String     @map("source_site_name")
+  sourceGroupId   String     @map("source_group_id")
+  sourceGroupName String?    @map("source_group_name")
+  sourcePlatform  String?    @map("source_platform")
+  reason          String?
+  active          Boolean    @default(true)
+  pausedAt        DateTime   @default(now()) @map("paused_at") @db.Timestamptz(3)
+  restoredAt      DateTime?  @map("restored_at") @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  connection      Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, accountId, groupId, sourceSiteId, sourceGroupId])
+  @@index([connectionId, active, groupId])
+  @@index([connectionId, accountId, active])
+  @@index([connectionId, sourceSiteId, sourceGroupId, active])
+  @@map("upstream_monitor_rate_exclusions")
 }

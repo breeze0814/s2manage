@@ -2,6 +2,12 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { resolveBlEffectiveRate, resolveBlRateMultiplier, type BlPublicClient } from "@/server/clients/bl-public";
 import { normalizeRateMultiplier } from "@/server/rates";
+import {
+  groupMonitorRateExclusionsBySource,
+  monitorGroupRateExclusionKey,
+  readActiveMonitorRateExclusions,
+  type MonitorRateExclusion,
+} from "@/server/upstream-monitor-rate-exclusions";
 
 export const blTargetTypeSchema = z.enum(["account", "group"]);
 
@@ -42,6 +48,13 @@ export type BindingWithRate = {
   currentRate: number | null;
   actualRate: number | null;
   effectiveRate: number | null;
+  monitorExcluded?: boolean;
+  monitorExclusions?: Array<{
+    accountId: number;
+    accountName: string | null;
+    reason: string | null;
+    pausedAt: Date;
+  }>;
 };
 
 export type GroupRuleRow = {
@@ -212,8 +225,17 @@ export async function listBlSourceBindings(input: {
   });
 
   const rateIndex = input.blClient && rows.length > 0 ? buildRateIndex(await input.blClient.fetchRates()) : new Map<string, BlRateRow>();
+  const groupIds = input.targetType === "group" ? Array.from(new Set(rows.map((row) => row.targetId))) : [];
+  const exclusionsBySource: Map<string, MonitorRateExclusion[]> = input.targetType === "group" && groupIds.length > 0
+    ? groupMonitorRateExclusionsBySource(await readActiveMonitorRateExclusions({
+        db,
+        connectionId: input.connectionId,
+        groupIds,
+      }))
+    : new Map<string, MonitorRateExclusion[]>();
   const bindings: BindingWithRate[] = rows.map((row) => {
     const rate = rateIndex.get(sourceKey(row.sourceSiteId, row.sourceGroupId));
+    const monitorExclusions = exclusionsBySource.get(monitorGroupRateExclusionKey(row.targetId, row.sourceSiteId, row.sourceGroupId)) ?? [];
     return {
       id: row.id,
       connectionId: row.connectionId,
@@ -227,6 +249,13 @@ export async function listBlSourceBindings(input: {
       currentRate: resolveBlRateMultiplier(rate),
       actualRate: toFiniteNumber(rate?.actual_rate_multiplier),
       effectiveRate: resolveBlEffectiveRate(rate),
+      monitorExcluded: monitorExclusions.length > 0,
+      monitorExclusions: monitorExclusions.map((exclusion) => ({
+        accountId: exclusion.accountId,
+        accountName: exclusion.accountName,
+        reason: exclusion.reason,
+        pausedAt: exclusion.pausedAt,
+      })),
     };
   });
 
