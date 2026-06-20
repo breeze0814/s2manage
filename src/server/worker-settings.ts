@@ -2,11 +2,13 @@ import type { PrismaClient } from "@prisma/client";
 
 export const workerSettingKeys = [
   "worker_interval_seconds",
+  "account_balance_alert_interval_seconds",
   "upstream_monitor_timeout_seconds",
   "upstream_monitor_concurrency",
 ] as const;
 
 export const defaultWorkerIntervalSeconds = 10 * 60;
+export const defaultAccountBalanceAlertIntervalSeconds = 5 * 60;
 export const defaultUpstreamMonitorTimeoutSeconds = 45;
 export const defaultUpstreamMonitorConcurrency = 3;
 
@@ -26,6 +28,10 @@ export function normalizeWorkerIntervalSeconds(value: unknown, fallback: unknown
   return clamp(finiteInteger(value) ?? finiteInteger(fallback) ?? defaultWorkerIntervalSeconds, 60, 24 * 60 * 60);
 }
 
+export function normalizeAccountBalanceAlertIntervalSeconds(value: unknown, fallback: unknown = defaultAccountBalanceAlertIntervalSeconds) {
+  return clamp(finiteInteger(value) ?? finiteInteger(fallback) ?? defaultAccountBalanceAlertIntervalSeconds, 60, 24 * 60 * 60);
+}
+
 export function normalizeUpstreamMonitorTimeoutSeconds(value: unknown, fallback: unknown = defaultUpstreamMonitorTimeoutSeconds) {
   return clamp(finiteInteger(value) ?? finiteInteger(fallback) ?? defaultUpstreamMonitorTimeoutSeconds, 10, 5 * 60);
 }
@@ -38,6 +44,10 @@ export function workerRuntimeSettingsFromRows(rows: SettingRow[], env: NodeJS.Pr
   const map = new Map(rows.map((row) => [row.key, row.value]));
   return {
     workerIntervalSeconds: normalizeWorkerIntervalSeconds(map.get("worker_interval_seconds"), env.S2A_WORKER_INTERVAL_SECONDS),
+    accountBalanceAlertIntervalSeconds: normalizeAccountBalanceAlertIntervalSeconds(
+      map.get("account_balance_alert_interval_seconds"),
+      env.S2A_ACCOUNT_BALANCE_ALERT_INTERVAL_SECONDS,
+    ),
     upstreamMonitorTimeoutSeconds: normalizeUpstreamMonitorTimeoutSeconds(map.get("upstream_monitor_timeout_seconds"), env.S2A_UPSTREAM_MONITOR_TIMEOUT_SECONDS),
     upstreamMonitorConcurrency: normalizeUpstreamMonitorConcurrency(map.get("upstream_monitor_concurrency"), env.S2A_UPSTREAM_MONITOR_CONCURRENCY),
   };

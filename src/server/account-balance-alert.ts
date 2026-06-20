@@ -31,12 +31,24 @@ export type AccountBalanceAlertResult = {
   low: number;
   sent: number;
   skippedCooldown: number;
+  balanceIssues: number;
   failed: number;
   accounts: AccountBalanceAlertAccount[];
   message: string;
 };
 
 type AlertState = Record<string, { lastSentAt?: string; lastRemaining?: number; lastThreshold?: number }>;
+type BalanceIssue = {
+  accountId: number;
+  threshold: number;
+  status: string;
+  remaining?: number | null;
+  unit?: string | null;
+  provider?: AccountBalanceResult["provider"] | null;
+  planName?: string | null;
+  message?: string | null;
+  checkedAt?: string;
+};
 
 const defaultTemplate = [
   "S2A Manager 账号余额预警",
@@ -344,6 +356,8 @@ export async function checkAccountBalanceAlerts(input: {
 }): Promise<AccountBalanceAlertResult> {
   const config = await readAccountBalanceWebhookConfig(input.connectionId);
   const thresholds = await readBalanceThresholds(input.connectionId);
+  const state = await readAlertState(input.connectionId);
+  const now = new Date();
   const thresholdEntries = Object.entries(thresholds)
     .map(([accountId, threshold]) => ({ accountId: Number(accountId), threshold }))
     .filter((row) => Number.isInteger(row.accountId) && row.accountId > 0 && Number.isFinite(row.threshold));
@@ -356,24 +370,87 @@ export async function checkAccountBalanceAlerts(input: {
       low: 0,
       sent: 0,
       skippedCooldown: 0,
+      balanceIssues: 0,
       failed: 0,
       accounts: [],
       message: !config.enabled ? "balance webhook disabled" : thresholdEntries.length === 0 ? "no balance thresholds" : "webhook url missing",
     };
   }
 
-  const accounts = input.accounts ?? await input.s2Client.listAccounts();
-  const names = accountNameById(accounts);
+  let skippedCooldown = 0;
+  const dueEntries = thresholdEntries.filter((row) => {
+    if (input.ignoreCooldown || !shouldSkipCooldown(state[String(row.accountId)]?.lastSentAt, config.cooldownMinutes, now)) {
+      return true;
+    }
+    skippedCooldown += 1;
+    return false;
+  });
+
+  if (dueEntries.length === 0) {
+    const action = input.action ?? "account_balance_webhook_alert";
+    await writeSyncLog(input.db, {
+      connectionId: input.connectionId,
+      action,
+      target: `connection:${input.connectionId}`,
+      detail: {
+        checked: thresholdEntries.length,
+        low: 0,
+        sent: 0,
+        skippedCooldown,
+        balanceIssues: [],
+        failed: 0,
+        accounts: [],
+        failures: [],
+      },
+      status: "success",
+      level: "info",
+    });
+    return {
+      ok: true,
+      enabled: true,
+      checked: thresholdEntries.length,
+      low: 0,
+      sent: 0,
+      skippedCooldown,
+      balanceIssues: 0,
+      failed: 0,
+      accounts: [],
+      message: "balance alerts skipped by cooldown",
+    };
+  }
+
   const balances = await fetchAccountBalances({
     client: input.s2Client,
-    accountIds: thresholdEntries.map((row) => row.accountId),
+    accountIds: dueEntries.map((row) => row.accountId),
     force: input.force,
   });
   const balancesById = new Map(balances.map((balance) => [balance.accountId, balance]));
-  const lowAccounts = thresholdEntries.flatMap((row): AccountBalanceAlertAccount[] => {
+  const balanceIssues = dueEntries.flatMap((row): BalanceIssue[] => {
     const balance = balancesById.get(row.accountId);
-    if (!balance || !isLowBalance(balance, row.threshold)) return [];
+    if (!balance) {
+      return [{ accountId: row.accountId, threshold: row.threshold, status: "missing", message: "balance result missing" }];
+    }
+    if (balance.status === "ok" && typeof balance.remaining === "number" && Number.isFinite(balance.remaining)) {
+      return [];
+    }
     return [{
+      accountId: row.accountId,
+      threshold: row.threshold,
+      status: balance.status,
+      remaining: balance.remaining ?? null,
+      unit: balance.unit ?? null,
+      provider: balance.provider ?? null,
+      planName: balance.planName ?? null,
+      message: balance.message ?? null,
+      checkedAt: balance.checkedAt,
+    }];
+  });
+  const lowRows = dueEntries.flatMap((row) => {
+    const balance = balancesById.get(row.accountId);
+    return balance && isLowBalance(balance, row.threshold) ? [{ row, balance }] : [];
+  });
+  const names = lowRows.length > 0 ? accountNameById(input.accounts ?? await input.s2Client.listAccounts()) : new Map<number, string>();
+  const lowAccounts = lowRows.map(({ row, balance }): AccountBalanceAlertAccount => ({
       accountId: row.accountId,
       accountName: names.get(row.accountId) ?? `#${row.accountId}`,
       threshold: row.threshold,
@@ -382,23 +459,14 @@ export async function checkAccountBalanceAlerts(input: {
       provider: balance.provider ?? null,
       planName: balance.planName ?? null,
       checkedAt: balance.checkedAt,
-    }];
-  });
+  }));
 
-  const state = await readAlertState(input.connectionId);
-  const now = new Date();
   let sent = 0;
-  let skippedCooldown = 0;
   let failed = 0;
   const failures: Array<{ accountId: number; error: string }> = [];
 
   for (const alert of lowAccounts) {
     const key = String(alert.accountId);
-    if (!input.ignoreCooldown && shouldSkipCooldown(state[key]?.lastSentAt, config.cooldownMinutes, now)) {
-      skippedCooldown += 1;
-      continue;
-    }
-
     try {
       await sendWebhook(config.url, buildWebhookPayload({
         connectionId: input.connectionId,
@@ -421,7 +489,7 @@ export async function checkAccountBalanceAlerts(input: {
   if (sent > 0) await writeAlertState(input.connectionId, state);
 
   const action = input.action ?? "account_balance_webhook_alert";
-  const shouldLog = action.startsWith("manual_") || sent > 0 || failed > 0;
+  const shouldLog = action.startsWith("manual_") || sent > 0 || skippedCooldown > 0 || balanceIssues.length > 0 || failed > 0;
   if (shouldLog) {
     await writeSyncLog(input.db, {
       connectionId: input.connectionId,
@@ -431,7 +499,9 @@ export async function checkAccountBalanceAlerts(input: {
         checked: thresholdEntries.length,
         low: lowAccounts.length,
         sent,
+        queried: dueEntries.length,
         skippedCooldown,
+        balanceIssues: balanceIssues.slice(0, 80),
         failed,
         accounts: lowAccounts.slice(0, 80),
         failures: failures.slice(0, 40),
@@ -449,6 +519,7 @@ export async function checkAccountBalanceAlerts(input: {
     low: lowAccounts.length,
     sent,
     skippedCooldown,
+    balanceIssues: balanceIssues.length,
     failed,
     accounts: lowAccounts,
     message: failed > 0 ? "balance alerts partially failed" : "balance alerts checked",

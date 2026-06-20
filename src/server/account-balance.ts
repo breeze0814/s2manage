@@ -347,29 +347,38 @@ export async function fetchAccountBalances(input: {
   const checkedAt = new Date().toISOString();
   if (accountIds.length === 0) return [];
 
-  const exportedById = await fetchExportAccountMap(input.client, accountIds);
   const concurrency = Math.max(1, Math.min(input.concurrency ?? 4, 8));
   const results = new Map<number, AccountBalanceResult>();
-  let cursor = 0;
 
-  async function worker() {
-    while (cursor < accountIds.length) {
-      const accountId = accountIds[cursor];
-      cursor += 1;
-      try {
-        results.set(accountId, await queryOne({
-          client: input.client,
-          accountId,
-          exportedAccount: exportedById.get(accountId),
-          checkedAt,
-          force: Boolean(input.force),
-        }));
-      } catch (error) {
-        results.set(accountId, errorResult(accountId, error instanceof Error ? error.message : String(error), checkedAt));
+  async function queryBatch(ids: number[], exportedById?: ExportAccountMap) {
+    let cursor = 0;
+    async function worker() {
+      while (cursor < ids.length) {
+        const accountId = ids[cursor];
+        cursor += 1;
+        try {
+          results.set(accountId, await queryOne({
+            client: input.client,
+            accountId,
+            exportedAccount: exportedById?.get(accountId),
+            checkedAt,
+            force: Boolean(input.force),
+          }));
+        } catch (error) {
+          results.set(accountId, errorResult(accountId, error instanceof Error ? error.message : String(error), checkedAt));
+        }
       }
     }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, () => worker()));
   }
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, accountIds.length) }, () => worker()));
+  await queryBatch(accountIds);
+
+  const fallbackAccountIds = accountIds.filter((accountId) => results.get(accountId)?.status === "unsupported");
+  if (fallbackAccountIds.length > 0) {
+    await queryBatch(fallbackAccountIds, await fetchExportAccountMap(input.client, fallbackAccountIds));
+  }
+
   return accountIds.map((accountId) => results.get(accountId) ?? errorResult(accountId, "查询失败", checkedAt));
 }
