@@ -120,6 +120,7 @@ model BlCollectionSite {
   accessToken         String?                 @map("access_token")
   refreshToken        String?                 @map("refresh_token")
   tokenExpire         BigInt?                 @map("token_expire")
+  newApiUserId        String?                 @map("new_api_user_id")
   lastRunAt           DateTime?               @map("last_run_at") @db.Timestamptz(3)
   lastStatus          String?                 @map("last_status")
   lastError           String?                 @map("last_error")

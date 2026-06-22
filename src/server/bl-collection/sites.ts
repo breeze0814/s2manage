@@ -60,9 +60,32 @@ export function blCollectionSitePassword(site: Pick<BlCollectionSite, "passwordE
   return site.passwordEnc ? decrypt(site.passwordEnc) : "";
 }
 
+type NewApiTokenContext = {
+  siteType?: string | null;
+  newApiUserId?: string | null;
+};
+
+function normalizeNewApiAccessToken(context: NewApiTokenContext, accessToken?: string | null) {
+  const rawAccess = accessToken?.trim() ?? "";
+  if (context.siteType !== "new_api" || !rawAccess) return rawAccess;
+
+  const separatorIndex = rawAccess.indexOf("::");
+  const rawToken = separatorIndex >= 0 ? rawAccess.slice(0, separatorIndex) : rawAccess;
+  const rawUserId = separatorIndex >= 0 ? rawAccess.slice(separatorIndex + 2).trim() : "";
+  let token = rawToken.trim();
+  const lowerToken = token.toLowerCase();
+
+  if (lowerToken.startsWith("cookie:")) token = token.slice(token.indexOf(":") + 1).trim();
+  if (token.includes("=") && !token.startsWith("session:") && !lowerToken.startsWith("bearer ")) token = `session:${token}`;
+
+  const userId = rawUserId || context.newApiUserId?.trim() || "";
+  return userId ? `${token}::${userId}` : token;
+}
+
 export async function saveBlCollectionSite(input: BlCollectionSiteInput) {
   const name = input.name.trim();
   const baseUrl = input.baseUrl.trim().replace(/\/+$/, "");
+  const newApiUserId = input.siteType === "new_api" ? input.newApiUserId?.trim() || null : null;
 
   if (!name || !/^https?:\/\//i.test(baseUrl)) {
     throw new Error("请填写源站名称，并确保源站地址以 http:// 或 https:// 开头");
@@ -82,11 +105,12 @@ export async function saveBlCollectionSite(input: BlCollectionSiteInput) {
     siteType: input.siteType,
     email: input.email?.trim() ?? "",
     passwordEnc: input.password ? encrypt(input.password) : "",
+    newApiUserId,
     authMode: input.authMode,
     enabled: input.enabled,
     intervalMin: Math.max(1, Math.trunc(input.intervalMin || 60)),
     rechargeRatio: normalizeRechargeRatio(input.rechargeRatio),
-    accessToken: input.accessToken?.trim() || null,
+    accessToken: normalizeNewApiAccessToken({ siteType: input.siteType, newApiUserId }, input.accessToken) || null,
     refreshToken: input.refreshToken?.trim() || null,
     tokenExpire: parseTokenExpire(input.tokenExpire),
   } satisfies Prisma.BlCollectionSiteUncheckedCreateInput;
@@ -98,6 +122,7 @@ export async function saveBlCollectionSite(input: BlCollectionSiteInput) {
     baseUrl: data.baseUrl,
     siteType: data.siteType,
     email: data.email,
+    newApiUserId: data.newApiUserId,
     authMode: data.authMode,
     enabled: data.enabled,
     intervalMin: data.intervalMin,
@@ -164,7 +189,7 @@ export async function ensureBlCollectionToken(
   if (site.authMode === "manual_token") return ensureManualToken(site, client);
 
   if (site.siteType === "new_api") {
-    return saveTokens(site.id, await client.login(site.email, blCollectionSitePassword(site)));
+    return saveTokens(site, await client.login(site.email, blCollectionSitePassword(site)));
   }
 
   const access = site.accessToken?.trim();
@@ -175,12 +200,12 @@ export async function ensureBlCollectionToken(
   const refresh = site.refreshToken?.trim();
   if (refresh) {
     try {
-      return saveTokens(site.id, await client.refresh(refresh), { fallbackRefreshToken: refresh });
+      return saveTokens(site, await client.refresh(refresh), { fallbackRefreshToken: refresh });
     } catch {
       // Fall through to password login.
     }
   }
-  return saveTokens(site.id, await client.login(site.email, blCollectionSitePassword(site)));
+  return saveTokens(site, await client.login(site.email, blCollectionSitePassword(site)));
 }
 
 function normalizeRechargeRatio(value: number) {
@@ -189,7 +214,7 @@ function normalizeRechargeRatio(value: number) {
 }
 
 async function ensureManualToken(site: BlCollectionSite, client: ReturnType<typeof clientForBlCollectionSite>) {
-  const access = site.accessToken?.trim();
+  const access = normalizeNewApiAccessToken(site, site.accessToken);
   const refresh = site.refreshToken?.trim();
   const expire = effectiveTokenExpire(site.tokenExpire, access);
   if (!access) throw new Error("手动 Token 模式缺少 access_token，请先在目标站点登录后粘贴 token");
@@ -198,7 +223,7 @@ async function ensureManualToken(site: BlCollectionSite, client: ReturnType<type
   }
   if (refresh) {
     try {
-      return saveTokens(site.id, await client.refresh(refresh), { fallbackRefreshToken: refresh });
+      return saveTokens(site, await client.refresh(refresh), { fallbackRefreshToken: refresh });
     } catch {
       throw new Error("手动 Token 已过期，refresh_token 刷新失败，请重新粘贴新的 token");
     }
@@ -211,7 +236,7 @@ type SaveTokenOptions = {
 };
 
 async function saveTokens(
-  siteId: number,
+  site: NewApiTokenContext & { id: number },
   tokens: { access_token?: string; refresh_token?: string; expires_in?: number | string },
   options: SaveTokenOptions = {},
 ) {
@@ -219,15 +244,16 @@ async function saveTokens(
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = tokenExpiresAt(tokens, now);
   const refreshToken = tokens.refresh_token?.trim() || options.fallbackRefreshToken?.trim() || "";
+  const accessToken = normalizeNewApiAccessToken(site, tokens.access_token);
   await db.blCollectionSite.update({
-    where: { id: siteId },
+    where: { id: site.id },
     data: {
-      accessToken: tokens.access_token,
+      accessToken,
       refreshToken,
       tokenExpire: BigInt(expiresAt),
     },
   });
-  return { access_token: tokens.access_token, refresh_token: refreshToken, expires_in: Math.max(0, expiresAt - now) };
+  return { access_token: accessToken, refresh_token: refreshToken, expires_in: Math.max(0, expiresAt - now) };
 }
 
 function tokenExpiresAt(tokens: { access_token?: string; expires_in?: number | string }, now: number) {

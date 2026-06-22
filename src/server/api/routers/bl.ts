@@ -102,6 +102,7 @@ export const blRouter = createTRPCRouter({
       siteType: z.enum(["sub2api", "new_api"]),
       email: z.string().optional(),
       password: z.string().optional(),
+      newApiUserId: z.string().optional(),
       authMode: z.enum(["password", "manual_token"]),
       enabled: z.boolean(),
       intervalMin: z.number().int().min(1),

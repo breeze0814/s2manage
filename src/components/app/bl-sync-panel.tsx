@@ -20,6 +20,7 @@ type CollectionSite = {
   baseUrl: string;
   siteType: string;
   email: string;
+  newApiUserId?: string | null;
   authMode: string;
   enabled: boolean;
   intervalMin: number;
@@ -80,6 +81,7 @@ type SiteForm = {
   authMode: "password" | "manual_token";
   email: string;
   password: string;
+  newApiUserId: string;
   enabled: boolean;
   intervalMin: string;
   rechargeRatio: string;
@@ -95,6 +97,7 @@ const defaultForm: SiteForm = {
   authMode: "password",
   email: "",
   password: "",
+  newApiUserId: "",
   enabled: true,
   intervalMin: "60",
   rechargeRatio: "1",
@@ -170,8 +173,22 @@ function statusText(status?: string | null) {
   return "未采集";
 }
 
+function splitNewApiTokenForForm(site?: CollectionSite | null) {
+  const accessToken = site?.accessToken ?? "";
+  if (site?.siteType !== "new_api") return { accessToken, userId: "" };
+
+  const separatorIndex = accessToken.indexOf("::");
+  if (separatorIndex < 0) return { accessToken, userId: "" };
+
+  return {
+    accessToken: accessToken.slice(0, separatorIndex),
+    userId: accessToken.slice(separatorIndex + 2).trim(),
+  };
+}
+
 function toForm(site?: CollectionSite | null): SiteForm {
   if (!site) return { ...defaultForm };
+  const token = splitNewApiTokenForForm(site);
   return {
     id: site.id,
     name: site.name,
@@ -180,10 +197,11 @@ function toForm(site?: CollectionSite | null): SiteForm {
     authMode: site.authMode === "manual_token" ? "manual_token" : "password",
     email: site.email ?? "",
     password: "",
+    newApiUserId: site.newApiUserId?.trim() || token.userId,
     enabled: site.enabled,
     intervalMin: String(site.intervalMin ?? 60),
     rechargeRatio: String(site.rechargeRatio ?? 1),
-    accessToken: site.accessToken ?? "",
+    accessToken: token.accessToken,
     refreshToken: site.refreshToken ?? "",
     tokenExpire: site.tokenExpire ? String(site.tokenExpire) : "",
   };
@@ -506,6 +524,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
       authMode: form.authMode,
       email: form.email.trim(),
       password: form.password,
+      newApiUserId: form.newApiUserId.trim(),
       enabled: form.enabled,
       intervalMin,
       rechargeRatio,
@@ -948,6 +967,12 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
               <Label>{form.siteType === "new_api" ? "用户名" : "邮箱"}</Label>
               <Input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
             </div>
+            {form.siteType === "new_api" ? (
+              <div className="space-y-2">
+                <Label>New-Api-User</Label>
+                <Input value={form.newApiUserId} onChange={(event) => setForm((current) => ({ ...current, newApiUserId: event.target.value }))} placeholder="4465" />
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label>密码{editingSite ? "（留空不修改）" : ""}</Label>
               <Input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
@@ -970,7 +995,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
             {form.authMode === "manual_token" ? (
               <>
                 <div className="md:col-span-2 space-y-2">
-                  <Label>Access Token</Label>
+                  <Label>{form.siteType === "new_api" ? "Session / Cookie / Access Token" : "Access Token"}</Label>
                   <Input value={form.accessToken} onChange={(event) => setForm((current) => ({ ...current, accessToken: event.target.value }))} />
                 </div>
                 <div className="space-y-2">

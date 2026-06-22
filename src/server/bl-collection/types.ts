@@ -23,6 +23,7 @@ export type BlCollectionSiteInput = {
   siteType: BlCollectionSiteType;
   email?: string;
   password?: string;
+  newApiUserId?: string;
   authMode: BlCollectionAuthMode;
   enabled: boolean;
   intervalMin: number;

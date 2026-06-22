@@ -41,8 +41,26 @@ function finiteNumber(value: unknown) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function pickNumber(source: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!source) return null;
+  for (const key of keys) {
+    const value = finiteNumber(source[key]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function pickString(source: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!source) return "";
+  for (const key of keys) {
+    const value = stringValue(source[key]);
+    if (value) return value;
+  }
+  return "";
 }
 
 function lowerString(value: unknown) {
@@ -56,6 +74,11 @@ function normalizeBaseUrl(value: string) {
 function nestedObject(source: Record<string, unknown>, key: string) {
   const value = source[key];
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function nestedArray(source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  return Array.isArray(value) ? value as unknown[] : [];
 }
 
 function deepPickObject(source: unknown, keys: string[]) {
@@ -172,16 +195,76 @@ function parseNewApiSelfResponse(accountId: number, payload: unknown, checkedAt:
 
   const data = unwrapSuccessData(response);
   if (!data) return null;
-  const quota = finiteNumber(data.quota);
-  const usedQuota = finiteNumber(data.used_quota);
-  if (quota === null && usedQuota === null) return null;
   const quotaPerUnit = quotaPerUnitFromPayload(response) ?? fallbackQuotaPerUnit;
+  const quota = pickNumber(data, ["quota", "remain_quota", "remaining_quota", "remainingQuota", "balance_quota", "balanceQuota", "total_available", "totalAvailable", "balance", "remaining"]);
+  const usedQuota = pickNumber(data, ["used_quota", "usedQuota", "used"]);
+  const totalQuota = pickNumber(data, ["total", "total_quota", "totalQuota", "total_granted", "totalGranted"]);
+
+  if (quota !== null || usedQuota !== null || totalQuota !== null) {
+    const remainingQuota = quota ?? (totalQuota !== null && usedQuota !== null ? Math.max(0, totalQuota - usedQuota) : null);
+    const resolvedTotalQuota = totalQuota ?? (remainingQuota !== null && usedQuota !== null ? remainingQuota + usedQuota : null);
+
+    return successResult(accountId, "new-api", {
+      planName: pickString(data, ["group", "plan_name", "planName", "plan", "subscription_name", "subscriptionName"]) || "默认套餐",
+      remaining: newApiQuotaToUsd(remainingQuota, quotaPerUnit),
+      used: newApiQuotaToUsd(usedQuota, quotaPerUnit),
+      total: newApiQuotaToUsd(resolvedTotalQuota, quotaPerUnit),
+      unit: "USD",
+    }, checkedAt);
+  }
+
+  return parseNewApiSubscriptionResponse(accountId, data, checkedAt, quotaPerUnit);
+}
+
+function parseNewApiSubscriptionResponse(accountId: number, data: Record<string, unknown>, checkedAt: string, quotaPerUnit: number) {
+  const rows = nestedArray(data, "subscriptions").length > 0
+    ? nestedArray(data, "subscriptions")
+    : nestedArray(data, "all_subscriptions");
+  if (rows.length === 0) return null;
+
+  let remainingQuota = 0;
+  let usedQuota = 0;
+  let totalQuota = 0;
+  let hasRemaining = false;
+  let hasUsed = false;
+  let hasTotal = false;
+  let planName = "";
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const record = row as Record<string, unknown>;
+    const subscription = nestedObject(record, "subscription") ?? record;
+    const plan = nestedObject(record, "plan");
+
+    const total = pickNumber(subscription, ["amount_total", "total_amount", "totalAmount", "amountTotal", "total_quota", "totalQuota", "total_granted", "totalGranted"]);
+    const used = pickNumber(subscription, ["amount_used", "used_amount", "amountUsed", "usedAmount", "used_quota", "usedQuota", "used"]);
+    const remaining = pickNumber(subscription, ["amount_remaining", "remaining_amount", "amountRemaining", "remainingAmount", "remain_quota", "remaining_quota", "remainingQuota", "balance", "remaining"]);
+    const computedRemaining = remaining ?? (total !== null && used !== null && total > 0 ? Math.max(0, total - used) : null);
+
+    if (!planName) {
+      planName = pickString(plan, ["title", "name"]) || pickString(subscription, ["title", "name", "plan_name", "planName"]);
+    }
+    if (computedRemaining !== null) {
+      remainingQuota += computedRemaining;
+      hasRemaining = true;
+    }
+    if (used !== null) {
+      usedQuota += used;
+      hasUsed = true;
+    }
+    if (total !== null && total > 0) {
+      totalQuota += total;
+      hasTotal = true;
+    }
+  }
+
+  if (!hasRemaining && !hasUsed && !hasTotal) return null;
 
   return successResult(accountId, "new-api", {
-    planName: stringValue(data.group) || "默认套餐",
-    remaining: newApiQuotaToUsd(quota, quotaPerUnit),
-    used: newApiQuotaToUsd(usedQuota, quotaPerUnit),
-    total: quota !== null && usedQuota !== null ? newApiQuotaToUsd(quota + usedQuota, quotaPerUnit) : null,
+    planName: planName || "Subscription",
+    remaining: hasRemaining ? newApiQuotaToUsd(remainingQuota, quotaPerUnit) : null,
+    used: hasUsed ? newApiQuotaToUsd(usedQuota, quotaPerUnit) : null,
+    total: hasTotal ? newApiQuotaToUsd(totalQuota, quotaPerUnit) : null,
     unit: "USD",
   }, checkedAt);
 }
@@ -289,6 +372,59 @@ function newApiUserHeaders(accessToken: string, userId = "") {
   return headers;
 }
 
+function normalizeNewApiCredentialToken(accessToken: string) {
+  const rawAccess = accessToken.trim();
+  const separatorIndex = rawAccess.indexOf("::");
+  const rawToken = separatorIndex >= 0 ? rawAccess.slice(0, separatorIndex) : rawAccess;
+  const rawUserId = separatorIndex >= 0 ? rawAccess.slice(separatorIndex + 2).trim() : "";
+  let token = rawToken.trim();
+  const lowerToken = token.toLowerCase();
+
+  if (lowerToken.startsWith("cookie:")) token = token.slice(token.indexOf(":") + 1).trim();
+  if (token.includes("=") && !token.startsWith("session:") && !lowerToken.startsWith("bearer ")) token = `session:${token}`;
+
+  return rawUserId ? `${token}::${rawUserId}` : token;
+}
+
+async function queryNewApiBalance(
+  accountId: number,
+  baseUrl: string,
+  accessToken: string,
+  checkedAt: string,
+  userId = "",
+  sourceSiteName = "",
+) {
+  const normalizedToken = normalizeNewApiCredentialToken(accessToken);
+  const quotaPerUnitPromise = resolveNewApiQuotaPerUnit(baseUrl);
+  const unsupportedEndpoints: string[] = [];
+  const endpointErrors: string[] = [];
+
+  for (const endpoint of ["/api/subscription/self", "/api/user/self"] as const) {
+    try {
+      const [payload, quotaPerUnit] = await Promise.all([
+        requestJson(`${baseUrl}${endpoint}`, newApiUserHeaders(normalizedToken, userId)),
+        quotaPerUnitPromise,
+      ]);
+      const parsed = parseNewApiSelfResponse(accountId, payload, checkedAt, quotaPerUnit);
+      if (parsed) return parsed;
+      unsupportedEndpoints.push(endpoint);
+    } catch (error) {
+      endpointErrors.push(`${endpoint}: ${compactError(error)}`);
+    }
+  }
+
+  if (endpointErrors.length > 0 && unsupportedEndpoints.length === 0) {
+    throw new Error(endpointErrors.join("; "));
+  }
+
+  const prefix = sourceSiteName ? `New API 采集源「${sourceSiteName}」` : "New API";
+  const details = [
+    unsupportedEndpoints.length > 0 ? `${unsupportedEndpoints.join(" 和 ")} 响应中没有可解析余额字段` : "",
+    endpointErrors.length > 0 ? `请求错误：${endpointErrors.join("; ")}` : "",
+  ].filter(Boolean).join("；");
+  return unsupportedResult(accountId, `${prefix} ${details || "余额响应不可解析"}`, checkedAt);
+}
+
 async function queryUsageEndpoint(accountId: number, credentials: Record<string, unknown>, checkedAt: string) {
   const baseUrl = normalizeBaseUrl(findCredentialString(credentials, ["base_url", "baseUrl", "endpoint", "url"]));
   const apiKey = findCredentialString(credentials, ["api_key", "apiKey", "key", "token", "access_token", "accessToken"]);
@@ -307,24 +443,14 @@ async function queryNewApiEndpoint(accountId: number, credentials: Record<string
   const accessToken = findCredentialString(credentials, ["user_access_token", "userAccessToken", "session", "session_token", "sessionToken", "cookie", "access_token", "accessToken"]);
   if (!baseUrl || !accessToken) return null;
 
-  const userId = findCredentialString(credentials, ["user_id", "userId", "new_api_user", "newApiUser", "chatgpt_user_id", "chatgptUserId"]);
-  const [payload, quotaPerUnit] = await Promise.all([
-    requestJson(`${baseUrl}/api/user/self`, newApiUserHeaders(accessToken.startsWith("session:") ? accessToken : accessToken.includes("=") ? `session:${accessToken}` : accessToken, userId)),
-    resolveNewApiQuotaPerUnit(baseUrl),
-  ]);
-  return parseNewApiSelfResponse(accountId, payload, checkedAt, quotaPerUnit)
-    ?? unsupportedResult(accountId, "New API /api/user/self 响应中没有 quota/used_quota 字段", checkedAt);
+  const userId = findCredentialString(credentials, ["user_id", "userId", "new_api_user", "newApiUser", "new_api_user_id", "newApiUserId", "new-api-user", "chatgpt_user_id", "chatgptUserId"]);
+  return queryNewApiBalance(accountId, baseUrl, accessToken, checkedAt, userId);
 }
 
 async function queryNewApiSourceSession(accountId: number, session: NewApiSession | undefined, checkedAt: string) {
   if (!session) return null;
 
-  const [payload, quotaPerUnit] = await Promise.all([
-    requestJson(`${session.baseUrl}/api/user/self`, newApiUserHeaders(session.accessToken)),
-    resolveNewApiQuotaPerUnit(session.baseUrl),
-  ]);
-  return parseNewApiSelfResponse(accountId, payload, checkedAt, quotaPerUnit)
-    ?? unsupportedResult(accountId, `New API 采集源「${session.sourceSiteName}」/api/user/self 响应中没有 quota/used_quota 字段`, checkedAt);
+  return queryNewApiBalance(accountId, session.baseUrl, session.accessToken, checkedAt, "", session.sourceSiteName);
 }
 
 function accountByIdFromExport(accountIds: number[], accounts: Sub2ApiDataAccount[] | undefined, allowOrderFallback = true): ExportAccountMap {
@@ -503,7 +629,7 @@ async function queryOne(input: {
     } catch (error) {
       return errorResult(accountId, `New API 账号余额查询失败：${compactError(error)}`, checkedAt);
     }
-    return unsupportedResult(accountId, "New API 账号未绑定可用采集源登录态，无法查询 /api/user/self 账户余额", checkedAt);
+    return unsupportedResult(accountId, "New API 账号未绑定可用采集源登录态，无法查询 /api/subscription/self 或 /api/user/self 账户余额", checkedAt);
   }
 
   const candidates = [queryUsageEndpoint, queryNewApiEndpoint];
