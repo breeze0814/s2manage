@@ -132,6 +132,7 @@ export const accountsRouter = createTRPCRouter({
       const client = await getClient(input.connectionId);
       return fetchAccountBalances({
         client,
+        connectionId: input.connectionId,
         accountIds: input.accountIds,
         force: input.force,
       });

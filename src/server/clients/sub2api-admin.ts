@@ -150,6 +150,37 @@ function normalizeAccountModels(payload: unknown): Sub2ApiAccountModel[] {
     .filter((model): model is Sub2ApiAccountModel => Boolean(model));
 }
 
+function normalizeDataPayload(payload: unknown): Sub2ApiDataPayload {
+  if (Array.isArray(payload)) {
+    return {
+      proxies: [],
+      accounts: payload as Sub2ApiDataAccount[],
+    };
+  }
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const record = payload as Record<string, unknown>;
+    const nested = record.data && typeof record.data === "object" && !Array.isArray(record.data)
+      ? record.data as Record<string, unknown>
+      : record;
+    const accounts = Array.isArray(nested.accounts)
+      ? nested.accounts as Sub2ApiDataAccount[]
+      : unwrapList<Sub2ApiDataAccount>(nested, "account data");
+    return {
+      type: typeof nested.type === "string" ? nested.type : undefined,
+      version: typeof nested.version === "number" ? nested.version : undefined,
+      exported_at: typeof nested.exported_at === "string" ? nested.exported_at : undefined,
+      proxies: Array.isArray(nested.proxies) ? nested.proxies : [],
+      accounts,
+    };
+  }
+
+  return {
+    proxies: [],
+    accounts: unwrapList<Sub2ApiDataAccount>(payload, "account data"),
+  };
+}
+
 function parseSseEvents(raw: string) {
   const events: Sub2ApiAccountTestEvent[] = [];
   let dataLines: string[] = [];
@@ -282,7 +313,8 @@ export class Sub2ApiAdminClient {
     const query = new URLSearchParams();
     if (ids.length > 0) query.set("ids", ids.join(","));
     query.set("include_proxies", "false");
-    return this.request<Sub2ApiDataPayload>("GET", `/accounts/data?${query.toString()}`);
+    const payload = await this.request<unknown>("GET", `/accounts/data?${query.toString()}`);
+    return normalizeDataPayload(payload);
   }
 
   // Groups

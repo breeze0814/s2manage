@@ -447,6 +447,7 @@ export async function checkAccountBalanceAlerts(input: {
 
   const balances = await fetchAccountBalances({
     client: input.s2Client,
+    connectionId: input.connectionId,
     accountIds: dueEntries.map((row) => row.accountId),
     force: input.force,
   });

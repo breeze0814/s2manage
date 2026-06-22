@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 type TextResponse = {
   status: number;
   body: string;
+  headers?: Record<string, string>;
 };
 
 type RequestOptions = {
@@ -113,10 +114,28 @@ try {
   $response = Invoke-WebRequest @params
   $status = [int]$response.StatusCode
   $body = [string]$response.Content
+  $responseHeaders = @{}
+  foreach ($key in $response.Headers.Keys) {
+    $value = $response.Headers[$key]
+    if ($value -is [array]) {
+      $responseHeaders[$key] = ($value -join [Environment]::NewLine)
+    } else {
+      $responseHeaders[$key] = [string]$value
+    }
+  }
 } catch {
   if ($_.Exception.Response) {
     $response = $_.Exception.Response
     $status = [int]$response.StatusCode
+    $responseHeaders = @{}
+    foreach ($key in $response.Headers.Keys) {
+      $value = $response.Headers[$key]
+      if ($value -is [array]) {
+        $responseHeaders[$key] = ($value -join [Environment]::NewLine)
+      } else {
+        $responseHeaders[$key] = [string]$value
+      }
+    }
     try {
       $stream = $response.GetResponseStream()
       $reader = [System.IO.StreamReader]::new($stream, [Text.Encoding]::UTF8)
@@ -128,7 +147,7 @@ try {
     throw
   }
 }
-@{ status = $status; body = $body } | ConvertTo-Json -Compress -Depth 4
+@{ status = $status; body = $body; headers = $responseHeaders } | ConvertTo-Json -Compress -Depth 4
 `;
 
   const output = execFileSync("powershell.exe", ["-NoProfile", "-Command", script], {
@@ -178,7 +197,7 @@ export async function requestText(options: RequestOptions): Promise<TextResponse
       body: requestBodyBytes(options.body),
       signal: controller.signal,
     });
-    return { status: res.status, body: await res.text() };
+    return { status: res.status, body: await res.text(), headers: Object.fromEntries(res.headers.entries()) };
   } catch (error) {
     if (override !== "fetch" && process.platform === "win32" && shouldFallback(error)) {
       try {

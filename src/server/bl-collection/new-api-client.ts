@@ -17,7 +17,7 @@ export class BlNewApiClient implements BlCollectorClient {
       return { access_token: "public", refresh_token: "", expires_in: 0 };
     }
 
-    const { status, body: raw } = await requestText({
+    const { status, body: raw, headers } = await requestText({
       method: "POST",
       url: `${this.baseUrl.replace(/\/+$/, "")}/api/user/login`,
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -38,9 +38,16 @@ export class BlNewApiClient implements BlCollectorClient {
     }
 
     const data = body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : null;
+    const userId = data?.id === undefined || data.id === null ? "" : String(data.id);
+
+    const cookie = sessionCookieFromHeaders(headers);
+    if (cookie) {
+      return { access_token: "session:" + cookie + (userId ? `::${userId}` : ""), refresh_token: "", expires_in: 3600 };
+    }
+
     const token = data ? (data.token || data.access_token) : undefined;
     if (token) {
-      return { access_token: "session:" + String(token), refresh_token: "", expires_in: 3600 };
+      return { access_token: "session:" + String(token) + (userId ? `::${userId}` : ""), refresh_token: "", expires_in: 3600 };
     }
 
     throw new Error("登录响应缺少 session token，请检查站点配置");
@@ -167,6 +174,16 @@ export class BlNewApiClient implements BlCollectorClient {
 
 function asRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function sessionCookieFromHeaders(headers?: Record<string, string>) {
+  const setCookie = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === "set-cookie")?.[1];
+  if (!setCookie) return "";
+  return setCookie
+    .split(/\r?\n/)
+    .map((cookie) => cookie.split(";")[0]?.trim() ?? "")
+    .filter(Boolean)
+    .join("; ");
 }
 
 function floatOrNull(value: unknown) {

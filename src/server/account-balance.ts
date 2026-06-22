@@ -1,6 +1,8 @@
 import { requestText } from "@/server/http";
-import type { Sub2ApiAdminClient, Sub2ApiDataAccount } from "@/server/clients/sub2api-admin";
+import type { Sub2ApiAdminClient, Sub2ApiDataAccount, Sub2ApiDataPayload } from "@/server/clients/sub2api-admin";
 import { getAccountId } from "@/server/account-utils";
+import { db } from "@/server/db";
+import { ensureBlCollectionToken } from "@/server/bl-collection/sites";
 
 export type AccountBalanceStatus = "ok" | "unsupported" | "invalid" | "error";
 
@@ -18,6 +20,20 @@ export type AccountBalanceResult = {
 };
 
 type ExportAccountMap = Map<number, Sub2ApiDataAccount>;
+type ExportAccountLookup = {
+  accounts: ExportAccountMap;
+  issues: Map<number, string>;
+};
+type NewApiSession = {
+  baseUrl: string;
+  accessToken: string;
+  sourceSiteId: number;
+  sourceSiteName: string;
+};
+type NewApiSessionLookup = Map<number, NewApiSession>;
+
+const DEFAULT_NEW_API_QUOTA_PER_UNIT = 500_000;
+const newApiQuotaPerUnitCache = new Map<string, Promise<number>>();
 
 function finiteNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -35,6 +51,11 @@ function lowerString(value: unknown) {
 
 function normalizeBaseUrl(value: string) {
   return value.trim().replace(/\/+$/, "");
+}
+
+function nestedObject(source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function deepPickObject(source: unknown, keys: string[]) {
@@ -64,6 +85,18 @@ function findCredentialString(credentials: Record<string, unknown>, keys: string
   return "";
 }
 
+function jwtUserId(token: string) {
+  const payload = token.split(".")[1];
+  if (!payload) return "";
+  try {
+    const decoded = JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as Record<string, unknown>;
+    const value = decoded.id ?? decoded.user_id ?? decoded.userId ?? decoded.sub;
+    return value === undefined || value === null ? "" : String(value);
+  } catch {
+    return "";
+  }
+}
+
 function unwrapJson(raw: string) {
   const parsed = JSON.parse(raw) as unknown;
   if (parsed && typeof parsed === "object" && "code" in parsed && "data" in parsed) {
@@ -72,6 +105,29 @@ function unwrapJson(raw: string) {
     return envelope.data;
   }
   return parsed;
+}
+
+function unwrapSuccessData(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const response = payload as Record<string, unknown>;
+  return response.success === true && response.data && typeof response.data === "object" && !Array.isArray(response.data)
+    ? response.data as Record<string, unknown>
+    : response;
+}
+
+function quotaPerUnitFromPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const response = payload as Record<string, unknown>;
+  const data = nestedObject(response, "data");
+  const quotaPerUnit = finiteNumber(response.quota_per_unit)
+    ?? finiteNumber(data?.quota_per_unit)
+    ?? finiteNumber(nestedObject(response, "status")?.quota_per_unit)
+    ?? finiteNumber(nestedObject(response, "meta")?.quota_per_unit);
+  return quotaPerUnit !== null && quotaPerUnit > 0 ? quotaPerUnit : null;
+}
+
+function newApiQuotaToUsd(value: number | null, quotaPerUnit: number) {
+  return value === null ? null : value / quotaPerUnit;
 }
 
 function invalidResult(accountId: number, message: string, checkedAt: string): AccountBalanceResult {
@@ -107,60 +163,26 @@ function parseUsageLikeResponse(accountId: number, payload: unknown, checkedAt: 
   return successResult(accountId, "usage", { remaining, unit }, checkedAt);
 }
 
-function parseNewApiSelfResponse(accountId: number, payload: unknown, checkedAt: string): AccountBalanceResult | null {
+function parseNewApiSelfResponse(accountId: number, payload: unknown, checkedAt: string, fallbackQuotaPerUnit = DEFAULT_NEW_API_QUOTA_PER_UNIT): AccountBalanceResult | null {
   if (!payload || typeof payload !== "object") return null;
   const response = payload as Record<string, unknown>;
   if (response.success === false) {
     return invalidResult(accountId, stringValue(response.message) || "查询失败", checkedAt);
   }
 
-  const data = response.success === true && response.data && typeof response.data === "object"
-    ? response.data as Record<string, unknown>
-    : response;
+  const data = unwrapSuccessData(response);
+  if (!data) return null;
   const quota = finiteNumber(data.quota);
   const usedQuota = finiteNumber(data.used_quota);
   if (quota === null && usedQuota === null) return null;
+  const quotaPerUnit = quotaPerUnitFromPayload(response) ?? fallbackQuotaPerUnit;
 
   return successResult(accountId, "new-api", {
     planName: stringValue(data.group) || "默认套餐",
-    remaining: quota === null ? null : quota / 500000,
-    used: usedQuota === null ? null : usedQuota / 500000,
-    total: quota !== null && usedQuota !== null ? (quota + usedQuota) / 500000 : null,
+    remaining: newApiQuotaToUsd(quota, quotaPerUnit),
+    used: newApiQuotaToUsd(usedQuota, quotaPerUnit),
+    total: quota !== null && usedQuota !== null ? newApiQuotaToUsd(quota + usedQuota, quotaPerUnit) : null,
     unit: "USD",
-  }, checkedAt);
-}
-
-function parseNewApiUsageTokenResponse(accountId: number, payload: unknown, checkedAt: string): AccountBalanceResult | null {
-  if (!payload || typeof payload !== "object") return null;
-  const response = payload as Record<string, unknown>;
-  if (response.success === false) {
-    return invalidResult(accountId, stringValue(response.message) || "查询失败", checkedAt);
-  }
-
-  const data = response.success === true && response.data && typeof response.data === "object"
-    ? response.data as Record<string, unknown>
-    : response;
-  const quota = finiteNumber(data.quota);
-  const usedQuota = finiteNumber(data.used_quota ?? data.used);
-  const remaining = finiteNumber(data.remaining ?? data.total_available);
-  const balance = finiteNumber(data.balance);
-  const total = finiteNumber(data.total ?? data.total_granted);
-  const totalUsed = finiteNumber(data.total_used);
-  const unlimited = data.unlimited_quota === true;
-  const unit = stringValue(data.unit) || "USD";
-  const planName = stringValue(data.group) || stringValue(data.plan_name) || stringValue(data.planName) || stringValue(data.name) || "默认套餐";
-
-  const resolvedRemaining = remaining ?? balance ?? quota;
-  const resolvedUsed = usedQuota ?? totalUsed;
-  if (resolvedRemaining === null && resolvedUsed === null && total === null && !unlimited) return null;
-
-  return successResult(accountId, "new-api", {
-    planName,
-    remaining: resolvedRemaining === null ? null : resolvedRemaining / 500000,
-    used: resolvedUsed === null ? null : resolvedUsed / 500000,
-    total: total === null ? (quota !== null && resolvedUsed !== null ? (quota + resolvedUsed) / 500000 : null) : total / 500000,
-    unit,
-    message: unlimited ? "无限额度" : null,
   }, checkedAt);
 }
 
@@ -211,6 +233,19 @@ function formatNumber(value: number) {
   return value.toFixed(4).replace(/\.?0+$/, "");
 }
 
+function compactError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const compact = message.replace(/\s+/g, " ").trim();
+  if (/^HTTP\s+403:/i.test(compact) && /cloudflare|Attention Required|cf-error|no-js ie6 oldie/i.test(compact)) {
+    return "HTTP 403: 目标站点被 Cloudflare 拦截，当前服务器无法直接访问余额接口";
+  }
+  if (/^HTTP\s+\d+:/i.test(compact) && /<html|<!doctype/i.test(compact)) {
+    const status = compact.match(/^HTTP\s+\d+/i)?.[0] ?? "HTTP 错误";
+    return `${status}: 目标站点返回 HTML 页面，未返回可解析的余额 JSON`;
+  }
+  return compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
+}
+
 async function requestJson(url: string, headers: Record<string, string>, timeoutMs = 12_000) {
   const { status, body } = await requestText({
     method: "GET",
@@ -218,9 +253,40 @@ async function requestJson(url: string, headers: Record<string, string>, timeout
     headers,
     timeoutMs,
   });
-  if (status < 200 || status >= 300) throw new Error(`HTTP ${status}: ${body.slice(0, 160)}`);
+  if (status < 200 || status >= 300) throw new Error(compactError(`HTTP ${status}: ${body.slice(0, 240)}`));
   if (!body.trim()) throw new Error("空响应");
   return unwrapJson(body);
+}
+
+function resolveNewApiQuotaPerUnit(baseUrl: string) {
+  const cached = newApiQuotaPerUnitCache.get(baseUrl);
+  if (cached) return cached;
+
+  const request = requestJson(`${baseUrl}/api/status`, {
+    Accept: "application/json",
+  }, 8_000)
+    .then((payload) => quotaPerUnitFromPayload(payload) ?? DEFAULT_NEW_API_QUOTA_PER_UNIT)
+    .catch(() => DEFAULT_NEW_API_QUOTA_PER_UNIT);
+  newApiQuotaPerUnitCache.set(baseUrl, request);
+  return request;
+}
+
+function newApiUserHeaders(accessToken: string, userId = "") {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  const [rawToken, rawUserId] = accessToken.split("::", 2);
+  const token = rawToken.trim();
+  const resolvedUserId = userId || rawUserId || jwtUserId(token);
+
+  if (token.startsWith("session:")) {
+    headers.Cookie = token.slice("session:".length);
+  } else if (token) {
+    headers.Authorization = token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
+  }
+  if (resolvedUserId) headers["New-Api-User"] = resolvedUserId;
+  return headers;
 }
 
 async function queryUsageEndpoint(accountId: number, credentials: Record<string, unknown>, checkedAt: string) {
@@ -238,36 +304,30 @@ async function queryUsageEndpoint(accountId: number, credentials: Record<string,
 
 async function queryNewApiEndpoint(accountId: number, credentials: Record<string, unknown>, checkedAt: string) {
   const baseUrl = normalizeBaseUrl(findCredentialString(credentials, ["base_url", "baseUrl", "endpoint", "url"]));
-  const accessToken = findCredentialString(credentials, ["access_token", "accessToken", "api_key", "apiKey", "token"]);
+  const accessToken = findCredentialString(credentials, ["user_access_token", "userAccessToken", "session", "session_token", "sessionToken", "cookie", "access_token", "accessToken"]);
   if (!baseUrl || !accessToken) return null;
 
   const userId = findCredentialString(credentials, ["user_id", "userId", "new_api_user", "newApiUser", "chatgpt_user_id", "chatgptUserId"]);
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${accessToken}`,
-    Accept: "application/json",
-  };
-  if (userId) headers["New-Api-User"] = userId;
-
-  const payload = await requestJson(`${baseUrl}/api/user/self`, headers);
-  return parseNewApiSelfResponse(accountId, payload, checkedAt)
+  const [payload, quotaPerUnit] = await Promise.all([
+    requestJson(`${baseUrl}/api/user/self`, newApiUserHeaders(accessToken.startsWith("session:") ? accessToken : accessToken.includes("=") ? `session:${accessToken}` : accessToken, userId)),
+    resolveNewApiQuotaPerUnit(baseUrl),
+  ]);
+  return parseNewApiSelfResponse(accountId, payload, checkedAt, quotaPerUnit)
     ?? unsupportedResult(accountId, "New API /api/user/self 响应中没有 quota/used_quota 字段", checkedAt);
 }
 
-async function queryNewApiUsageToken(accountId: number, credentials: Record<string, unknown>, checkedAt: string) {
-  const baseUrl = normalizeBaseUrl(findCredentialString(credentials, ["base_url", "baseUrl", "endpoint", "url"]));
-  const accessToken = findCredentialString(credentials, ["access_token", "accessToken", "api_key", "apiKey", "token"]);
-  if (!baseUrl || !accessToken) return null;
+async function queryNewApiSourceSession(accountId: number, session: NewApiSession | undefined, checkedAt: string) {
+  if (!session) return null;
 
-  const payload = await requestJson(`${baseUrl}/api/usage/token`, {
-    Authorization: `Bearer ${accessToken}`,
-    Accept: "application/json",
-  });
-  return parseNewApiUsageTokenResponse(accountId, payload, checkedAt)
-    ?? unsupportedResult(accountId, "New API /api/usage/token 响应中没有余额字段", checkedAt);
+  const [payload, quotaPerUnit] = await Promise.all([
+    requestJson(`${session.baseUrl}/api/user/self`, newApiUserHeaders(session.accessToken)),
+    resolveNewApiQuotaPerUnit(session.baseUrl),
+  ]);
+  return parseNewApiSelfResponse(accountId, payload, checkedAt, quotaPerUnit)
+    ?? unsupportedResult(accountId, `New API 采集源「${session.sourceSiteName}」/api/user/self 响应中没有 quota/used_quota 字段`, checkedAt);
 }
 
-function accountByIdFromExport(accountIds: number[], accounts: Sub2ApiDataAccount[] | undefined): ExportAccountMap {
+function accountByIdFromExport(accountIds: number[], accounts: Sub2ApiDataAccount[] | undefined, allowOrderFallback = true): ExportAccountMap {
   const map: ExportAccountMap = new Map();
   const rows = accounts ?? [];
   for (const account of rows) {
@@ -275,7 +335,7 @@ function accountByIdFromExport(accountIds: number[], accounts: Sub2ApiDataAccoun
     if (accountId && accountIds.includes(accountId)) map.set(accountId, account);
   }
 
-  if (map.size > 0 || rows.length !== accountIds.length) return map;
+  if (map.size > 0 || !allowOrderFallback || rows.length !== accountIds.length) return map;
 
   for (let index = 0; index < accountIds.length; index += 1) {
     map.set(accountIds[index], rows[index]);
@@ -283,45 +343,170 @@ function accountByIdFromExport(accountIds: number[], accounts: Sub2ApiDataAccoun
   return map;
 }
 
-async function fetchExportAccountMap(client: Sub2ApiAdminClient, accountIds: number[]) {
-  const uniqueIds = Array.from(new Set(accountIds.filter((id) => Number.isInteger(id) && id > 0)));
-  if (uniqueIds.length === 0) return new Map<number, Sub2ApiDataAccount>();
+function exportedAccounts(payload: Sub2ApiDataPayload | undefined) {
+  return Array.isArray(payload?.accounts) ? payload.accounts : [];
+}
 
+function isNewApiAccount(account?: Sub2ApiDataAccount) {
+  const platform = lowerString(account?.platform);
+  const type = lowerString(account?.type);
+  return platform.includes("new") || type.includes("new");
+}
+
+function exportMissingMessage(accountId: number, rows: Sub2ApiDataAccount[], mappedCount: number) {
+  if (rows.length === 0) return "账号数据导出没有返回账号";
+  return `账号数据导出无法定位账号 ${accountId}（返回 ${rows.length} 个账号，其中 ${mappedCount} 个带可识别 ID）`;
+}
+
+async function fetchNewApiSessionLookup(connectionId: number | undefined, accountIds: number[]): Promise<NewApiSessionLookup> {
+  const sessions: NewApiSessionLookup = new Map();
+  if (!connectionId || accountIds.length === 0) return sessions;
+
+  const bindings = await db.blSourceBinding.findMany({
+    where: {
+      connectionId,
+      targetType: "account",
+      targetId: { in: accountIds },
+    },
+    orderBy: [{ targetId: "asc" }, { sourceSiteId: "asc" }],
+  });
+  if (bindings.length === 0) return sessions;
+
+  const siteIds = Array.from(new Set(bindings.map((binding) => binding.sourceSiteId)));
+  const sites = await db.blCollectionSite.findMany({
+    where: {
+      connectionId,
+      id: { in: siteIds },
+      siteType: "new_api",
+      enabled: true,
+    },
+  });
+  const sitesById = new Map(sites.map((site) => [site.id, site]));
+  const tokensBySiteId = new Map<number, string>();
+
+  for (const binding of bindings) {
+    if (sessions.has(binding.targetId)) continue;
+    const site = sitesById.get(binding.sourceSiteId);
+    if (!site) continue;
+    try {
+      const token = tokensBySiteId.get(site.id) ?? (await ensureBlCollectionToken(site)).access_token ?? "";
+      if (!token) continue;
+      tokensBySiteId.set(site.id, token);
+      sessions.set(binding.targetId, {
+        baseUrl: normalizeBaseUrl(site.baseUrl),
+        accessToken: token,
+        sourceSiteId: site.id,
+        sourceSiteName: site.name,
+      });
+    } catch {
+      // The per-account query will report missing usable source session instead of leaking auth details.
+    }
+  }
+
+  return sessions;
+}
+
+async function fetchExportAccountLookup(client: Sub2ApiAdminClient, accountIds: number[], concurrency: number): Promise<ExportAccountLookup> {
+  const uniqueIds = Array.from(new Set(accountIds.filter((id) => Number.isInteger(id) && id > 0)));
+  const accounts: ExportAccountMap = new Map();
+  const issues = new Map<number, string>();
+  if (uniqueIds.length === 0) return { accounts, issues };
+
+  let exportedSuccessfully = false;
   try {
     const exported = await client.exportAccountsData(uniqueIds);
-    return accountByIdFromExport(uniqueIds, exported.accounts);
-  } catch {
-    return new Map<number, Sub2ApiDataAccount>();
+    exportedSuccessfully = true;
+    for (const [accountId, account] of accountByIdFromExport(uniqueIds, exported.accounts, false)) {
+      accounts.set(accountId, account);
+    }
+
+    const rows = exportedAccounts(exported);
+    for (const accountId of uniqueIds) {
+      if (!accounts.has(accountId)) issues.set(accountId, exportMissingMessage(accountId, rows, accounts.size));
+    }
+  } catch (error) {
+    const message = `账号数据导出失败：${compactError(error)}`;
+    for (const accountId of uniqueIds) issues.set(accountId, message);
   }
+
+  const missingIds = uniqueIds.filter((accountId) => !accounts.has(accountId));
+  if (missingIds.length === 0 || !exportedSuccessfully) return { accounts, issues };
+
+  let cursor = 0;
+  async function worker() {
+    while (cursor < missingIds.length) {
+      const accountId = missingIds[cursor];
+      cursor += 1;
+
+      try {
+        const exported = await client.exportAccountsData([accountId]);
+        const rows = exportedAccounts(exported);
+        const singleMap = accountByIdFromExport([accountId], rows);
+        const account = singleMap.get(accountId);
+        if (account) {
+          accounts.set(accountId, account);
+          issues.delete(accountId);
+        } else {
+          issues.set(accountId, exportMissingMessage(accountId, rows, singleMap.size));
+        }
+      } catch (error) {
+        const previous = issues.get(accountId);
+        const retryMessage = `单账号导出重试失败：${compactError(error)}`;
+        issues.set(accountId, previous ? `${previous}；${retryMessage}` : retryMessage);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, missingIds.length) }, () => worker()));
+  return { accounts, issues };
 }
 
 async function queryOne(input: {
   client: Sub2ApiAdminClient;
   accountId: number;
   exportedAccount?: Sub2ApiDataAccount;
+  exportIssue?: string;
+  newApiSession?: NewApiSession;
   checkedAt: string;
   force: boolean;
 }) {
-  const { client, accountId, exportedAccount, checkedAt, force } = input;
+  const { client, accountId, exportedAccount, exportIssue, newApiSession, checkedAt, force } = input;
+  let usageError: AccountBalanceResult | null = null;
 
   try {
     const usage = await client.getAccountUsage(accountId, force ? "active" : "passive", force);
     const parsed = parseSub2ApiUsage(accountId, usage, checkedAt);
-    if (parsed) return parsed;
+    if (parsed?.status === "ok") return parsed;
+    if (parsed?.status === "error") usageError = parsed;
   } catch {
     // Older Sub2API deployments may not expose account usage; fall back to upstream probing.
   }
 
-  const credentials = exportedAccount?.credentials;
-  if (!credentials || typeof credentials !== "object") {
-    return unsupportedResult(accountId, "无法获取账号凭证，目标 Sub2API 可能不支持账号数据导出", checkedAt);
+  if (newApiSession) {
+    try {
+      const result = await queryNewApiSourceSession(accountId, newApiSession, checkedAt);
+      if (result) return result;
+    } catch (error) {
+      return errorResult(accountId, `New API 采集源「${newApiSession.sourceSiteName}」账户余额查询失败：${compactError(error)}`, checkedAt);
+    }
   }
 
-  const platform = lowerString(exportedAccount?.platform);
-  const type = lowerString(exportedAccount?.type);
-  const candidates = platform.includes("new") || type.includes("new")
-    ? [queryNewApiUsageToken, queryNewApiEndpoint, queryUsageEndpoint]
-    : [queryUsageEndpoint, queryNewApiUsageToken, queryNewApiEndpoint];
+  const credentials = exportedAccount?.credentials;
+  if (!credentials || typeof credentials !== "object" || Array.isArray(credentials) || Object.keys(credentials).length === 0) {
+    return unsupportedResult(accountId, exportIssue || "无法获取账号凭证，目标 Sub2API 可能不支持账号数据导出", checkedAt);
+  }
+
+  if (isNewApiAccount(exportedAccount)) {
+    try {
+      const result = await queryNewApiEndpoint(accountId, credentials, checkedAt);
+      if (result) return result;
+    } catch (error) {
+      return errorResult(accountId, `New API 账号余额查询失败：${compactError(error)}`, checkedAt);
+    }
+    return unsupportedResult(accountId, "New API 账号未绑定可用采集源登录态，无法查询 /api/user/self 账户余额", checkedAt);
+  }
+
+  const candidates = [queryUsageEndpoint, queryNewApiEndpoint];
 
   let lastError = "";
   for (const candidate of candidates) {
@@ -334,11 +519,13 @@ async function queryOne(input: {
   }
 
   if (lastError) return errorResult(accountId, lastError, checkedAt);
+  if (usageError) return usageError;
   return unsupportedResult(accountId, "缺少 base_url/api_key，或 New API 响应中没有可解析的余额字段", checkedAt);
 }
 
 export async function fetchAccountBalances(input: {
   client: Sub2ApiAdminClient;
+  connectionId?: number;
   accountIds: number[];
   force?: boolean;
   concurrency?: number;
@@ -350,7 +537,7 @@ export async function fetchAccountBalances(input: {
   const concurrency = Math.max(1, Math.min(input.concurrency ?? 4, 8));
   const results = new Map<number, AccountBalanceResult>();
 
-  async function queryBatch(ids: number[], exportedById?: ExportAccountMap) {
+  async function queryBatch(ids: number[], exportLookup?: ExportAccountLookup, newApiSessions?: NewApiSessionLookup) {
     let cursor = 0;
     async function worker() {
       while (cursor < ids.length) {
@@ -360,7 +547,9 @@ export async function fetchAccountBalances(input: {
           results.set(accountId, await queryOne({
             client: input.client,
             accountId,
-            exportedAccount: exportedById?.get(accountId),
+            exportedAccount: exportLookup?.accounts.get(accountId),
+            exportIssue: exportLookup?.issues.get(accountId),
+            newApiSession: newApiSessions?.get(accountId),
             checkedAt,
             force: Boolean(input.force),
           }));
@@ -377,7 +566,11 @@ export async function fetchAccountBalances(input: {
 
   const fallbackAccountIds = accountIds.filter((accountId) => results.get(accountId)?.status === "unsupported");
   if (fallbackAccountIds.length > 0) {
-    await queryBatch(fallbackAccountIds, await fetchExportAccountMap(input.client, fallbackAccountIds));
+    const [exportLookup, newApiSessions] = await Promise.all([
+      fetchExportAccountLookup(input.client, fallbackAccountIds, concurrency),
+      fetchNewApiSessionLookup(input.connectionId, fallbackAccountIds),
+    ]);
+    await queryBatch(fallbackAccountIds, exportLookup, newApiSessions);
   }
 
   return accountIds.map((accountId) => results.get(accountId) ?? errorResult(accountId, "查询失败", checkedAt));

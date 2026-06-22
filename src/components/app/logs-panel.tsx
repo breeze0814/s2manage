@@ -168,6 +168,19 @@ function sourceLabels(value: unknown) {
   });
 }
 
+function balanceIssueLabels(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const issue = item as Record<string, unknown>;
+    const accountId = numberField(issue, ["accountId"]);
+    const status = statusLabel(issue.status) || String(issue.status ?? "");
+    const message = stringField(issue, ["message"]);
+    const prefix = accountId === null ? "账号" : `账号 ${accountId}`;
+    return `${prefix}：${[status, message].filter(Boolean).join(" / ")}`;
+  });
+}
+
 function targetLabel(log: DisplayLog) {
   const detail = parseDetail(log.detail);
   const target = log.target ?? "";
@@ -220,6 +233,29 @@ function detailLines(log: DisplayLog) {
     if (pauseApplied === true) lines.push("处理结果：已暂停该账号调度");
     if (resumeApplied === true) lines.push("处理结果：已恢复该账号调度");
     return lines.length > 0 ? lines : ["检测详情暂无补充信息"];
+  }
+
+  if (log.action === "auto_account_balance_webhook_alert" || log.action === "manual_account_balance_webhook_alert") {
+    const checked = numberField(detail, ["checked"]);
+    const low = numberField(detail, ["low"]);
+    const sent = numberField(detail, ["sent"]);
+    const failed = numberField(detail, ["failed"]);
+    const skippedCooldown = numberField(detail, ["skippedCooldown"]);
+    const queried = numberField(detail, ["queried"]);
+    const issues = balanceIssueLabels(detail?.balanceIssues);
+    const summary = [
+      checked === null ? "" : `检查 ${checked} 个阈值`,
+      queried === null ? "" : `查询 ${queried} 个账号`,
+      low === null ? "" : `低余额 ${low} 个`,
+      sent === null ? "" : `发送 ${sent} 条`,
+      failed === null ? "" : `失败 ${failed} 条`,
+      skippedCooldown ? `冷却跳过 ${skippedCooldown} 个` : "",
+    ].filter(Boolean).join("，");
+    if (summary) lines.push(summary);
+    if (issues.length > 0) {
+      lines.push(`余额查询问题：${issues.slice(0, 4).join("；")}${issues.length > 4 ? `；另有 ${issues.length - 4} 个` : ""}`);
+    }
+    return lines.length > 0 ? lines : ["余额预警已检查，暂无补充信息"];
   }
 
   if (detail) {
