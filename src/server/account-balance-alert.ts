@@ -80,6 +80,10 @@ function stateSettingKey(connectionId: number) {
   return `account_balance_alert_state:${connectionId}`;
 }
 
+export async function markAccountBalanceAlertsDue() {
+  await setSetting("account_balance_alert_next_run_at", "");
+}
+
 function finiteNonNegativeNumber(value: unknown) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
@@ -489,7 +493,12 @@ export async function checkAccountBalanceAlerts(input: {
   if (sent > 0) await writeAlertState(input.connectionId, state);
 
   const action = input.action ?? "account_balance_webhook_alert";
-  const shouldLog = action.startsWith("manual_") || sent > 0 || skippedCooldown > 0 || balanceIssues.length > 0 || failed > 0;
+  const shouldLog = action.startsWith("manual_")
+    || action.startsWith("auto_")
+    || sent > 0
+    || skippedCooldown > 0
+    || balanceIssues.length > 0
+    || failed > 0;
   if (shouldLog) {
     await writeSyncLog(input.db, {
       connectionId: input.connectionId,

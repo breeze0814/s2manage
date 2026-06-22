@@ -10,6 +10,7 @@ import { getAccountId } from "@/server/account-utils";
 import { applyAccountPriorityRule, readAccountPriorityRule, saveAccountPriorityRule } from "@/server/account-priority-rule";
 import {
   checkAccountBalanceAlerts,
+  markAccountBalanceAlertsDue,
   readAccountBalanceWebhookConfig,
   readBalanceThresholds,
   removeBalanceThreshold,
@@ -144,6 +145,7 @@ export const accountsRouter = createTRPCRouter({
     .input(webhookConfigInput)
     .mutation(async ({ input }) => {
       const saved = await saveAccountBalanceWebhookConfig(input.connectionId, input);
+      await markAccountBalanceAlertsDue();
       await safeLogSync(input.connectionId, "save_account_balance_webhook", `connection:${input.connectionId}`, {
         enabled: saved.enabled,
         hasUrl: Boolean(saved.url),
@@ -233,8 +235,9 @@ export const accountsRouter = createTRPCRouter({
       } else {
         thresholds[String(input.accountId)] = input.threshold;
       }
-      await writeBalanceThresholds(input.connectionId, thresholds);
-      return thresholds;
+      const saved = await writeBalanceThresholds(input.connectionId, thresholds);
+      await markAccountBalanceAlertsDue();
+      return saved;
     }),
   create: protectedProcedure
     .input(accountCreateInput)
