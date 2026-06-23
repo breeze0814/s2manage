@@ -64,11 +64,11 @@ export function parseTokenExpire(value?: string | number | null) {
   if (!raw) return null;
   if (/^\d+$/.test(raw)) {
     const n = BigInt(raw);
-    if (n > 200_000_000_000n) return n / 1000n;
+    if (n > 200_000_000_000n) return n;
     return n > 1_000_000_000n ? n : BigInt(Math.floor(Date.now() / 1000)) + n;
   }
   const timestamp = Date.parse(raw);
-  return Number.isNaN(timestamp) ? null : BigInt(Math.floor(timestamp / 1000));
+  return Number.isNaN(timestamp) ? null : BigInt(timestamp);
 }
 
 export function safeJsonString(value: unknown) {

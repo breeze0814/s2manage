@@ -1004,7 +1004,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
                 </div>
                 <div className="space-y-2">
                   <Label>过期时间</Label>
-                  <Input value={form.tokenExpire} onChange={(event) => setForm((current) => ({ ...current, tokenExpire: event.target.value }))} placeholder="秒级时间戳或日期时间" />
+                  <Input value={form.tokenExpire} onChange={(event) => setForm((current) => ({ ...current, tokenExpire: event.target.value }))} placeholder="毫秒 / 秒级时间戳或日期时间" />
                 </div>
               </>
             ) : null}

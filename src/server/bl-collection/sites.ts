@@ -7,6 +7,8 @@ import { decrypt, encrypt } from "@/server/crypto";
 
 type SiteCleanupTx = Prisma.TransactionClient;
 
+const TOKEN_REFRESH_SKEW_SECONDS = 5 * 60;
+
 async function disableRulesWithoutBindings(tx: SiteCleanupTx, connectionId: number) {
   const [groupTargets, accountTargets] = await Promise.all([
     tx.blSourceBinding.findMany({
@@ -194,8 +196,9 @@ export async function ensureBlCollectionToken(
 
   const access = site.accessToken?.trim();
   const expire = effectiveTokenExpire(site.tokenExpire, access);
-  if (access && expire > Math.floor(Date.now() / 1000) + 60) {
-    return { access_token: access, refresh_token: site.refreshToken ?? "", expires_in: expire - Math.floor(Date.now() / 1000) };
+  const now = Math.floor(Date.now() / 1000);
+  if (access && expire > now + TOKEN_REFRESH_SKEW_SECONDS) {
+    return { access_token: access, refresh_token: site.refreshToken ?? "", expires_in: expire - now };
   }
   const refresh = site.refreshToken?.trim();
   if (refresh) {
@@ -217,9 +220,10 @@ async function ensureManualToken(site: BlCollectionSite, client: ReturnType<type
   const access = normalizeNewApiAccessToken(site, site.accessToken);
   const refresh = site.refreshToken?.trim();
   const expire = effectiveTokenExpire(site.tokenExpire, access);
+  const now = Math.floor(Date.now() / 1000);
   if (!access) throw new Error("手动 Token 模式缺少 access_token，请先在目标站点登录后粘贴 token");
-  if (!expire || expire > Math.floor(Date.now() / 1000) + 60) {
-    return { access_token: access, refresh_token: refresh ?? "", expires_in: expire ? expire - Math.floor(Date.now() / 1000) : 0 };
+  if (!expire || expire > now + TOKEN_REFRESH_SKEW_SECONDS) {
+    return { access_token: access, refresh_token: refresh ?? "", expires_in: expire ? expire - now : 0 };
   }
   if (refresh) {
     try {
@@ -273,10 +277,16 @@ function tokenExpiresAt(tokens: { access_token?: string; expires_in?: number | s
 }
 
 function effectiveTokenExpire(storedExpire: bigint | null | undefined, accessToken?: string | null) {
-  const stored = Number(storedExpire ?? 0n);
+  const stored = normalizeStoredTokenExpire(storedExpire);
   const jwt = accessToken ? jwtExpire(accessToken) : null;
   if (jwt && (!stored || jwt < stored)) return jwt;
   return stored;
+}
+
+function normalizeStoredTokenExpire(value: bigint | null | undefined) {
+  if (!value) return 0;
+  if (value > 200_000_000_000n) return Number(value / 1000n);
+  return Number(value);
 }
 
 function jwtExpire(token: string) {
