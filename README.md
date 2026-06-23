@@ -180,6 +180,10 @@ npx prisma migrate deploy
 
 以下根据 GitHub `main` 分支提交历史整理，完整记录可查看 [Commits](https://github.com/langrenjh-alt/S2A-Manager/commits/main/)。
 
+### 2026-06-24
+
+- `abfecd5` 修复倍率采集源 Token 过期时间处理：保留手动输入的毫秒时间戳，兼容秒/毫秒过期判断，并将刷新提前量调整为 5 分钟。
+
 ### 2026-06-23
 
 - `666cdae` 修复公告管理批量选择逻辑：筛选变化时清空旧选择，批量更新和删除只作用于当前可见且已勾选的公告。
