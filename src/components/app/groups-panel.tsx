@@ -14,6 +14,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import {
+  MobileRecord,
+  MobileRecordActions,
+  MobileRecordEmpty,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordHeader,
+  MobileRecordList,
+  MobileRecordMeta,
+  MobileRecordSection,
+  MobileRecordTitle,
+} from "@/components/app/mobile-record";
+import {
   BlSourceBadges,
   BlSourceBindingSelector,
   blSourceKey,
@@ -322,7 +334,59 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
       {bindingData?.rateError ? <p className="text-sm text-destructive">加载采集生效倍率失败：{bindingData.rateError}</p> : null}
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-3 md:p-0">
+          {normalizedGroups.length === 0 ? (
+            <MobileRecordEmpty>暂无分组</MobileRecordEmpty>
+          ) : (
+            <MobileRecordList>
+              {normalizedGroups.map((group, idx) => {
+                const rule = rulesByGroup.get(group.id);
+                const bindings = bindingsByGroup.get(group.id) ?? [];
+                return (
+                  <MobileRecord key={group.id}>
+                    <MobileRecordHeader>
+                      <div className="min-w-0">
+                        <MobileRecordTitle className="truncate">{group.name}</MobileRecordTitle>
+                        <MobileRecordMeta>#{idx + 1} / ID {group.id}</MobileRecordMeta>
+                      </div>
+                      <div className="shrink-0 font-mono text-sm">{formatRate(group.rate_multiplier ?? 1)}</div>
+                    </MobileRecordHeader>
+                    <MobileRecordFields>
+                      <MobileRecordField label="默认倍率" value={<span className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</span>} />
+                      <MobileRecordField label="规则" value={<span className="line-clamp-2">{ruleSummary(rule)}</span>} />
+                    </MobileRecordFields>
+                    <MobileRecordSection>
+                      <div className="mb-2 text-[11px] text-muted-foreground">采集源分组 / 生效倍率</div>
+                      <BlSourceBadges bindings={bindings} loading={bindingsLoading && groupIds.length > 0} />
+                    </MobileRecordSection>
+                    <MobileRecordActions>
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => openEdit(group)} title="编辑分组" aria-label={`编辑 ${group.name}`} disabled={isSaving}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleApplyRule(group)} title="应用规则" aria-label={`应用 ${group.name} 的规则`} disabled={applyRule.isPending || !rule?.enabled || bindings.length === 0}>
+                        <Play className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          setDeleteGroup(group);
+                          setDeleteError("");
+                        }}
+                        title="删除分组"
+                        aria-label={`删除 ${group.name}`}
+                        disabled={removeGroup.isPending}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </MobileRecordActions>
+                  </MobileRecord>
+                );
+              })}
+            </MobileRecordList>
+          )}
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -383,6 +447,7 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

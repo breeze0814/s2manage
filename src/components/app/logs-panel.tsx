@@ -13,6 +13,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import {
+  MobileRecord,
+  MobileRecordEmpty,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordHeader,
+  MobileRecordList,
+  MobileRecordMeta,
+  MobileRecordSection,
+  MobileRecordTitle,
+} from "@/components/app/mobile-record";
 
 type LogLevel = "info" | "warning" | "error";
 type LogStatus = "success" | "failed";
@@ -590,7 +601,49 @@ export function LogsPanel() {
           <CardTitle className="text-base">日志列表</CardTitle>
           <span className="text-sm text-muted-foreground">当前显示 {logs.length} 条 / 扫描匹配 {scannedTotal} 条</span>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-3 md:p-0">
+          {logsQuery.isLoading ? (
+            <MobileRecordEmpty><Loader2 className="mr-1 inline h-4 w-4 animate-spin" />加载中...</MobileRecordEmpty>
+          ) : logs.length === 0 ? (
+            <MobileRecordEmpty>暂无日志</MobileRecordEmpty>
+          ) : (
+            <MobileRecordList>
+              {logs.map((log) => {
+                const lines = detailLines(log);
+                return (
+                  <MobileRecord key={log.id}>
+                    <MobileRecordHeader>
+                      <div className="min-w-0">
+                        <MobileRecordTitle className="truncate">{log.actionLabel || logActionLabel(log.action)}</MobileRecordTitle>
+                        <MobileRecordMeta>{formatDateTime(log.createdAt)}</MobileRecordMeta>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {levelBadge(log.level)}
+                        {statusBadge(log.status)}
+                      </div>
+                    </MobileRecordHeader>
+                    <MobileRecordFields>
+                      <MobileRecordField className="col-span-2" label="目标" value={<span className="line-clamp-2">{targetLabel(log)}</span>} />
+                    </MobileRecordFields>
+                    <MobileRecordSection className={log.error ? "text-destructive" : "text-muted-foreground"}>
+                      {log.error ? (
+                        <div className="flex min-w-0 items-start gap-2 text-sm">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span className="line-clamp-3">{lines[0]}</span>
+                        </div>
+                      ) : (
+                        <div className="line-clamp-3 text-sm">{lines[0]}</div>
+                      )}
+                      {lines.length > 1 ? (
+                        <div className="mt-1 line-clamp-3 text-xs opacity-85">{lines.slice(1).join("；")}</div>
+                      ) : null}
+                    </MobileRecordSection>
+                  </MobileRecord>
+                );
+              })}
+            </MobileRecordList>
+          )}
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -637,6 +690,7 @@ export function LogsPanel() {
               })}
             </TableBody>
           </Table>
+          </div>
           {logsQuery.hasNextPage ? (
             <div className="border-t border-border/70 p-3 text-center">
               <Button variant="outline" size="sm" onClick={() => logsQuery.fetchNextPage()} disabled={logsQuery.isFetchingNextPage}>

@@ -16,6 +16,18 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import {
+  MobileRecord,
+  MobileRecordActions,
+  MobileRecordEmpty,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordHeader,
+  MobileRecordList,
+  MobileRecordMeta,
+  MobileRecordSection,
+  MobileRecordTitle,
+} from "@/components/app/mobile-record";
+import {
   BlSourceBadges,
   BlSourceBindingSelector,
   blSourceKey,
@@ -680,6 +692,150 @@ const AccountTableRow = memo(function AccountTableRow({
         </div>
       </TableCell>
     </TableRow>
+  );
+});
+
+const AccountMobileRecord = memo(function AccountMobileRecord({
+  row,
+  index,
+  bindings,
+  rule,
+  balance,
+  balanceThresholdInput,
+  balanceLow,
+  groupById,
+  bindingsLoading,
+  balanceLoading,
+  balanceThresholdSaving,
+  isSaving,
+  isTesting,
+  isSchedulablePending,
+  isApplyRulePending,
+  isClearErrorPending,
+  isRefreshPending,
+  isDeletePending,
+  onEdit,
+  onApplyRule,
+  onTest,
+  onToggleSchedulable,
+  onClearError,
+  onRefreshCredentials,
+  onDelete,
+  onBalanceThresholdInputChange,
+  onBalanceThresholdCommit,
+}: AccountTableRowProps) {
+  const accountGroups = resolveAccountGroups(row, groupById);
+  const schedulable = row.schedulable !== false;
+  const typeLabel = [row.platform, row.type ?? row.channel_type].filter(Boolean).join(" / ") || "-";
+  const errorText = row.error ?? row.last_error ?? row.error_message ?? "";
+  const thresholdDisabled = balanceThresholdSaving;
+  const thresholdControl = (
+    <div className="mt-2 flex items-center gap-1.5">
+      <span className="shrink-0 text-xs text-muted-foreground">预警</span>
+      <Input
+        type="number"
+        min="0"
+        step="any"
+        value={balanceThresholdInput}
+        placeholder="未设"
+        disabled={thresholdDisabled}
+        title="余额低于该值时提示充值"
+        className="h-8 w-24 px-2 font-mono text-xs"
+        onChange={(event) => onBalanceThresholdInputChange(row.id, event.target.value)}
+        onBlur={() => onBalanceThresholdCommit(row.id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+        }}
+      />
+      {balanceThresholdSaving ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> : null}
+    </div>
+  );
+
+  const balanceValue = (() => {
+    if (balanceLoading) return <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />查询中</span>;
+    if (!balance) return <span className="text-muted-foreground">-</span>;
+    if (balance.status !== "ok") {
+      const label = balance.status === "unsupported" ? "不支持" : balance.status === "invalid" ? "无效" : "失败";
+      return <span className="text-muted-foreground">{label}</span>;
+    }
+    const unit = balance.unit || "USD";
+    return <span className={`font-mono ${balanceLow ? "font-semibold text-destructive" : ""}`}>{formatBalanceNumber(balance.remaining)} {unit}</span>;
+  })();
+
+  return (
+    <MobileRecord>
+      <MobileRecordHeader>
+        <div className="min-w-0">
+          <MobileRecordTitle className="truncate">{getAccountLabel(row)}</MobileRecordTitle>
+          <MobileRecordMeta>#{index + 1} / {typeLabel}</MobileRecordMeta>
+        </div>
+        {schedulable ? <Badge variant="success">已启用</Badge> : <Badge variant="secondary">已禁用</Badge>}
+      </MobileRecordHeader>
+      <MobileRecordFields>
+        <MobileRecordField label="账号倍率" value={<span className="font-mono">{formatRate(row.rate_multiplier ?? 1)}</span>} />
+        <MobileRecordField label="优先级" value={<span className="font-mono">{row.priority ?? "-"}</span>} />
+        <MobileRecordField className="col-span-2" label="规则" value={<span className="line-clamp-2">{ruleSummary(rule)}</span>} />
+      </MobileRecordFields>
+      <MobileRecordSection>
+        <div className="mb-2 text-[11px] text-muted-foreground">分组</div>
+        {accountGroups.length === 0 ? (
+          <span className="text-sm text-muted-foreground">未分组</span>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {accountGroups.slice(0, 8).map((group) => (
+              <Badge key={group.id} variant="secondary" className="max-w-[132px] overflow-hidden text-ellipsis whitespace-nowrap">
+                {getGroupLabel(group)}
+              </Badge>
+            ))}
+            {accountGroups.length > 8 ? <Badge variant="outline">+{accountGroups.length - 8}</Badge> : null}
+          </div>
+        )}
+      </MobileRecordSection>
+      <MobileRecordSection>
+        <div className="mb-2 text-[11px] text-muted-foreground">采集源分组 / 生效倍率</div>
+        <BlSourceBadges bindings={bindings} loading={bindingsLoading} />
+      </MobileRecordSection>
+      <MobileRecordSection>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] text-muted-foreground">账号余额</div>
+            <div className="mt-1 text-sm">{balanceValue}</div>
+            {balance?.status === "ok" && balance.planName ? <div className="mt-0.5 max-w-[220px] truncate text-xs text-muted-foreground">{balance.planName}</div> : null}
+          </div>
+          {thresholdControl}
+        </div>
+      </MobileRecordSection>
+      {errorText ? (
+        <MobileRecordSection className="text-sm text-destructive">
+          <div className="line-clamp-3">{errorText}</div>
+        </MobileRecordSection>
+      ) : null}
+      <MobileRecordActions>
+        <Button variant="outline" size="icon" className="h-8 w-8" title="编辑账号" disabled={isSaving} onClick={() => onEdit(row)}>
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" title="应用账号倍率规则" disabled={isApplyRulePending || !rule?.enabled || bindings.length === 0} onClick={() => onApplyRule(row)}>
+          <Play className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" title="测试账号" disabled={isTesting} onClick={() => onTest(row)}>
+          {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CirclePlay className="h-4 w-4 text-blue-500" />}
+        </Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" title={schedulable ? "禁用调度" : "启用调度"} disabled={isSchedulablePending} onClick={() => onToggleSchedulable(row)}>
+          <Power className={`h-4 w-4 ${schedulable ? "text-green-500" : "text-muted-foreground"}`} />
+        </Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" title="清除错误" disabled={isClearErrorPending} onClick={() => onClearError(row)}>
+          <AlertTriangle className="h-4 w-4 text-orange-500" />
+        </Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" title="刷新凭证" disabled={isRefreshPending} onClick={() => onRefreshCredentials(row)}>
+          <RotateCcw className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" title="删除账号" disabled={isDeletePending} onClick={() => onDelete(row)}>
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </MobileRecordActions>
+    </MobileRecord>
   );
 });
 
@@ -1661,7 +1817,50 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-3 md:p-0">
+          {accountList.length === 0 ? (
+            <MobileRecordEmpty>暂无账号</MobileRecordEmpty>
+          ) : (
+            <MobileRecordList>
+              {accountList.map((row, idx) => {
+                const balance = balancesByAccount.get(row.id);
+                const thresholdInput = balanceThresholdInputs[row.id] ?? "";
+                return (
+                  <AccountMobileRecord
+                    key={row.id ?? idx}
+                    row={row}
+                    index={idx}
+                    bindings={bindingsByAccount.get(row.id) ?? EMPTY_BINDINGS}
+                    rule={rulesByAccount.get(row.id)}
+                    balance={balance}
+                    balanceThresholdInput={thresholdInput}
+                    balanceLow={isLowBalance(balance, parseBalanceThresholdInput(thresholdInput))}
+                    groupById={groupById}
+                    bindingsLoading={bindingsLoading && accountIds.length > 0}
+                    balanceLoading={balancesQuery.isLoading || balancesQuery.isFetching}
+                    balanceThresholdSaving={savingBalanceThresholdIdSet.has(row.id)}
+                    isSaving={isSaving}
+                    isTesting={testingAccountIdSet.has(row.id)}
+                    isSchedulablePending={setSchedulable.isPending}
+                    isApplyRulePending={applyRule.isPending}
+                    isClearErrorPending={clearError.isPending}
+                    isRefreshPending={refresh.isPending}
+                    isDeletePending={removeAccount.isPending}
+                    onEdit={openEditor}
+                    onApplyRule={handleApplyRule}
+                    onTest={openTestDialog}
+                    onToggleSchedulable={handleToggleSchedulable}
+                    onClearError={handleClearErrorRow}
+                    onRefreshCredentials={handleRefreshCredentials}
+                    onDelete={handleDeleteRequest}
+                    onBalanceThresholdInputChange={handleBalanceThresholdInputChange}
+                    onBalanceThresholdCommit={handleBalanceThresholdCommit}
+                  />
+                );
+              })}
+            </MobileRecordList>
+          )}
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1722,6 +1921,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

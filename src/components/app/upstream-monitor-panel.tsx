@@ -14,6 +14,18 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import {
+  MobileRecord,
+  MobileRecordActions,
+  MobileRecordEmpty,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordHeader,
+  MobileRecordList,
+  MobileRecordMeta,
+  MobileRecordSection,
+  MobileRecordTitle,
+} from "@/components/app/mobile-record";
 
 type MonitorResult = {
   status: string;
@@ -80,6 +92,7 @@ type RowAction = "toggle" | "run" | "resume" | "delete";
 
 const defaultModelValue = "__sub2api_default__";
 const uptimeWindowSize = 60;
+const mobileUptimeWindowSize = 30;
 const prioritizedGeminiModels = [
   "gemini-3.1-flash-image",
   "gemini-2.5-flash-image",
@@ -171,30 +184,31 @@ function resultTitle(result: MonitorResult) {
   ].filter(Boolean).join(" · ");
 }
 
-function UptimeTimeline({ row }: { row: MonitorRow }) {
+function UptimeTimeline({ row, compact = false }: { row: MonitorRow; compact?: boolean }) {
   const rule = row.rule;
-  const results = (rule?.results ?? []).slice(0, uptimeWindowSize).reverse();
-  const emptyCount = Math.max(0, uptimeWindowSize - results.length);
+  const windowSize = compact ? mobileUptimeWindowSize : uptimeWindowSize;
+  const results = (rule?.results ?? []).slice(0, windowSize).reverse();
+  const emptyCount = Math.max(0, windowSize - results.length);
   const nextLabel = rule ? (rule.enabled ? `下次 ${formatRelative(rule.nextCheckAt)}` : "已停用") : "未配置";
 
   return (
-    <div className="w-[280px] min-w-[240px] space-y-1.5 sm:w-[320px] sm:max-w-[42vw]">
-      <div className="flex items-center justify-between gap-3 text-[11px] font-medium text-muted-foreground">
-        <span>近 {uptimeWindowSize} 次记录</span>
+    <div className={compact ? "w-full min-w-0 space-y-1.5" : "w-[280px] min-w-[240px] space-y-1.5 sm:w-[320px] sm:max-w-[42vw]"}>
+      <div className={compact ? "grid gap-0.5 text-[11px] font-medium text-muted-foreground" : "flex items-center justify-between gap-3 text-[11px] font-medium text-muted-foreground"}>
+        <span>近 {windowSize} 次记录</span>
         <span className="truncate">{nextLabel}</span>
       </div>
       <div
         className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${uptimeWindowSize}, minmax(3px, 1fr))` }}
-        aria-label={`近 ${uptimeWindowSize} 次上游检测记录`}
+        style={{ gridTemplateColumns: `repeat(${windowSize}, minmax(0, 1fr))` }}
+        aria-label={`近 ${windowSize} 次上游检测记录`}
       >
         {Array.from({ length: emptyCount }).map((_, index) => (
-          <span key={`empty-${index}`} className="h-5 rounded-[2px] bg-muted/70" title="暂无记录" />
+          <span key={`empty-${index}`} className={compact ? "h-4 min-w-0 rounded-[2px] bg-muted/70" : "h-5 rounded-[2px] bg-muted/70"} title="暂无记录" />
         ))}
         {results.map((result, index) => (
           <span
             key={`${result.status}-${result.createdAt ?? result.finishedAt ?? index}-${index}`}
-            className={`h-5 rounded-[2px] ${timelineBarClass(result.status)}`}
+            className={`${compact ? "h-4 min-w-0" : "h-5"} rounded-[2px] ${timelineBarClass(result.status)}`}
             title={resultTitle(result)}
           />
         ))}
@@ -205,7 +219,7 @@ function UptimeTimeline({ row }: { row: MonitorRow }) {
       </div>
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <span className="font-mono text-foreground">{formatUptime(row.stats.uptimePercent)}</span>
-        <span>{row.stats.success}/{row.stats.windowSize || 0} 通过</span>
+        <span className="truncate">{row.stats.success}/{row.stats.windowSize || 0} 通过</span>
       </div>
     </div>
   );
@@ -436,6 +450,85 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
         </Card>
       </div>
 
+      {rows.length === 0 ? (
+        <MobileRecordEmpty>暂无账号</MobileRecordEmpty>
+      ) : (
+        <MobileRecordList>
+          {rows.map((row) => {
+            const rule = row.rule;
+            const paused = isPaused(rule);
+            const togglePending = activeActionSet.has(actionKey(row.accountId, "toggle"));
+            const runPending = activeActionSet.has(actionKey(row.accountId, "run"));
+            const resumePending = activeActionSet.has(actionKey(row.accountId, "resume"));
+            const deletePending = activeActionSet.has(actionKey(row.accountId, "delete"));
+            const rowPending = togglePending || runPending || resumePending || deletePending;
+            return (
+              <MobileRecord key={`${row.accountId}-${row.missing ? "missing" : "account"}`}>
+                <MobileRecordHeader>
+                  <div className="min-w-0">
+                    <MobileRecordTitle className="truncate">{row.accountName}</MobileRecordTitle>
+                    <MobileRecordMeta>#{row.accountId}{row.missing ? " / 已从源站移除" : ""}</MobileRecordMeta>
+                  </div>
+                  {row.schedulable === false ? <Badge variant="secondary">未调度</Badge> : <Badge variant="success">可调度</Badge>}
+                </MobileRecordHeader>
+                <MobileRecordFields>
+                  <MobileRecordField label="类型" value={<span className="line-clamp-2">{[row.platform, row.type].filter(Boolean).join(" / ") || "-"}</span>} />
+                  <MobileRecordField label="规则" value={rule ? (rule.enabled ? <Badge variant="default">启用</Badge> : <Badge variant="secondary">停用</Badge>) : <Badge variant="outline">未配置</Badge>} />
+                  <MobileRecordField className="col-span-2" label="最近检测" value={
+                    <div className="space-y-1">
+                      <div>{statusBadge(rule?.lastStatus)}</div>
+                      <div className="line-clamp-2 text-xs text-muted-foreground">{rule?.lastMessage || "-"}</div>
+                      <div className="text-xs text-muted-foreground">{formatRelative(rule?.lastCheckedAt)}{rule?.lastLatencyMs ? ` / ${rule.lastLatencyMs}ms` : ""}</div>
+                    </div>
+                  } />
+                </MobileRecordFields>
+                <MobileRecordSection>
+                  {rule ? (
+                    <UptimeTimeline row={row} compact />
+                  ) : (
+                    <div className="text-xs text-muted-foreground">配置规则后显示近 {mobileUptimeWindowSize} 次记录</div>
+                  )}
+                </MobileRecordSection>
+                <MobileRecordSection>
+                  {rule ? (
+                    <div className="grid gap-1 text-xs text-muted-foreground">
+                      <span>每 {rule.checkIntervalMinutes} 分钟；错 {rule.failureThreshold} 次停 {rule.pauseMinutes} 分钟</span>
+                      <span>{paused ? `暂停至 ${formatRelative(rule.pausedUntil)}` : `下次 ${formatRelative(rule.nextCheckAt)}`}</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">尚未配置检测规则</span>
+                  )}
+                </MobileRecordSection>
+                <MobileRecordActions>
+                  <Button variant="outline" size="icon" className="h-8 w-8" title={rule ? "编辑规则" : "配置规则"} onClick={() => openEditor(row)} disabled={rowPending}>
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                  {rule ? (
+                    <>
+                      <Button variant="outline" size="icon" className="h-8 w-8" title={rule.enabled ? "停用检测" : "启用检测"} onClick={() => handleToggle(row)} disabled={rowPending}>
+                        {togglePending ? <Loader2 className="h-4 w-4 animate-spin" /> : rule.enabled ? <PauseCircle className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                      </Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8" title="立即检测" onClick={() => handleRunNow(row)} disabled={rowPending}>
+                        {runPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4 text-blue-500" />}
+                      </Button>
+                      {paused ? (
+                        <Button variant="outline" size="icon" className="h-8 w-8" title="立即恢复调度" onClick={() => handleResume(row)} disabled={rowPending}>
+                          {resumePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 text-emerald-600" />}
+                        </Button>
+                      ) : null}
+                      <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" title="删除规则" onClick={() => handleDelete(row)} disabled={rowPending}>
+                        {deletePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
+                    </>
+                  ) : null}
+                </MobileRecordActions>
+              </MobileRecord>
+            );
+          })}
+        </MobileRecordList>
+      )}
+
+      <div className="hidden md:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -536,6 +629,7 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
           )}
         </TableBody>
       </Table>
+      </div>
 
       <Dialog open={!!editingRow} onOpenChange={(open) => { if (!open) closeEditor(); }}>
         <DialogContent className="max-w-2xl">

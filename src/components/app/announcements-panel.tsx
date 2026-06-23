@@ -15,6 +15,18 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import {
+  MobileRecord,
+  MobileRecordActions,
+  MobileRecordEmpty,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordHeader,
+  MobileRecordList,
+  MobileRecordMeta,
+  MobileRecordSection,
+  MobileRecordTitle,
+} from "@/components/app/mobile-record";
 
 type AnnouncementStatus = "draft" | "active" | "archived";
 type NotifyMode = "silent" | "popup";
@@ -608,7 +620,49 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
       {ruleError && !ruleOpen ? <p className="text-sm text-destructive">{ruleError}</p> : null}
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-3 md:p-0">
+          {rulesQuery.isLoading ? (
+            <MobileRecordEmpty>加载公告规则中...</MobileRecordEmpty>
+          ) : rules.length === 0 ? (
+            <MobileRecordEmpty>暂无公告规则</MobileRecordEmpty>
+          ) : (
+            <MobileRecordList>
+              {rules.map((rule, idx) => (
+                <MobileRecord key={rule.id}>
+                  <MobileRecordHeader>
+                    <div className="min-w-0">
+                      <MobileRecordTitle className="truncate">{rule.name}</MobileRecordTitle>
+                      <MobileRecordMeta>#{idx + 1} / {dateLabel(rule.updatedAt ?? rule.createdAt)}</MobileRecordMeta>
+                    </div>
+                    {rule.enabled ? <Badge variant="success">启用</Badge> : <Badge variant="secondary">停用</Badge>}
+                  </MobileRecordHeader>
+                  <MobileRecordFields>
+                    <MobileRecordField label="发布" value={statusBadge(rule.status)} />
+                    <MobileRecordField label="通知" value={notifyLabel(rule.notifyMode)} />
+                    <MobileRecordField className="col-span-2" label="适用分组" value={
+                      <div className="space-y-0.5">
+                        <div className="line-clamp-2">{targetGroupLabel(rule.targetGroupIds ?? [])}</div>
+                        <div className="text-xs text-muted-foreground">{targetGroupCountLabel(rule.targetGroupIds ?? [])}</div>
+                      </div>
+                    } />
+                  </MobileRecordFields>
+                  <MobileRecordSection>
+                    <div className="mb-1 text-[11px] text-muted-foreground">标题模板</div>
+                    <div className="line-clamp-3 break-words font-mono text-xs">{rule.titleTemplate}</div>
+                  </MobileRecordSection>
+                  <MobileRecordActions>
+                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={ruleSaving} title="编辑规则" onClick={() => openEditRule(rule)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" disabled={ruleSaving} title="删除规则" onClick={() => handleDeleteRule(rule)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </MobileRecordActions>
+                </MobileRecord>
+              ))}
+            </MobileRecordList>
+          )}
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -657,6 +711,7 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -730,6 +785,50 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
             </div>
           </div>
 
+          {list.length === 0 ? (
+            <MobileRecordEmpty>暂无公告</MobileRecordEmpty>
+          ) : filteredAnnouncements.length === 0 ? (
+            <MobileRecordEmpty>没有匹配的公告</MobileRecordEmpty>
+          ) : (
+            <MobileRecordList>
+              {filteredAnnouncements.map((announcement) => {
+                const createdAt = announcement.created_at ?? announcement.createdAt;
+                const startsAt = announcement.starts_at ?? announcement.startsAt;
+                const endsAt = announcement.ends_at ?? announcement.endsAt;
+                const checked = selectedAnnouncementIds.has(announcement.id);
+                return (
+                  <MobileRecord key={announcement.id}>
+                    <MobileRecordHeader>
+                      <div className="flex min-w-0 gap-2">
+                        <Checkbox className="mt-0.5 size-5 shrink-0 border-slate-400/80 bg-white/85 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.65),0_2px_8px_hsl(217_34%_35%/0.14)] dark:border-white/35 dark:bg-white/15" checked={checked} onCheckedChange={(value) => toggleAnnouncement(announcement.id, value === true)} aria-label={`选择 ${announcement.title}`} />
+                        <div className="min-w-0">
+                          <MobileRecordTitle className="truncate">{announcement.title}</MobileRecordTitle>
+                          <MobileRecordMeta className="line-clamp-2">{announcement.content}</MobileRecordMeta>
+                        </div>
+                      </div>
+                      {statusBadge(announcement.status ?? "active")}
+                    </MobileRecordHeader>
+                    <MobileRecordFields>
+                      <MobileRecordField label="展示方式" value={notifyLabel(announcement.notify_mode)} />
+                      <MobileRecordField label="创建时间" value={<span className="text-xs text-muted-foreground">{dateLabel(createdAt)}</span>} />
+                      <MobileRecordField className="col-span-2" label="展示时间" value={
+                        <div className="space-y-0.5 text-xs text-muted-foreground">
+                          <div>开始：{dateLabel(startsAt)}</div>
+                          <div>结束：{dateLabel(endsAt)}</div>
+                        </div>
+                      } />
+                    </MobileRecordFields>
+                    <MobileRecordActions>
+                      <Button variant="outline" size="icon" className="h-8 w-8" disabled={update.isPending} title="编辑公告" onClick={() => openEdit(announcement)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" disabled={del.isPending} title="删除公告" onClick={() => { if (!confirm("确定删除？")) return; del.mutate({ connectionId, id: announcement.id }); }}><Trash2 className="h-4 w-4" /></Button>
+                    </MobileRecordActions>
+                  </MobileRecord>
+                );
+              })}
+            </MobileRecordList>
+          )}
+
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -783,6 +882,7 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
