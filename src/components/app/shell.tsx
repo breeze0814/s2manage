@@ -510,63 +510,58 @@ export function Shell() {
           </div>
         </header>
 
-        <div className="shrink-0 border-b border-white/[0.35] bg-white/[0.34] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.06] md:hidden" data-motion="header">
-          <div className="flex items-center justify-between gap-2 px-3 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <BrandMark className="size-9 text-slate-900 dark:text-white" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">S2A Manager</p>
-                  <p className="truncate text-xs text-muted-foreground">{connections?.length ?? 0} 个站点</p>
+        {!selected || showAppSettings ? (
+          <div className="shrink-0 border-b border-white/[0.35] bg-white/[0.34] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.06] md:hidden" data-motion="header">
+            <div className="flex items-center justify-between gap-2 px-3 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <BrandMark className="size-9 text-slate-900 dark:text-white" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">S2A Manager</p>
+                    <p className="truncate text-xs text-muted-foreground">{connections?.length ?? 0} 个站点</p>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <ThemeToggle className="size-8" />
-              <Button variant={showAppSettings ? "secondary" : "ghost"} size="icon" className="size-8" onClick={() => setShowAppSettings((value) => !value)} title="应用设置">
-                {showAppSettings ? <ChevronLeft className="size-4" /> : <Settings className="size-4" />}
-              </Button>
-              <Button variant="ghost" size="icon" className="size-8" onClick={() => logout.mutate()} disabled={logout.isPending} title="退出登录">
-                <LogOut className="size-4" />
-              </Button>
-              <Button size="icon" variant="outline" className="size-8" onClick={openCreateConnection} title="添加连接">
-                <Plus className="size-4" />
-              </Button>
-            </div>
-          </div>
-          <div className="px-3 pb-2">
-            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/40 bg-white/[0.26] px-3 py-2 text-xs text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.07]">
-              {showAppSettings ? (
-                <>
-                  <Settings className="size-3.5 shrink-0 text-foreground" />
-                  <span className="truncate text-foreground">应用设置</span>
-                  <span className="truncate">管理 Worker 与管理员账号</span>
-                </>
-              ) : selected ? (
-                <>
-                  <ActiveIcon className="size-3.5 shrink-0 text-foreground" />
-                  <span className="truncate text-foreground">{selected.name}</span>
-                  <span className="text-muted-foreground/60">/</span>
-                  <span className="truncate">{activeTabMeta.label}</span>
-                </>
-              ) : (
-                <span>等待连接</span>
-              )}
-            </div>
-          </div>
-          <ProjectPromoLinks className="hidden px-3 pb-2 min-[420px]:flex" />
-          <div className="overflow-x-auto px-3 pb-3 [-webkit-overflow-scrolling:touch]">
-            {connectionsLoading ? (
-              <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-3 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">连接加载中...</div>
-            ) : connections?.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-3 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">
-                添加一个 Sub2API 站点后即可开始管理。
+              <div className="flex shrink-0 items-center gap-1">
+                <ThemeToggle className="size-8" />
+                <Button variant={showAppSettings ? "secondary" : "ghost"} size="icon" className="size-8" onClick={() => setShowAppSettings((value) => !value)} title="应用设置">
+                  {showAppSettings ? <ChevronLeft className="size-4" /> : <Settings className="size-4" />}
+                </Button>
+                <Button variant="ghost" size="icon" className="size-8" onClick={() => logout.mutate()} disabled={logout.isPending} title="退出登录">
+                  <LogOut className="size-4" />
+                </Button>
+                <Button size="icon" variant="outline" className="size-8" onClick={openCreateConnection} title="添加连接">
+                  <Plus className="size-4" />
+                </Button>
               </div>
-            ) : (
-              <div className="flex gap-2">{connections?.map((connection) => renderConnectionCard(connection, true))}</div>
-            )}
+            </div>
+            <div className="px-3 pb-2">
+              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/40 bg-white/[0.26] px-3 py-2 text-xs text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.07]">
+                {showAppSettings ? (
+                  <>
+                    <Settings className="size-3.5 shrink-0 text-foreground" />
+                    <span className="truncate text-foreground">应用设置</span>
+                    <span className="truncate">管理 Worker 与管理员账号</span>
+                  </>
+                ) : (
+                  <span>等待连接</span>
+                )}
+              </div>
+            </div>
+            {!showAppSettings ? <ProjectPromoLinks className="hidden px-3 pb-2 min-[420px]:flex" /> : null}
+            {!showAppSettings ? (
+              <div className="overflow-x-auto px-3 pb-3 [-webkit-overflow-scrolling:touch]">
+                {connectionsLoading ? (
+                  <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-3 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">连接加载中...</div>
+                ) : connections?.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-3 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">
+                    添加一个 Sub2API 站点后即可开始管理。
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-        </div>
+        ) : null}
 
         {showAppSettings ? (
           <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-5 md:p-6" data-motion="section">
