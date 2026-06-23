@@ -479,14 +479,19 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
     });
   }, [filters, list]);
 
-  const selectedCount = selectedIds.length;
   const selectedAnnouncementIds = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedAnnouncements = useMemo(
     () => filteredAnnouncements.filter((announcement) => selectedAnnouncementIds.has(announcement.id)),
     [filteredAnnouncements, selectedAnnouncementIds],
   );
+  const selectedActionIds = useMemo(() => selectedAnnouncements.map((announcement) => announcement.id), [selectedAnnouncements]);
+  const selectedCount = selectedActionIds.length;
   const allVisibleSelected = filteredAnnouncements.length > 0 && filteredAnnouncements.every((announcement) => selectedAnnouncementIds.has(announcement.id));
   const someVisibleSelected = filteredAnnouncements.some((announcement) => selectedAnnouncementIds.has(announcement.id));
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [filters]);
 
   useEffect(() => {
     const visibleIds = new Set(filteredAnnouncements.map((announcement) => announcement.id));
@@ -530,7 +535,12 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
   };
 
   const toggleVisibleAnnouncements = (checked: boolean) => {
-    setSelectedIds(checked ? filteredAnnouncements.map((announcement) => announcement.id) : []);
+    const visibleIds = filteredAnnouncements.map((announcement) => announcement.id);
+    const visibleIdSet = new Set(visibleIds);
+    setSelectedIds((current) => {
+      if (checked) return Array.from(new Set([...current, ...visibleIds]));
+      return current.filter((id) => !visibleIdSet.has(id));
+    });
   };
 
   const resetFilters = () => {
@@ -540,13 +550,13 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
 
   const runBulkUpdate = (data: { status?: AnnouncementStatus; notify_mode?: NotifyMode; starts_at?: string | null; ends_at?: string | null }) => {
     if (selectedCount === 0) return;
-    bulkUpdate.mutate({ connectionId, ids: selectedIds, data });
+    bulkUpdate.mutate({ connectionId, ids: selectedActionIds, data });
   };
 
   const runBulkDelete = () => {
     if (selectedCount === 0) return;
     if (!confirm(`确定删除选中的 ${selectedCount} 条公告？`)) return;
-    bulkDelete.mutate({ connectionId, ids: selectedIds });
+    bulkDelete.mutate({ connectionId, ids: selectedActionIds });
   };
 
   const openBulkStatus = (status: AnnouncementStatus) => {
