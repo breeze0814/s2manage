@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CirclePlay, Loader2, Pencil, Play, Plus, Power, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, CirclePlay, ExternalLink, Loader2, Pencil, Play, Plus, Power, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -312,6 +312,39 @@ function getGroupLabel(group: GroupRow) {
 function getAccountLabel(row: AccountRow) {
   const name = row.name ?? row.username;
   return name ? `${row.id} (${name})` : String(row.id);
+}
+
+function getAccountBaseUrl(row: AccountRow) {
+  const raw = getStringCredential(row, "base_url") || getStringCredential(row, "baseUrl");
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function renderAccountLink(row: AccountRow) {
+  const label = getAccountLabel(row);
+  const baseUrl = getAccountBaseUrl(row);
+  if (!baseUrl) return <span className="truncate">{label}</span>;
+
+  return (
+    <a
+      href={baseUrl}
+      target="_blank"
+      rel="noreferrer"
+      title={`打开 ${baseUrl}`}
+      className="inline-flex max-w-full items-center gap-1 text-primary underline-offset-4 hover:underline"
+    >
+      <span className="truncate">{label}</span>
+      <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+    </a>
+  );
 }
 
 function getModelLabel(model: AccountModel) {
@@ -654,7 +687,7 @@ const AccountTableRow = memo(function AccountTableRow({
   return (
     <TableRow>
       <TableCell>{index + 1}</TableCell>
-      <TableCell className="font-medium">{getAccountLabel(row)}</TableCell>
+      <TableCell className="max-w-[220px] font-medium">{renderAccountLink(row)}</TableCell>
       <TableCell>{[row.platform, row.type ?? row.channel_type].filter(Boolean).join(" / ") || "-"}</TableCell>
       <TableCell>{renderGroups()}</TableCell>
       <TableCell>
@@ -768,7 +801,7 @@ const AccountMobileRecord = memo(function AccountMobileRecord({
     <MobileRecord>
       <MobileRecordHeader>
         <div className="min-w-0">
-          <MobileRecordTitle className="truncate">{getAccountLabel(row)}</MobileRecordTitle>
+          <MobileRecordTitle>{renderAccountLink(row)}</MobileRecordTitle>
           <MobileRecordMeta>#{index + 1} / {typeLabel}</MobileRecordMeta>
         </div>
         {schedulable ? <Badge variant="success">已启用</Badge> : <Badge variant="secondary">已禁用</Badge>}
