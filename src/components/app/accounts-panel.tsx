@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CirclePlay, ExternalLink, Loader2, Pencil, Play, Plus, Power, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, CirclePlay, ExternalLink, Loader2, Pencil, Play, Plus, Power, RefreshCw, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +50,7 @@ type AccountType = "oauth" | "setup-token" | "apikey" | "upstream" | "bedrock" |
 type AccountStatus = "active" | "inactive" | "error";
 type FormMode = "create" | "edit";
 type RuleMode = "first" | "average" | "min" | "max" | "custom";
+type AccountPlatformFilter = "all" | "openai" | "anthropic";
 
 type AccountRow = {
   id: number;
@@ -214,6 +215,11 @@ const defaultRule: Omit<AccountRateRule, "accountId"> = {
 
 const accountTypes: AccountType[] = ["oauth", "setup-token", "apikey", "upstream", "bedrock", "service_account"];
 const statuses: AccountStatus[] = ["active", "inactive", "error"];
+const accountPlatformFilters: Array<{ value: AccountPlatformFilter; label: string }> = [
+  { value: "all", label: "全部平台" },
+  { value: "openai", label: "openai" },
+  { value: "anthropic", label: "anthropic" },
+];
 const prioritizedGeminiModels = [
   "gemini-3.1-flash-image",
   "gemini-2.5-flash-image",
@@ -591,6 +597,7 @@ const AccountTableRow = memo(function AccountTableRow({
   onBalanceThresholdCommit,
 }: AccountTableRowProps) {
   const accountGroups = resolveAccountGroups(row, groupById);
+  const groupBadgeClassName = "max-w-[112px] overflow-hidden text-ellipsis whitespace-nowrap border-border/80 bg-background/80 text-foreground shadow-none dark:bg-muted/20";
   const renderGroups = () => {
     if (accountGroups.length === 0) {
       return <span className="text-sm text-muted-foreground">未分组</span>;
@@ -602,11 +609,11 @@ const AccountTableRow = memo(function AccountTableRow({
     return (
       <div className="flex max-w-[240px] flex-wrap gap-1">
         {displayGroups.map((group) => (
-          <Badge key={group.id} variant="secondary" className="max-w-[112px] overflow-hidden text-ellipsis whitespace-nowrap">
+          <Badge key={group.id} variant="outline" className={groupBadgeClassName}>
             {getGroupLabel(group)}
           </Badge>
         ))}
-        {hiddenCount > 0 ? <Badge variant="outline">+{hiddenCount}</Badge> : null}
+        {hiddenCount > 0 ? <Badge variant="outline" className={groupBadgeClassName}>+{hiddenCount}</Badge> : null}
       </div>
     );
   };
@@ -818,11 +825,15 @@ const AccountMobileRecord = memo(function AccountMobileRecord({
         ) : (
           <div className="flex flex-wrap gap-1">
             {accountGroups.slice(0, 8).map((group) => (
-              <Badge key={group.id} variant="secondary" className="max-w-[132px] overflow-hidden text-ellipsis whitespace-nowrap">
+              <Badge key={group.id} variant="outline" className="max-w-[132px] overflow-hidden text-ellipsis whitespace-nowrap border-border/80 bg-background/80 text-foreground shadow-none dark:bg-muted/20">
                 {getGroupLabel(group)}
               </Badge>
             ))}
-            {accountGroups.length > 8 ? <Badge variant="outline">+{accountGroups.length - 8}</Badge> : null}
+            {accountGroups.length > 8 ? (
+              <Badge variant="outline" className="max-w-[132px] overflow-hidden text-ellipsis whitespace-nowrap border-border/80 bg-background/80 text-foreground shadow-none dark:bg-muted/20">
+                +{accountGroups.length - 8}
+              </Badge>
+            ) : null}
           </div>
         )}
       </MobileRecordSection>
@@ -908,6 +919,8 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const [testingAccountIds, setTestingAccountIds] = useState<number[]>([]);
   const [balanceThresholdInputs, setBalanceThresholdInputs] = useState<Record<number, string>>({});
   const [savingBalanceThresholdIds, setSavingBalanceThresholdIds] = useState<number[]>([]);
+  const [accountSearch, setAccountSearch] = useState("");
+  const [accountPlatformFilter, setAccountPlatformFilter] = useState<AccountPlatformFilter>("all");
   const [priorityRuleEnabled, setPriorityRuleEnabled] = useState(false);
   const [priorityRuleGroupIds, setPriorityRuleGroupIds] = useState<number[]>([]);
   const [priorityRuleSearch, setPriorityRuleSearch] = useState("");
@@ -978,6 +991,35 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
     }
     return lowAccounts;
   }, [accountList, balanceThresholdInputs, balancesByAccount]);
+  const filteredAccountList = useMemo(() => {
+    const query = accountSearch.trim().toLowerCase();
+    if (!query && accountPlatformFilter === "all") return accountList;
+
+    return accountList.filter((row) => {
+      const platform = row.platform?.toLowerCase() ?? "";
+      if (accountPlatformFilter !== "all" && platform !== accountPlatformFilter) return false;
+      if (!query) return true;
+
+      const groupText = resolveAccountGroups(row, groupById).map(getGroupLabel).join(" ");
+      const haystack = [
+        row.id,
+        row.name,
+        row.username,
+        row.notes,
+        row.platform,
+        row.type,
+        row.channel_type,
+        row.status,
+        row.error,
+        row.last_error,
+        row.error_message,
+        groupText,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [accountList, accountPlatformFilter, accountSearch, groupById]);
+  const accountFilterActive = accountSearch.trim().length > 0 || accountPlatformFilter !== "all";
+  const accountEmptyMessage = accountList.length === 0 ? "暂无账号" : "没有匹配的账号";
   const [groupSearch, setGroupSearch] = useState("");
   const selectedGroupIdSet = useMemo(() => new Set(selectedGroupIds), [selectedGroupIds]);
   const filteredGroupList = useMemo(() => {
@@ -1850,12 +1892,63 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
       </Card>
 
       <Card>
-        <CardContent className="p-3 md:p-0">
-          {accountList.length === 0 ? (
-            <MobileRecordEmpty>暂无账号</MobileRecordEmpty>
+        <CardContent className="space-y-4 p-3 md:p-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="space-y-2">
+              <Label htmlFor="account-search">查找账号</Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  id="account-search"
+                  value={accountSearch}
+                  onChange={(event) => setAccountSearch(event.target.value)}
+                  placeholder="搜索账号 ID、名称、备注、分组"
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>平台筛选</Label>
+              <Select value={accountPlatformFilter} onValueChange={(value) => setAccountPlatformFilter(value as AccountPlatformFilter)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="全部平台" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountPlatformFilters.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            <span>
+              {filteredAccountList.length} / {accountList.length} 个账号
+            </span>
+            {accountFilterActive ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => {
+                  setAccountSearch("");
+                  setAccountPlatformFilter("all");
+                }}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                清除筛选
+              </Button>
+            ) : null}
+          </div>
+
+          {filteredAccountList.length === 0 ? (
+            <MobileRecordEmpty>{accountEmptyMessage}</MobileRecordEmpty>
           ) : (
             <MobileRecordList>
-              {accountList.map((row, idx) => {
+              {filteredAccountList.map((row, idx) => {
                 const balance = balancesByAccount.get(row.id);
                 const thresholdInput = balanceThresholdInputs[row.id] ?? "";
                 return (
@@ -1894,66 +1987,70 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
             </MobileRecordList>
           )}
           <div className="hidden md:block">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">#</TableHead>
-                <TableHead>账号 ID / 名称</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>分组</TableHead>
-                <TableHead>采集源分组 / 生效倍率</TableHead>
-                <TableHead className="w-24">账号倍率</TableHead>
-                <TableHead className="w-20">优先级</TableHead>
-                <TableHead>规则</TableHead>
-                <TableHead className="w-44">账号余额</TableHead>
-                <TableHead>调度状态</TableHead>
-                <TableHead>错误</TableHead>
-                <TableHead className="w-64">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {accountList.length === 0 ? (
-                <TableRow><TableCell colSpan={12} className="text-center text-muted-foreground">暂无账号</TableCell></TableRow>
-              ) : (
-                accountList.map((row, idx) => {
-                  const balance = balancesByAccount.get(row.id);
-                  const thresholdInput = balanceThresholdInputs[row.id] ?? "";
-                  return (
-                    <AccountTableRow
-                      key={row.id ?? idx}
-                      row={row}
-                      index={idx}
-                      bindings={bindingsByAccount.get(row.id) ?? EMPTY_BINDINGS}
-                      rule={rulesByAccount.get(row.id)}
-                      balance={balance}
-                      balanceThresholdInput={thresholdInput}
-                      balanceLow={isLowBalance(balance, parseBalanceThresholdInput(thresholdInput))}
-                      groupById={groupById}
-                      bindingsLoading={bindingsLoading && accountIds.length > 0}
-                      balanceLoading={balancesQuery.isLoading || balancesQuery.isFetching}
-                      balanceThresholdSaving={savingBalanceThresholdIdSet.has(row.id)}
-                      isSaving={isSaving}
-                      isTesting={testingAccountIdSet.has(row.id)}
-                      isSchedulablePending={setSchedulable.isPending}
-                      isApplyRulePending={applyRule.isPending}
-                      isClearErrorPending={clearError.isPending}
-                      isRefreshPending={refresh.isPending}
-                      isDeletePending={removeAccount.isPending}
-                      onEdit={openEditor}
-                      onApplyRule={handleApplyRule}
-                      onTest={openTestDialog}
-                      onToggleSchedulable={handleToggleSchedulable}
-                      onClearError={handleClearErrorRow}
-                      onRefreshCredentials={handleRefreshCredentials}
-                      onDelete={handleDeleteRequest}
-                      onBalanceThresholdInputChange={handleBalanceThresholdInputChange}
-                      onBalanceThresholdCommit={handleBalanceThresholdCommit}
-                    />
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-16">#</TableHead>
+                  <TableHead>账号 ID / 名称</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>分组</TableHead>
+                  <TableHead>采集源分组 / 生效倍率</TableHead>
+                  <TableHead className="w-24">账号倍率</TableHead>
+                  <TableHead className="w-20">优先级</TableHead>
+                  <TableHead>规则</TableHead>
+                  <TableHead className="w-44">账号余额</TableHead>
+                  <TableHead>调度状态</TableHead>
+                  <TableHead>错误</TableHead>
+                  <TableHead className="w-64">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAccountList.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={12} className="text-center text-muted-foreground">
+                      {accountEmptyMessage}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredAccountList.map((row, idx) => {
+                    const balance = balancesByAccount.get(row.id);
+                    const thresholdInput = balanceThresholdInputs[row.id] ?? "";
+                    return (
+                      <AccountTableRow
+                        key={row.id ?? idx}
+                        row={row}
+                        index={idx}
+                        bindings={bindingsByAccount.get(row.id) ?? EMPTY_BINDINGS}
+                        rule={rulesByAccount.get(row.id)}
+                        balance={balance}
+                        balanceThresholdInput={thresholdInput}
+                        balanceLow={isLowBalance(balance, parseBalanceThresholdInput(thresholdInput))}
+                        groupById={groupById}
+                        bindingsLoading={bindingsLoading && accountIds.length > 0}
+                        balanceLoading={balancesQuery.isLoading || balancesQuery.isFetching}
+                        balanceThresholdSaving={savingBalanceThresholdIdSet.has(row.id)}
+                        isSaving={isSaving}
+                        isTesting={testingAccountIdSet.has(row.id)}
+                        isSchedulablePending={setSchedulable.isPending}
+                        isApplyRulePending={applyRule.isPending}
+                        isClearErrorPending={clearError.isPending}
+                        isRefreshPending={refresh.isPending}
+                        isDeletePending={removeAccount.isPending}
+                        onEdit={openEditor}
+                        onApplyRule={handleApplyRule}
+                        onTest={openTestDialog}
+                        onToggleSchedulable={handleToggleSchedulable}
+                        onClearError={handleClearErrorRow}
+                        onRefreshCredentials={handleRefreshCredentials}
+                        onDelete={handleDeleteRequest}
+                        onBalanceThresholdInputChange={handleBalanceThresholdInputChange}
+                        onBalanceThresholdCommit={handleBalanceThresholdCommit}
+                      />
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
