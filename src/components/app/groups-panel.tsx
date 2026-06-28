@@ -39,6 +39,7 @@ type GroupRow = {
   id: number;
   name: string;
   type?: string | null;
+  platform?: string | null;
   status?: string | number | null;
   rate_multiplier?: number | null;
 };
@@ -352,6 +353,7 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                       <div className="shrink-0 font-mono text-sm">{formatRate(group.rate_multiplier ?? 1)}</div>
                     </MobileRecordHeader>
                     <MobileRecordFields>
+                      <MobileRecordField label="平台" value={group.platform?.trim() || "-"} />
                       <MobileRecordField label="默认倍率" value={<span className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</span>} />
                       <MobileRecordField label="规则" value={<span className="line-clamp-2">{ruleSummary(rule)}</span>} />
                     </MobileRecordFields>
@@ -392,6 +394,7 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
               <TableRow>
                 <TableHead className="w-16">#</TableHead>
                 <TableHead>分组名称</TableHead>
+                <TableHead className="w-32">平台</TableHead>
                 <TableHead className="w-28">默认倍率</TableHead>
                 <TableHead>采集源分组 / 生效倍率</TableHead>
                 <TableHead>规则</TableHead>
@@ -401,7 +404,7 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
             <TableBody>
               {normalizedGroups.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     暂无分组
                   </TableCell>
                 </TableRow>
@@ -413,6 +416,7 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                     <TableRow key={group.id}>
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell className="font-medium">{group.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{group.platform?.trim() || "-"}</TableCell>
                       <TableCell className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</TableCell>
                       <TableCell>
                         <BlSourceBadges bindings={bindings} loading={bindingsLoading && groupIds.length > 0} />
