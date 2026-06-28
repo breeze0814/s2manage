@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { memo, useCallback, useMemo, useState } from "react";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -242,17 +242,21 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
   }, [platformFilter, rates, search, selectedFilterKeys, selectionFilter, siteFilter, sortBy]);
 
   const visibleRates = useMemo(() => {
-    const selectedRates: BlRateOption[] = [];
-    const otherRates: BlRateOption[] = [];
-    for (const rate of filteredRates) {
-      if (allSelectedKeys.has(rateSourceKey(rate))) {
-        selectedRates.push(rate);
-      } else {
-        otherRates.push(rate);
-      }
-    }
-    const remainingSlots = Math.max(MAX_RENDERED_SOURCE_ROWS - selectedRates.length, 0);
-    return [...selectedRates, ...otherRates.slice(0, remainingSlots)];
+    // Keep the natural (sorted/filtered) order so toggling a row never makes it
+    // jump position — reordering selected-to-front here caused the clicked row to
+    // move away while an unchecked row slid under the cursor. The render cap still
+    // needs selected rows to survive, so when we truncate we append any selected
+    // rows that fell past the cap (they weren't visible anyway, so no jump).
+    if (filteredRates.length <= MAX_RENDERED_SOURCE_ROWS) return filteredRates;
+    const head = filteredRates.slice(0, MAX_RENDERED_SOURCE_ROWS);
+    const headKeys = new Set(head.map(rateSourceKey));
+    const selectedBeyondCap = filteredRates
+      .slice(MAX_RENDERED_SOURCE_ROWS)
+      .filter((rate) => {
+        const key = rateSourceKey(rate);
+        return allSelectedKeys.has(key) && !headKeys.has(key);
+      });
+    return selectedBeyondCap.length > 0 ? [...head, ...selectedBeyondCap] : head;
   }, [allSelectedKeys, filteredRates]);
   const hiddenFilteredCount = Math.max(filteredRates.length - visibleRates.length, 0);
 
@@ -267,15 +271,78 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
     onChange(value.filter((binding) => blSourceKey(binding) !== key));
   }, [onChange, selectedKeys, value]);
 
+  const removeBinding = useCallback((key: string) => {
+    onChange(value.filter((binding) => blSourceKey(binding) !== key));
+  }, [onChange, value]);
+
+  // Selected bindings only carry identity, not the live rate. Look the rate up
+  // from the rates list so each chip can show the effective multiplier.
+  const rateByKey = useMemo(() => {
+    const map = new Map<string, BlRateOption>();
+    for (const rate of rates) map.set(rateSourceKey(rate), rate);
+    return map;
+  }, [rates]);
+
   return (
-    <div className="space-y-2">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          {loading ? "正在加载采集源分组..." : `已选 ${value.length} / 可选 ${rates.length} / 当前 ${filteredRates.length}`}
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border/70 bg-background/60 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            已选采集源
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/12 px-1.5 text-xs font-semibold text-primary tabular-nums">
+              {value.length}
+            </span>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => onChange([])}
+            disabled={disabled || value.length === 0}
+          >
+            清空
+          </Button>
+        </div>
+        {value.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {loading ? "正在加载采集源分组..." : "还没有绑定采集源，从下方列表勾选即可加入这里。"}
+          </p>
+        ) : (
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {value.map((binding) => {
+              const key = blSourceKey(binding);
+              const rate = rateByKey.get(key);
+              return (
+                <span
+                  key={key}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.08] py-1 pl-2.5 pr-1 text-xs leading-5 text-foreground shadow-sm"
+                  title={`${binding.sourceSiteName} / ${getSourceLabel(binding)}`}
+                >
+                  <span className="truncate font-medium">{getSourceLabel(binding)}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                    {formatRate(resolveEffectiveRate(rate))}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeBinding(key)}
+                    disabled={disabled}
+                    aria-label={`移除 ${getSourceLabel(binding)}`}
+                    className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-primary/15 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end">
+        <p className="text-xs text-muted-foreground tabular-nums">
+          可选 {rates.length} / 当前匹配 {filteredRates.length}
         </p>
-        <Button type="button" variant="ghost" size="sm" className="w-full sm:w-auto" onClick={() => onChange([])} disabled={disabled || value.length === 0}>
-          清空
-        </Button>
       </div>
 
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}

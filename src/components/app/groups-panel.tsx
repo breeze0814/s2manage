@@ -528,7 +528,10 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
             </div>
 
             <div className="space-y-2">
-              <Label>绑定采集源分组</Label>
+              <div>
+                <Label>绑定采集源分组</Label>
+                <p className="text-xs text-muted-foreground">勾选下方列表加入，已选的会集中显示在顶部，可逐个移除。</p>
+              </div>
               <BlSourceBindingSelector
                 rates={blRates}
                 value={sourceBindings}
