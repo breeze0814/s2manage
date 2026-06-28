@@ -99,6 +99,8 @@ npm run dev
 http://127.0.0.1:3000
 ```
 
+端口可通过进程环境变量 `PORT` 修改，例如 `PORT=8080 npm run dev`。注意 Next.js 不会从 `.env` 文件读取 `PORT`，需在 shell、Docker 或 systemd 中作为进程环境变量传入。
+
 首次访问会进入初始化页面，创建第一个管理员账号。
 
 后台自动任务需要单独启动：
