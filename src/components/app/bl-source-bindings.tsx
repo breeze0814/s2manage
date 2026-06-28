@@ -319,6 +319,14 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
                   className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.08] py-1 pl-2.5 pr-1 text-xs leading-5 text-foreground shadow-sm"
                   title={`${binding.sourceSiteName} / ${getSourceLabel(binding)}`}
                 >
+                  {binding.sourceSiteName ? (
+                    <>
+                      <span className="max-w-[7rem] shrink truncate text-[11px] text-muted-foreground">
+                        {binding.sourceSiteName}
+                      </span>
+                      <span className="shrink-0 text-muted-foreground/50">/</span>
+                    </>
+                  ) : null}
                   <span className="truncate font-medium">{getSourceLabel(binding)}</span>
                   <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
                     {formatRate(resolveEffectiveRate(rate))}
@@ -399,7 +407,7 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
         </div>
       </div>
 
-      <div className="max-h-72 overflow-y-auto rounded-md border border-border/70">
+      <div className="max-h-[min(60vh,32rem)] min-h-48 overflow-y-auto rounded-md border border-border/70">
         {loading ? (
           <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />

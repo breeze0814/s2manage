@@ -257,7 +257,7 @@ function ConnectionCard({
               </span>
             ) : null}
           </div>
-          <p className={cn("mt-0.5 truncate text-xs", active ? "text-primary-foreground/70" : "text-muted-foreground")}>{connection.baseUrl}</p>
+          <p className={cn("mt-0.5 truncate font-mono text-xs", active ? "text-primary-foreground/70" : "text-muted-foreground")}>{connection.baseUrl}</p>
         </div>
         {result ? (
           <span title={result.message} className="mt-1 shrink-0">
@@ -436,8 +436,8 @@ export function Shell() {
           <div className="flex items-center gap-3">
             <BrandMark className="size-11 text-slate-900 dark:text-white" />
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold">S2A Manager</h1>
-              <p className="truncate text-xs text-muted-foreground">Sub2API control plane</p>
+              <h1 className="truncate text-base font-semibold tracking-tight">S2A Manager</h1>
+              <p className="truncate font-mono text-xs text-muted-foreground">Sub2API control plane</p>
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/40 bg-white/[0.34] px-3 py-2 text-xs text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.08]" data-motion="panel">

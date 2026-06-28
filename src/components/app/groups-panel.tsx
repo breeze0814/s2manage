@@ -452,100 +452,117 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
       </Card>
 
       <Dialog open={formMode !== null} onOpenChange={(open) => { if (!open) closeForm(); }}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex h-[88vh] max-h-[88vh] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
             <DialogTitle>{formMode === "create" ? "新增分组" : `编辑分组 - ${editGroup?.name ?? ""}`}</DialogTitle>
+            <p className="text-sm text-muted-foreground">配置分组的默认倍率与计算规则，并绑定采集源分组作为倍率来源。</p>
           </DialogHeader>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>分组名称</Label>
-                <Input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} placeholder="输入分组名称" />
-              </div>
-              <div className="space-y-2">
-                <Label>默认倍率</Label>
-                <Input
-                  type="number"
-                  step="any"
-                  min="0.0001"
-                  value={form.rateMultiplier}
-                  onChange={(e) => setForm((current) => ({ ...current, rateMultiplier: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-3 rounded-md border border-border/70 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <Label htmlFor="group-use-rate-rule">使用倍率规则</Label>
-                    <p className="text-xs text-muted-foreground">关闭后仅保存分组信息和绑定源分组，不会自动按规则改写分组倍率。</p>
-                  </div>
-                  <Switch
-                    id="group-use-rate-rule"
-                    checked={form.useRateRule}
-                    onCheckedChange={(checked) => setForm((current) => ({ ...current, useRateRule: checked }))}
-                    disabled={isSaving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>倍率规则</Label>
-                  <Select value={form.ruleMode} onValueChange={(value) => setForm((current) => ({ ...current, ruleMode: value as RuleMode }))} disabled={!form.useRateRule || isSaving}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="first">首个源倍率</SelectItem>
-                      <SelectItem value="average">平均源倍率</SelectItem>
-                      <SelectItem value="min">最低源倍率</SelectItem>
-                      <SelectItem value="max">最高源倍率</SelectItem>
-                      <SelectItem value="custom">自定义公式</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {form.ruleMode === "custom" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <div className="grid gap-6 lg:grid-cols-5 lg:gap-8">
+              <div className="space-y-6 lg:col-span-2">
+                <section className="space-y-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">基础信息</p>
                   <div className="space-y-2">
-                    <Label>自定义公式</Label>
-                    <Textarea
-                      value={form.ruleExpression}
-                      onChange={(e) => setForm((current) => ({ ...current, ruleExpression: e.target.value }))}
-                      placeholder="avg + 0.1"
-                      rows={3}
-                      disabled={!form.useRateRule || isSaving}
+                    <Label>分组名称</Label>
+                    <Input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} placeholder="输入分组名称" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>默认倍率</Label>
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0.0001"
+                      className="font-mono"
+                      value={form.rateMultiplier}
+                      onChange={(e) => setForm((current) => ({ ...current, rateMultiplier: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">未启用规则时，分组将直接使用该倍率。</p>
+                  </div>
+                </section>
+
+                <section className="space-y-4 rounded-lg border border-border/70 bg-background/50 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="group-use-rate-rule" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        倍率规则
+                      </Label>
+                      <p className="text-xs text-muted-foreground">开启后按下方规则自动计算倍率。</p>
+                    </div>
+                    <Switch
+                      id="group-use-rate-rule"
+                      checked={form.useRateRule}
+                      onCheckedChange={(checked) => setForm((current) => ({ ...current, useRateRule: checked }))}
+                      disabled={isSaving}
                     />
                   </div>
-                ) : null}
-                <div className="space-y-2">
-                  <Label>偏移</Label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={form.ruleOffset}
-                    onChange={(e) => setForm((current) => ({ ...current, ruleOffset: e.target.value }))}
-                    placeholder="0.1 或 -0.1"
-                    disabled={!form.useRateRule || isSaving}
-                  />
-                  <p className="text-xs text-muted-foreground">偏移会加到源分组计算结果上；填写 0.1 表示 +0.1，填写 -0.1 表示 -0.1。</p>
-                </div>
+
+                  {form.useRateRule ? (
+                    <div className="space-y-4 border-t border-border/60 pt-4">
+                      <div className="space-y-2">
+                        <Label>计算方式</Label>
+                        <Select value={form.ruleMode} onValueChange={(value) => setForm((current) => ({ ...current, ruleMode: value as RuleMode }))} disabled={isSaving}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="first">首个源倍率</SelectItem>
+                            <SelectItem value="average">平均源倍率</SelectItem>
+                            <SelectItem value="min">最低源倍率</SelectItem>
+                            <SelectItem value="max">最高源倍率</SelectItem>
+                            <SelectItem value="custom">自定义公式</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {form.ruleMode === "custom" ? (
+                        <div className="space-y-2">
+                          <Label>自定义公式</Label>
+                          <Textarea
+                            value={form.ruleExpression}
+                            onChange={(e) => setForm((current) => ({ ...current, ruleExpression: e.target.value }))}
+                            placeholder="avg + 0.1"
+                            rows={3}
+                            className="font-mono"
+                            disabled={isSaving}
+                          />
+                        </div>
+                      ) : null}
+                      <div className="space-y-2">
+                        <Label>偏移</Label>
+                        <Input
+                          type="number"
+                          step="any"
+                          className="font-mono"
+                          value={form.ruleOffset}
+                          onChange={(e) => setForm((current) => ({ ...current, ruleOffset: e.target.value }))}
+                          placeholder="0.1 或 -0.1"
+                          disabled={isSaving}
+                        />
+                        <p className="text-xs text-muted-foreground">偏移会加到源分组计算结果上；填写 0.1 表示 +0.1，填写 -0.1 表示 -0.1。</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
               </div>
+
+              <section className="space-y-4 lg:col-span-3">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">绑定采集源分组</p>
+                  <p className="text-xs text-muted-foreground">勾选下方列表加入，已选的会集中显示在顶部，可逐个移除。</p>
+                </div>
+                <BlSourceBindingSelector
+                  rates={blRates}
+                  value={sourceBindings}
+                  onChange={updateSourceBindings}
+                  disabled={isSaving}
+                  loading={ratesLoading}
+                  errorMessage={ratesError?.message}
+                />
+              </section>
             </div>
 
-            <div className="space-y-2">
-              <div>
-                <Label>绑定采集源分组</Label>
-                <p className="text-xs text-muted-foreground">勾选下方列表加入，已选的会集中显示在顶部，可逐个移除。</p>
-              </div>
-              <BlSourceBindingSelector
-                rates={blRates}
-                value={sourceBindings}
-                onChange={updateSourceBindings}
-                disabled={isSaving}
-                loading={ratesLoading}
-                errorMessage={ratesError?.message}
-              />
-            </div>
+            {formError ? <p className="mt-5 text-sm text-destructive">{formError}</p> : null}
           </div>
 
-          {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
-
-          <DialogFooter className="gap-2">
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-6 py-4 sm:gap-0">
             <Button variant="outline" onClick={closeForm} disabled={isSaving}>
               取消
             </Button>
