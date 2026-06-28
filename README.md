@@ -148,8 +148,10 @@ npm run worker
 npm run lint
 npm run prisma:generate
 npm run prisma:push
+npm run prisma:migrate
+npm run prisma:migrate:deploy
+npm run prisma:migrate:status
 npx prisma validate
-npx prisma migrate deploy
 ```
 
 说明：
@@ -158,7 +160,9 @@ npx prisma migrate deploy
 - `npm run build`：生成 Prisma Client 并构建 Next.js。
 - `npm run start`：启动生产 Web 服务。
 - `npm run worker`：启动后台 worker。
-- `npx prisma migrate deploy`：在 PostgreSQL 上应用已提交的数据库迁移。
+- `npm run prisma:migrate`：开发期改 schema 后创建并应用迁移（`prisma migrate dev`）。
+- `npm run prisma:migrate:deploy`：在 PostgreSQL 上应用已提交的数据库迁移（生产用）。
+- `npm run prisma:migrate:status`：查看迁移应用状态。
 
 ## 生产部署
 
