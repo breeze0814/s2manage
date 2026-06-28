@@ -111,7 +111,7 @@ export async function saveBlCollectionSite(input: BlCollectionSiteInput) {
     newApiUserId,
     authMode: input.authMode,
     enabled: input.enabled,
-    intervalMin: Math.max(1, Math.trunc(input.intervalMin || 60)),
+    intervalMin: Math.max(1, Math.trunc(input.intervalMin || 5)),
     rechargeRatio: normalizeRechargeRatio(input.rechargeRatio),
     proxyUrl,
     accessToken: normalizeNewApiAccessToken({ siteType: input.siteType, newApiUserId }, input.accessToken) || null,

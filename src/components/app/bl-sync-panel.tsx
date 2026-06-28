@@ -101,7 +101,7 @@ const defaultForm: SiteForm = {
   password: "",
   newApiUserId: "",
   enabled: true,
-  intervalMin: "60",
+  intervalMin: "5",
   rechargeRatio: "1",
   proxyUrl: "",
   accessToken: "",
