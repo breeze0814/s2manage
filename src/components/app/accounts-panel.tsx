@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CirclePlay, ExternalLink, Loader2, Pencil, Play, Plus, Power, RefreshCw, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -627,72 +627,55 @@ const AccountTableRow = memo(function AccountTableRow({
     );
   };
 
-  const renderBalance = () => {
-    const thresholdDisabled = balanceThresholdSaving;
-    const thresholdControl = (
-      <div className="flex items-center gap-1.5">
-        <span className="shrink-0 text-xs text-muted-foreground">预警</span>
-        <Input
-          type="number"
-          min="0"
-          step="any"
-          value={balanceThresholdInput}
-          placeholder="未设"
-          disabled={thresholdDisabled}
-          title="余额低于该值时提示充值"
-          className="h-7 w-20 px-2 font-mono text-xs"
-          onChange={(event) => onBalanceThresholdInputChange(row.id, event.target.value)}
-          onBlur={() => onBalanceThresholdCommit(row.id)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-          }}
-        />
-        {balanceThresholdSaving ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> : null}
-      </div>
-    );
+  const thresholdDisabled = balanceThresholdSaving;
+  const thresholdControl = (
+    <div className="flex items-center gap-1.5">
+      <Input
+        type="number"
+        min="0"
+        step="any"
+        value={balanceThresholdInput}
+        placeholder="未设"
+        disabled={thresholdDisabled}
+        title="余额低于该值时提示充值"
+        className="h-7 w-20 px-2 font-mono text-xs"
+        onChange={(event) => onBalanceThresholdInputChange(row.id, event.target.value)}
+        onBlur={() => onBalanceThresholdCommit(row.id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+        }}
+      />
+      {balanceThresholdSaving ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> : null}
+    </div>
+  );
 
+  const renderBalance = () => {
     if (balanceLoading) {
-      return (
-        <div className="min-w-[144px] space-y-2">
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />查询中</span>
-          {thresholdControl}
-        </div>
-      );
+      return <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />查询中</span>;
     }
     if (!balance) {
-      return (
-        <div className="min-w-[144px] space-y-2">
-          <span className="text-sm text-muted-foreground">-</span>
-          {thresholdControl}
-        </div>
-      );
+      return <span className="text-sm text-muted-foreground">-</span>;
     }
     const title = [balance.provider, balance.planName, balance.message, balance.checkedAt].filter(Boolean).join(" / ");
 
     if (balance.status !== "ok") {
       const label = balance.status === "unsupported" ? "不支持" : balance.status === "invalid" ? "无效" : "失败";
-      return (
-        <div title={title} className="min-w-[144px] space-y-2">
-          <span className="text-sm text-muted-foreground">{label}</span>
-          {thresholdControl}
-        </div>
-      );
+      return <span title={title} className="text-sm text-muted-foreground">{label}</span>;
     }
 
     const unit = balance.unit || "USD";
     const used = typeof balance.used === "number" && Number.isFinite(balance.used) ? `已用 ${formatBalanceNumber(balance.used)}${unit}` : "";
     const total = typeof balance.total === "number" && Number.isFinite(balance.total) ? `总 ${formatBalanceNumber(balance.total)}${unit}` : "";
     return (
-      <div title={title} className="min-w-[144px] space-y-2">
+      <div title={title} className="min-w-[120px] space-y-1">
         <div className={`font-mono text-sm ${balanceLow ? "font-semibold text-destructive" : ""}`}>{formatBalanceNumber(balance.remaining)} {unit}</div>
         {[balance.planName, used, total].filter(Boolean).length > 0 ? (
-          <div className="max-w-[132px] truncate text-xs text-muted-foreground">
+          <div className="max-w-[160px] truncate text-xs text-muted-foreground">
             {[balance.planName, used, total].filter(Boolean).join(" / ")}
           </div>
         ) : null}
-        {thresholdControl}
       </div>
     );
   };
@@ -713,6 +696,7 @@ const AccountTableRow = memo(function AccountTableRow({
       <TableCell className="font-mono">{row.priority ?? "-"}</TableCell>
       <TableCell className="max-w-[220px] truncate text-sm">{ruleSummary(rule)}</TableCell>
       <TableCell>{renderBalance()}</TableCell>
+      <TableCell>{thresholdControl}</TableCell>
       <TableCell>{schedulable ? <Badge variant="success">已启用</Badge> : <Badge variant="secondary">已禁用</Badge>}</TableCell>
       <TableCell className="max-w-[150px] truncate text-sm text-destructive">{row.error ?? row.last_error ?? row.error_message ?? "-"}</TableCell>
       <TableCell>
@@ -939,6 +923,8 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const [balanceWebhookCooldown, setBalanceWebhookCooldown] = useState("360");
   const [balanceWebhookTemplate, setBalanceWebhookTemplate] = useState(defaultBalanceWebhookTemplate);
   const [balanceWebhookDirty, setBalanceWebhookDirty] = useState(false);
+  const [webhookDialogOpen, setWebhookDialogOpen] = useState(false);
+  const [priorityDialogOpen, setPriorityDialogOpen] = useState(false);
 
   const accountList = useMemo(() => normalizeAccountList(accounts), [accounts]);
   const accountIds = useMemo(() => accountList.map((account) => account.id).filter((id) => Number.isInteger(id) && id > 0), [accountList]);
@@ -1674,6 +1660,32 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
             <Plus className="mr-1 h-4 w-4" />
             新增账号
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 hover:text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300 dark:hover:text-amber-200"
+            onClick={() => setWebhookDialogOpen(true)}
+          >
+            <AlertTriangle className="mr-1 h-4 w-4" />
+            余额预警
+            <span
+              className={`ml-1.5 inline-block size-2 rounded-full ${balanceWebhookEnabled ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+              aria-hidden="true"
+            />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-violet-500/40 bg-violet-500/10 text-violet-700 hover:bg-violet-500/20 hover:text-violet-700 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-300 dark:hover:text-violet-200"
+            onClick={() => setPriorityDialogOpen(true)}
+          >
+            <Power className="mr-1 h-4 w-4" />
+            调度优先级
+            <span
+              className={`ml-1.5 inline-block size-2 rounded-full ${priorityRuleEnabled ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+              aria-hidden="true"
+            />
+          </Button>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching}>
             {isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
             刷新
@@ -1706,199 +1718,201 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
         </div>
       ) : null}
 
-      <Card>
-        <CardHeader className="gap-3 pb-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-1">
-              <CardTitle>余额 Webhook 预警</CardTitle>
-              <CardDescription>账号余额低于表格中设置的预警阈值时，向自定义 Webhook 发送提醒。</CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{balanceWebhookEnabled ? "已启用" : "已停用"}</span>
-              <Switch
-                checked={balanceWebhookEnabled}
-                onCheckedChange={(checked) => {
-                  setBalanceWebhookDirty(true);
-                  setBalanceWebhookEnabled(checked);
-                }}
-                disabled={isBalanceWebhookSaving || balanceWebhookQuery.isLoading}
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="space-y-3">
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">
-                <div className="space-y-2">
-                  <Label>Webhook URL</Label>
-                  <Input
-                    value={balanceWebhookUrl}
-                    onChange={(event) => {
-                      setBalanceWebhookDirty(true);
-                      setBalanceWebhookUrl(event.target.value);
-                    }}
-                    placeholder="https://example.com/webhook"
-                    disabled={isBalanceWebhookSaving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>冷却分钟</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={balanceWebhookCooldown}
-                    onChange={(event) => {
-                      setBalanceWebhookDirty(true);
-                      setBalanceWebhookCooldown(event.target.value);
-                    }}
-                    disabled={isBalanceWebhookSaving}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>消息模板</Label>
-                <Textarea
-                  className="min-h-36 font-mono text-xs"
-                  value={balanceWebhookTemplate}
-                  onChange={(event) => {
+      <Dialog open={webhookDialogOpen} onOpenChange={setWebhookDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>余额 Webhook 预警</DialogTitle>
+            <DialogDescription>账号余额低于表格中设置的预警阈值时，向自定义 Webhook 发送提醒。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2">
+              <span className="text-sm font-medium">启用预警</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{balanceWebhookEnabled ? "已启用" : "已停用"}</span>
+                <Switch
+                  checked={balanceWebhookEnabled}
+                  onCheckedChange={(checked) => {
                     setBalanceWebhookDirty(true);
-                    setBalanceWebhookTemplate(event.target.value);
+                    setBalanceWebhookEnabled(checked);
                   }}
-                  disabled={isBalanceWebhookSaving}
+                  disabled={isBalanceWebhookSaving || balanceWebhookQuery.isLoading}
                 />
               </div>
             </div>
-            <div className="space-y-3 rounded-md border border-border/70 p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <div className="text-xs text-muted-foreground">预警阈值</div>
-                  <div className="mt-1 text-2xl font-semibold">{Object.keys(balanceThresholdsQuery.data ?? {}).length}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">当前低余额</div>
-                  <div className="mt-1 text-2xl font-semibold">{lowBalanceAccounts.length}</div>
-                </div>
-              </div>
-              <div className="text-xs leading-5 text-muted-foreground">
-                后台 worker 每轮会自动检查；同一账号在冷却时间内不会重复发送。
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={handleSaveBalanceWebhook} disabled={isBalanceWebhookSaving || balanceWebhookQuery.isLoading}>
-                  {saveBalanceWebhookConfig.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  保存配置
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleTestBalanceWebhook} disabled={isBalanceWebhookSaving || !balanceWebhookUrl.trim()}>
-                  {testBalanceWebhook.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  测试发送
-                </Button>
-                <Button size="sm" onClick={handleCheckBalanceAlerts} disabled={isBalanceWebhookSaving || !balanceWebhookEnabled}>
-                  {checkBalanceAlerts.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-                  立即检查
-                </Button>
-              </div>
-              {balanceWebhookDirty ? <p className="text-xs text-amber-600 dark:text-amber-300">配置有未保存修改。</p> : null}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="gap-3 pb-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-1">
-              <CardTitle>调度优先级规则</CardTitle>
-              <CardDescription>按所选分组内账号倍率从低到高写入 Sub2API 账号优先级；相同倍率使用相同优先级。</CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{priorityRuleEnabled ? "已启用" : "已停用"}</span>
-              <Switch
-                checked={priorityRuleEnabled}
-                onCheckedChange={(checked) => {
-                  setPriorityRuleDirty(true);
-                  setPriorityRuleEnabled(checked);
-                }}
-                disabled={isPriorityRuleSaving || priorityRuleQuery.isLoading}
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>目标 Sub2API 分组</Label>
-                <span className="text-xs text-muted-foreground">{groupsLoading ? "加载中" : `${priorityRuleGroupIds.length} / ${groupList.length}`}</span>
-              </div>
-              <Input
-                value={priorityRuleSearch}
-                onChange={(event) => setPriorityRuleSearch(event.target.value)}
-                placeholder="搜索分组名称、ID、平台或类型"
-                disabled={isPriorityRuleSaving}
-              />
-              <div className="max-h-52 overflow-y-auto rounded-md border border-border/70">
-                {groupList.length === 0 ? (
-                  <div className="p-4 text-sm text-muted-foreground">暂无可选分组</div>
-                ) : visiblePriorityRuleGroupList.length === 0 ? (
-                  <div className="p-4 text-sm text-muted-foreground">没有匹配的分组</div>
-                ) : (
-                  <div className="divide-y divide-border/60">
-                    {visiblePriorityRuleGroupList.map((group) => {
-                      const checkboxId = `priority-rule-group-${group.id}`;
-                      const checked = priorityRuleGroupIdSet.has(group.id);
-                      return (
-                        <Label key={group.id} htmlFor={checkboxId} className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm text-foreground">
-                          <Checkbox
-                            id={checkboxId}
-                            checked={checked}
-                            onCheckedChange={(value) => togglePriorityRuleGroup(group.id, value === true)}
-                            disabled={isPriorityRuleSaving}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{getGroupLabel(group)}</span>
-                            <span className="block truncate text-xs text-muted-foreground">#{group.id}{group.platform ? ` / ${group.platform}` : ""}</span>
-                          </span>
-                          <span className="font-mono text-xs text-muted-foreground">{formatRate(group.rate_multiplier ?? 1)}</span>
-                        </Label>
-                      );
-                    })}
-                    {filteredPriorityRuleGroupList.length > visiblePriorityRuleGroupList.length ? (
-                      <div className="px-4 py-3 text-xs text-muted-foreground">已显示前 140 条，请继续搜索缩小范围。</div>
-                    ) : null}
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="space-y-3">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">
+                  <div className="space-y-2">
+                    <Label>Webhook URL</Label>
+                    <Input
+                      value={balanceWebhookUrl}
+                      onChange={(event) => {
+                        setBalanceWebhookDirty(true);
+                        setBalanceWebhookUrl(event.target.value);
+                      }}
+                      placeholder="https://example.com/webhook"
+                      disabled={isBalanceWebhookSaving}
+                    />
                   </div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-3 rounded-md border border-border/70 p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <div className="text-xs text-muted-foreground">命中账号</div>
-                  <div className="mt-1 text-2xl font-semibold">{priorityRuleAccountCount}</div>
+                  <div className="space-y-2">
+                    <Label>冷却分钟</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={balanceWebhookCooldown}
+                      onChange={(event) => {
+                        setBalanceWebhookDirty(true);
+                        setBalanceWebhookCooldown(event.target.value);
+                      }}
+                      disabled={isBalanceWebhookSaving}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">已选分组</div>
-                  <div className="mt-1 text-2xl font-semibold">{priorityRuleGroupIds.length}</div>
+                <div className="space-y-2">
+                  <Label>消息模板</Label>
+                  <Textarea
+                    className="min-h-36 font-mono text-xs"
+                    value={balanceWebhookTemplate}
+                    onChange={(event) => {
+                      setBalanceWebhookDirty(true);
+                      setBalanceWebhookTemplate(event.target.value);
+                    }}
+                    disabled={isBalanceWebhookSaving}
+                  />
                 </div>
               </div>
-              <div className="text-xs leading-5 text-muted-foreground">
-                立即应用会先保存当前规则，再按账号当前倍率排序写入优先级 1、2、3。
+              <div className="space-y-3 rounded-md border border-border/70 p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground">预警阈值</div>
+                    <div className="mt-1 text-2xl font-semibold">{Object.keys(balanceThresholdsQuery.data ?? {}).length}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">当前低余额</div>
+                    <div className="mt-1 text-2xl font-semibold">{lowBalanceAccounts.length}</div>
+                  </div>
+                </div>
+                <div className="text-xs leading-5 text-muted-foreground">
+                  后台 worker 每轮会自动检查；同一账号在冷却时间内不会重复发送。
+                </div>
+                {balanceWebhookDirty ? <p className="text-xs text-amber-600 dark:text-amber-300">配置有未保存修改。</p> : null}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={handleSavePriorityRule} disabled={isPriorityRuleSaving || priorityRuleQuery.isLoading}>
-                  {savePriorityRule.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  保存规则
-                </Button>
-                <Button size="sm" onClick={handleApplyPriorityRule} disabled={isPriorityRuleSaving || !priorityRuleEnabled || priorityRuleGroupIds.length === 0}>
-                  {applyPriorityRule.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  立即应用
-                </Button>
-              </div>
-              {priorityRuleDirty ? <p className="text-xs text-amber-600 dark:text-amber-300">规则有未保存修改。</p> : null}
             </div>
           </div>
-        </CardContent>
-      </Card>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={handleTestBalanceWebhook} disabled={isBalanceWebhookSaving || !balanceWebhookUrl.trim()}>
+              {testBalanceWebhook.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              测试发送
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleCheckBalanceAlerts} disabled={isBalanceWebhookSaving || !balanceWebhookEnabled}>
+              {checkBalanceAlerts.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+              立即检查
+            </Button>
+            <Button size="sm" onClick={handleSaveBalanceWebhook} disabled={isBalanceWebhookSaving || balanceWebhookQuery.isLoading}>
+              {saveBalanceWebhookConfig.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              保存配置
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={priorityDialogOpen} onOpenChange={setPriorityDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>调度优先级规则</DialogTitle>
+            <DialogDescription>按所选分组内账号倍率从低到高写入 Sub2API 账号优先级；相同倍率使用相同优先级。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2">
+              <span className="text-sm font-medium">启用规则</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{priorityRuleEnabled ? "已启用" : "已停用"}</span>
+                <Switch
+                  checked={priorityRuleEnabled}
+                  onCheckedChange={(checked) => {
+                    setPriorityRuleDirty(true);
+                    setPriorityRuleEnabled(checked);
+                  }}
+                  disabled={isPriorityRuleSaving || priorityRuleQuery.isLoading}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>目标 Sub2API 分组</Label>
+                  <span className="text-xs text-muted-foreground">{groupsLoading ? "加载中" : `${priorityRuleGroupIds.length} / ${groupList.length}`}</span>
+                </div>
+                <Input
+                  value={priorityRuleSearch}
+                  onChange={(event) => setPriorityRuleSearch(event.target.value)}
+                  placeholder="搜索分组名称、ID、平台或类型"
+                  disabled={isPriorityRuleSaving}
+                />
+                <div className="max-h-52 overflow-y-auto rounded-md border border-border/70">
+                  {groupList.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground">暂无可选分组</div>
+                  ) : visiblePriorityRuleGroupList.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground">没有匹配的分组</div>
+                  ) : (
+                    <div className="divide-y divide-border/60">
+                      {visiblePriorityRuleGroupList.map((group) => {
+                        const checkboxId = `priority-rule-group-${group.id}`;
+                        const checked = priorityRuleGroupIdSet.has(group.id);
+                        return (
+                          <Label key={group.id} htmlFor={checkboxId} className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm text-foreground">
+                            <Checkbox
+                              id={checkboxId}
+                              checked={checked}
+                              onCheckedChange={(value) => togglePriorityRuleGroup(group.id, value === true)}
+                              disabled={isPriorityRuleSaving}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{getGroupLabel(group)}</span>
+                              <span className="block truncate text-xs text-muted-foreground">#{group.id}{group.platform ? ` / ${group.platform}` : ""}</span>
+                            </span>
+                            <span className="font-mono text-xs text-muted-foreground">{formatRate(group.rate_multiplier ?? 1)}</span>
+                          </Label>
+                        );
+                      })}
+                      {filteredPriorityRuleGroupList.length > visiblePriorityRuleGroupList.length ? (
+                        <div className="px-4 py-3 text-xs text-muted-foreground">已显示前 140 条，请继续搜索缩小范围。</div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-3 rounded-md border border-border/70 p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground">命中账号</div>
+                    <div className="mt-1 text-2xl font-semibold">{priorityRuleAccountCount}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">已选分组</div>
+                    <div className="mt-1 text-2xl font-semibold">{priorityRuleGroupIds.length}</div>
+                  </div>
+                </div>
+                <div className="text-xs leading-5 text-muted-foreground">
+                  立即应用会先保存当前规则，再按账号当前倍率排序写入优先级 1、2、3。
+                </div>
+                {priorityRuleDirty ? <p className="text-xs text-amber-600 dark:text-amber-300">规则有未保存修改。</p> : null}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={handleSavePriorityRule} disabled={isPriorityRuleSaving || priorityRuleQuery.isLoading}>
+              {savePriorityRule.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              保存规则
+            </Button>
+            <Button size="sm" onClick={handleApplyPriorityRule} disabled={isPriorityRuleSaving || !priorityRuleEnabled || priorityRuleGroupIds.length === 0}>
+              {applyPriorityRule.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              立即应用
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardContent className="space-y-4 p-3 md:p-4">
@@ -2007,7 +2021,8 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                   <TableHead className="w-24">账号倍率</TableHead>
                   <TableHead className="w-20">优先级</TableHead>
                   <TableHead>规则</TableHead>
-                  <TableHead className="w-44">账号余额</TableHead>
+                  <TableHead className="w-40">账号余额</TableHead>
+                  <TableHead className="w-28">预警阈值</TableHead>
                   <TableHead>调度状态</TableHead>
                   <TableHead>错误</TableHead>
                   <TableHead className="w-64">操作</TableHead>
@@ -2016,7 +2031,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
               <TableBody>
                 {filteredAccountList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center text-muted-foreground">
+                    <TableCell colSpan={13} className="text-center text-muted-foreground">
                       {accountEmptyMessage}
                     </TableCell>
                   </TableRow>
