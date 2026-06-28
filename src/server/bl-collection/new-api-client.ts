@@ -10,6 +10,7 @@ export class BlNewApiClient implements BlCollectorClient {
   constructor(
     private readonly baseUrl: string,
     private readonly timeoutMs = 25_000,
+    private readonly proxyUrl?: string,
   ) {}
 
   async login(username: string, password: string): Promise<BlTokenPayload> {
@@ -23,6 +24,7 @@ export class BlNewApiClient implements BlCollectorClient {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ username, password }),
       timeoutMs: this.timeoutMs,
+      proxyUrl: this.proxyUrl,
     });
 
     if (status === 401 || status === 403) {
@@ -155,6 +157,7 @@ export class BlNewApiClient implements BlCollectorClient {
       url: `${this.baseUrl.replace(/\/+$/, "")}/api/pricing`,
       headers,
       timeoutMs: this.timeoutMs,
+      proxyUrl: this.proxyUrl,
     });
 
     if (status === 401 || status === 403) {

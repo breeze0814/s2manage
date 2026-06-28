@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 type TextResponse = {
   status: number;
@@ -12,11 +13,44 @@ type RequestOptions = {
   headers?: Record<string, string>;
   body?: string;
   timeoutMs?: number;
+  proxyUrl?: string;
 };
 
 type Transport = "fetch" | "powershell";
 
 const fallbackTransportByOrigin = new Map<string, Transport>();
+const proxyAgentByUrl = new Map<string, ProxyAgent>();
+
+function splitProxyUrl(proxyUrl?: string) {
+  const url = proxyUrl?.trim();
+  if (!url) return { uri: "", username: "", password: "" };
+  try {
+    const parsed = new URL(url);
+    const username = parsed.username ? decodeURIComponent(parsed.username) : "";
+    const password = parsed.password ? decodeURIComponent(parsed.password) : "";
+    parsed.username = "";
+    parsed.password = "";
+    return { uri: parsed.toString(), username, password };
+  } catch {
+    return { uri: url, username: "", password: "" };
+  }
+}
+
+function proxyAgentFor(proxyUrl?: string) {
+  const url = proxyUrl?.trim();
+  if (!url) return undefined;
+  let agent = proxyAgentByUrl.get(url);
+  if (!agent) {
+    // undici's ProxyAgent does not read credentials embedded in the URI, so we
+    // strip user:pass out and pass them explicitly as a Basic auth token.
+    // Without this, proxies requiring auth respond with 407.
+    const { uri, username, password } = splitProxyUrl(url);
+    const token = username ? `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` : undefined;
+    agent = new ProxyAgent(token ? { uri, token } : { uri });
+    proxyAgentByUrl.set(url, agent);
+  }
+  return agent;
+}
 
 function base64Json(value: unknown) {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64");
@@ -83,8 +117,9 @@ function formatRequestError(error: unknown, url: string) {
   return error.message;
 }
 
-function readPowerShellResponse(options: Required<Omit<RequestOptions, "body">> & { body?: string }) {
+function readPowerShellResponse(options: Required<Omit<RequestOptions, "body" | "proxyUrl">> & { body?: string; proxyUrl?: string }) {
   const timeoutSec = Math.max(1, Math.ceil(options.timeoutMs / 1000));
+  const proxyParts = splitProxyUrl(options.proxyUrl);
   const script = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -103,6 +138,15 @@ $params = @{
   Headers = $headers
   TimeoutSec = [int]$env:S2A_REQ_TIMEOUT_SEC
   UseBasicParsing = $true
+}
+if ($env:S2A_REQ_PROXY) {
+  $params.Proxy = $env:S2A_REQ_PROXY
+  if ($env:S2A_REQ_PROXY_USER) {
+    # Build the credential without ConvertTo-SecureString, which fails to load
+    # on some trimmed PowerShell installs. NetworkCredential exposes a SecureString.
+    $netCred = New-Object System.Net.NetworkCredential($env:S2A_REQ_PROXY_USER, $env:S2A_REQ_PROXY_PASS)
+    $params.ProxyCredential = New-Object System.Management.Automation.PSCredential($env:S2A_REQ_PROXY_USER, $netCred.SecurePassword)
+  }
 }
 if ($env:S2A_REQ_BODY -and $env:S2A_REQ_METHOD -ne 'GET') {
   $contentType = $headers['Content-Type']
@@ -159,6 +203,9 @@ try {
       S2A_REQ_HEADERS: base64Json(options.headers),
       S2A_REQ_BODY: options.body ? base64Text(options.body) : "",
       S2A_REQ_TIMEOUT_SEC: String(timeoutSec),
+      S2A_REQ_PROXY: proxyParts.uri,
+      S2A_REQ_PROXY_USER: proxyParts.username,
+      S2A_REQ_PROXY_PASS: proxyParts.password,
     },
     maxBuffer: 10 * 1024 * 1024,
     timeout: options.timeoutMs + 2000,
@@ -177,6 +224,7 @@ export async function requestText(options: RequestOptions): Promise<TextResponse
     headers: headers ?? {},
     body: options.body,
     timeoutMs,
+    proxyUrl: options.proxyUrl,
   };
 
   if (process.platform === "win32" && (override === "powershell" || fallbackTransportByOrigin.get(origin) === "powershell")) {
@@ -190,13 +238,25 @@ export async function requestText(options: RequestOptions): Promise<TextResponse
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const dispatcher = proxyAgentFor(options.proxyUrl);
   try {
-    const res = await fetch(options.url, {
-      method: options.method,
-      headers,
-      body: requestBodyBytes(options.body),
-      signal: controller.signal,
-    });
+    // When a proxy is set, use undici's own fetch so it matches the installed
+    // ProxyAgent. Node's global fetch is bound to its built-in undici and
+    // rejects a dispatcher from the standalone package ("invalid onRequestStart").
+    const res = dispatcher
+      ? await undiciFetch(options.url, {
+          method: options.method,
+          headers,
+          body: requestBodyBytes(options.body),
+          signal: controller.signal,
+          dispatcher,
+        })
+      : await fetch(options.url, {
+          method: options.method,
+          headers,
+          body: requestBodyBytes(options.body),
+          signal: controller.signal,
+        });
     return { status: res.status, body: await res.text(), headers: Object.fromEntries(res.headers.entries()) };
   } catch (error) {
     if (override !== "fetch" && process.platform === "win32" && shouldFallback(error)) {

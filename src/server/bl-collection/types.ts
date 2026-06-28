@@ -28,6 +28,7 @@ export type BlCollectionSiteInput = {
   enabled: boolean;
   intervalMin: number;
   rechargeRatio: number;
+  proxyUrl?: string;
   accessToken?: string;
   refreshToken?: string;
   tokenExpire?: string;

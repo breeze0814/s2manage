@@ -88,6 +88,7 @@ export async function saveBlCollectionSite(input: BlCollectionSiteInput) {
   const name = input.name.trim();
   const baseUrl = input.baseUrl.trim().replace(/\/+$/, "");
   const newApiUserId = input.siteType === "new_api" ? input.newApiUserId?.trim() || null : null;
+  const proxyUrl = normalizeProxyUrl(input.proxyUrl);
 
   if (!name || !/^https?:\/\//i.test(baseUrl)) {
     throw new Error("请填写源站名称，并确保源站地址以 http:// 或 https:// 开头");
@@ -112,6 +113,7 @@ export async function saveBlCollectionSite(input: BlCollectionSiteInput) {
     enabled: input.enabled,
     intervalMin: Math.max(1, Math.trunc(input.intervalMin || 60)),
     rechargeRatio: normalizeRechargeRatio(input.rechargeRatio),
+    proxyUrl,
     accessToken: normalizeNewApiAccessToken({ siteType: input.siteType, newApiUserId }, input.accessToken) || null,
     refreshToken: input.refreshToken?.trim() || null,
     tokenExpire: parseTokenExpire(input.tokenExpire),
@@ -129,6 +131,7 @@ export async function saveBlCollectionSite(input: BlCollectionSiteInput) {
     enabled: data.enabled,
     intervalMin: data.intervalMin,
     rechargeRatio: data.rechargeRatio,
+    proxyUrl: data.proxyUrl,
   };
   if (input.password) update.passwordEnc = data.passwordEnc;
   if ("accessToken" in input) update.accessToken = data.accessToken;
@@ -214,6 +217,15 @@ export async function ensureBlCollectionToken(
 function normalizeRechargeRatio(value: number) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
+
+function normalizeProxyUrl(value?: string) {
+  const proxy = value?.trim();
+  if (!proxy) return null;
+  if (!/^https?:\/\//i.test(proxy)) {
+    throw new Error("代理地址必须以 http:// 或 https:// 开头，留空表示直连");
+  }
+  return proxy;
 }
 
 async function ensureManualToken(site: BlCollectionSite, client: ReturnType<typeof clientForBlCollectionSite>) {

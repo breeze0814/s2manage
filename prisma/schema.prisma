@@ -117,6 +117,7 @@ model BlCollectionSite {
   enabled             Boolean                 @default(true)
   intervalMin         Int                     @default(60) @map("interval_min")
   rechargeRatio       Float                   @default(1) @map("recharge_ratio")
+  proxyUrl            String?                 @map("proxy_url")
   accessToken         String?                 @map("access_token")
   refreshToken        String?                 @map("refresh_token")
   tokenExpire         BigInt?                 @map("token_expire")

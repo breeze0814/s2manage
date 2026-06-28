@@ -107,6 +107,7 @@ export const blRouter = createTRPCRouter({
       enabled: z.boolean(),
       intervalMin: z.number().int().min(1),
       rechargeRatio: z.number().positive(),
+      proxyUrl: z.string().optional(),
       accessToken: z.string().optional(),
       refreshToken: z.string().optional(),
       tokenExpire: z.string().optional(),

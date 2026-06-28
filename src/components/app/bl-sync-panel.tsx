@@ -25,6 +25,7 @@ type CollectionSite = {
   enabled: boolean;
   intervalMin: number;
   rechargeRatio: number;
+  proxyUrl?: string | null;
   accessToken?: string | null;
   refreshToken?: string | null;
   tokenExpire?: bigint | number | string | null;
@@ -85,6 +86,7 @@ type SiteForm = {
   enabled: boolean;
   intervalMin: string;
   rechargeRatio: string;
+  proxyUrl: string;
   accessToken: string;
   refreshToken: string;
   tokenExpire: string;
@@ -101,6 +103,7 @@ const defaultForm: SiteForm = {
   enabled: true,
   intervalMin: "60",
   rechargeRatio: "1",
+  proxyUrl: "",
   accessToken: "",
   refreshToken: "",
   tokenExpire: "",
@@ -201,6 +204,7 @@ function toForm(site?: CollectionSite | null): SiteForm {
     enabled: site.enabled,
     intervalMin: String(site.intervalMin ?? 60),
     rechargeRatio: String(site.rechargeRatio ?? 1),
+    proxyUrl: site.proxyUrl ?? "",
     accessToken: token.accessToken,
     refreshToken: site.refreshToken ?? "",
     tokenExpire: site.tokenExpire ? String(site.tokenExpire) : "",
@@ -515,6 +519,10 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
       setFormError("充值倍率必须大于 0");
       return;
     }
+    if (form.proxyUrl.trim() && !/^https?:\/\//i.test(form.proxyUrl.trim())) {
+      setFormError("代理地址必须以 http:// 或 https:// 开头，留空表示直连");
+      return;
+    }
     saveSite.mutate({
       id: form.id,
       connectionId,
@@ -528,6 +536,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
       enabled: form.enabled,
       intervalMin,
       rechargeRatio,
+      proxyUrl: form.proxyUrl.trim(),
       accessToken: form.accessToken.trim(),
       refreshToken: form.refreshToken.trim(),
       tokenExpire: form.tokenExpire.trim(),
@@ -984,6 +993,11 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
             <div className="space-y-2">
               <Label>充值倍率</Label>
               <Input type="number" min="0.0001" step="any" value={form.rechargeRatio} onChange={(event) => setForm((current) => ({ ...current, rechargeRatio: event.target.value }))} />
+            </div>
+            <div className="md:col-span-2 space-y-2">
+              <Label>代理（可选）</Label>
+              <Input value={form.proxyUrl} onChange={(event) => setForm((current) => ({ ...current, proxyUrl: event.target.value }))} placeholder="http://user:pass@host:port，留空直连" />
+              <p className="text-xs text-muted-foreground">填写后，该采集源的登录、采集、测试等所有请求都通过此 HTTP/HTTPS 代理发出。</p>
             </div>
             <div className="flex flex-col gap-3 rounded-md border border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
               <div className="min-w-0">

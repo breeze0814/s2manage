@@ -8,6 +8,7 @@ export class BlSub2ApiClient implements BlCollectorClient {
   constructor(
     private readonly baseUrl: string,
     private readonly timeoutMs = 25_000,
+    private readonly proxyUrl?: string,
   ) {}
 
   login(email: string, password: string) {
@@ -74,6 +75,7 @@ export class BlSub2ApiClient implements BlCollectorClient {
       headers,
       body: body ? JSON.stringify(body) : undefined,
       timeoutMs: this.timeoutMs,
+      proxyUrl: this.proxyUrl,
     });
 
     if (![200, ...allowedStatus].includes(status)) {
