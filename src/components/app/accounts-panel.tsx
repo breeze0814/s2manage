@@ -36,6 +36,7 @@ import {
   type BlBindingWithRate,
   type BlRateOption,
 } from "@/components/app/bl-source-bindings";
+import { PlatformIcon } from "@/components/app/platform-icon";
 
 type GroupRow = {
   id: number;
@@ -337,7 +338,14 @@ function getAccountBaseUrl(row: AccountRow) {
 function renderAccountLink(row: AccountRow) {
   const label = getAccountLabel(row);
   const baseUrl = getAccountBaseUrl(row);
-  if (!baseUrl) return <span className="truncate">{label}</span>;
+  if (!baseUrl) {
+    return (
+      <span className="flex min-w-0 items-center gap-2">
+        <PlatformIcon platform={row.platform} />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
 
   return (
     <a
@@ -345,8 +353,9 @@ function renderAccountLink(row: AccountRow) {
       target="_blank"
       rel="noreferrer"
       title={`打开 ${baseUrl}`}
-      className="inline-flex max-w-full items-center gap-1 text-primary underline-offset-4 hover:underline"
+      className="inline-flex max-w-full items-center gap-1.5 text-primary underline-offset-4 hover:underline"
     >
+      <PlatformIcon platform={row.platform} />
       <span className="truncate">{label}</span>
       <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
     </a>

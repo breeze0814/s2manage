@@ -34,6 +34,7 @@ import {
   type BlBindingWithRate,
   type BlRateOption,
 } from "@/components/app/bl-source-bindings";
+import { PlatformIcon } from "@/components/app/platform-icon";
 
 type GroupRow = {
   id: number;
@@ -347,13 +348,16 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                   <MobileRecord key={group.id}>
                     <MobileRecordHeader>
                       <div className="min-w-0">
-                        <MobileRecordTitle className="truncate">{group.name}</MobileRecordTitle>
+                        <MobileRecordTitle className="flex min-w-0 items-center gap-2">
+                          <PlatformIcon platform={group.platform} />
+                          <span className="truncate">{group.name}</span>
+                        </MobileRecordTitle>
                         <MobileRecordMeta>#{idx + 1} / ID {group.id}</MobileRecordMeta>
                       </div>
                       <div className="shrink-0 font-mono text-sm">{formatRate(group.rate_multiplier ?? 1)}</div>
                     </MobileRecordHeader>
                     <MobileRecordFields>
-                      <MobileRecordField label="平台" value={group.platform?.trim() || "-"} />
+                      <MobileRecordField label="默认倍率" value={<span className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</span>} />
                       <MobileRecordField label="默认倍率" value={<span className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</span>} />
                       <MobileRecordField label="规则" value={<span className="line-clamp-2">{ruleSummary(rule)}</span>} />
                     </MobileRecordFields>
@@ -392,19 +396,18 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-16">#</TableHead>
-                <TableHead>分组名称</TableHead>
-                <TableHead className="w-32">平台</TableHead>
-                <TableHead className="w-28">默认倍率</TableHead>
-                <TableHead>采集源分组 / 生效倍率</TableHead>
-                <TableHead>规则</TableHead>
-                <TableHead className="w-36">操作</TableHead>
+                <TableHead className="w-12">#</TableHead>
+                <TableHead className="min-w-[180px]">分组名称</TableHead>
+                <TableHead className="w-24 text-right">默认倍率</TableHead>
+                <TableHead className="min-w-[200px]">采集源分组 / 生效倍率</TableHead>
+                <TableHead className="w-[200px]">规则</TableHead>
+                <TableHead className="w-32 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {normalizedGroups.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     暂无分组
                   </TableCell>
                 </TableRow>
@@ -414,16 +417,20 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                   const bindings = bindingsByGroup.get(group.id) ?? [];
                   return (
                     <TableRow key={group.id}>
-                      <TableCell>{idx + 1}</TableCell>
-                      <TableCell className="font-medium">{group.name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{group.platform?.trim() || "-"}</TableCell>
-                      <TableCell className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</TableCell>
+                      <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                      <TableCell className="max-w-[260px] font-medium" title={group.name}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <PlatformIcon platform={group.platform} />
+                          <span className="truncate">{group.name}</span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">{formatRate(group.rate_multiplier ?? 1)}</TableCell>
                       <TableCell>
                         <BlSourceBadges bindings={bindings} loading={bindingsLoading && groupIds.length > 0} />
                       </TableCell>
-                      <TableCell className="max-w-[240px] truncate text-sm">{ruleSummary(rule)}</TableCell>
+                      <TableCell className="max-w-[200px] truncate text-sm" title={ruleSummary(rule)}>{ruleSummary(rule)}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => openEdit(group)} title="编辑分组" aria-label={`编辑 ${group.name}`} disabled={isSaving}>
                             <Pencil className="h-4 w-4" />
                           </Button>

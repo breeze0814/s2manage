@@ -26,6 +26,7 @@ import {
   MobileRecordSection,
   MobileRecordTitle,
 } from "@/components/app/mobile-record";
+import { PlatformIcon } from "@/components/app/platform-icon";
 
 type MonitorResult = {
   status: string;
@@ -466,7 +467,10 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
               <MobileRecord key={`${row.accountId}-${row.missing ? "missing" : "account"}`}>
                 <MobileRecordHeader>
                   <div className="min-w-0">
-                    <MobileRecordTitle className="truncate">{row.accountName}</MobileRecordTitle>
+                    <MobileRecordTitle className="flex min-w-0 items-center gap-2">
+                      <PlatformIcon platform={row.platform} />
+                      <span className="truncate">{row.accountName}</span>
+                    </MobileRecordTitle>
                     <MobileRecordMeta>#{row.accountId}{row.missing ? " / 已从源站移除" : ""}</MobileRecordMeta>
                   </div>
                   {row.schedulable === false ? <Badge variant="secondary">未调度</Badge> : <Badge variant="success">可调度</Badge>}
@@ -557,7 +561,10 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
               return (
                 <TableRow key={`${row.accountId}-${row.missing ? "missing" : "account"}`}>
                   <TableCell>
-                    <div className="font-medium">{row.accountName}</div>
+                    <div className="flex min-w-0 items-center gap-2 font-medium">
+                      <PlatformIcon platform={row.platform} />
+                      <span className="truncate">{row.accountName}</span>
+                    </div>
                     <div className="font-mono text-xs text-muted-foreground">#{row.accountId}{row.missing ? " / 已从源站移除" : ""}</div>
                   </TableCell>
                   <TableCell>{[row.platform, row.type].filter(Boolean).join(" / ") || "-"}</TableCell>
