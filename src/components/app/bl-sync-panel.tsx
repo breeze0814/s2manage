@@ -298,6 +298,10 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const siteId = selectedSiteId === "__all__" ? undefined : Number(selectedSiteId);
   const changeOffset = (changePage - 1) * changePageSize;
   const { data: sites, isLoading: sitesLoading } = trpc.bl.collectionSites.useQuery({ connectionId });
+  const { data: siteBalances, isLoading: balancesLoading, isFetching: balancesFetching } = trpc.bl.collectionSiteBalances.useQuery(
+    { connectionId },
+    { staleTime: 60_000, refetchOnWindowFocus: false },
+  );
   const { data: rates, isLoading: ratesLoading, refetch: refetchRates } = trpc.bl.rates.useQuery({ connectionId, siteId });
   const { data: changesResult, isLoading: changesLoading } = trpc.bl.changes.useQuery({ connectionId, siteId, limit: changePageSize, offset: changeOffset });
   const { data: groups, isLoading: groupsLoading } = trpc.groups.list.useQuery({ connectionId });
@@ -320,6 +324,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const invalidateCollection = async () => {
     await Promise.all([
       utils.bl.collectionSites.invalidate({ connectionId }),
+      utils.bl.collectionSiteBalances.invalidate({ connectionId }),
       utils.bl.sites.invalidate({ connectionId }),
       utils.bl.rates.invalidate({ connectionId }),
       utils.bl.changes.invalidate(),
@@ -405,6 +410,11 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   });
 
   const sitesList = useMemo<CollectionSite[]>(() => (Array.isArray(sites) ? sites : []), [sites]);
+  const balanceBySiteId = useMemo(() => {
+    const map = new Map<number, NonNullable<typeof siteBalances>[number]>();
+    for (const balance of siteBalances ?? []) map.set(balance.siteId, balance);
+    return map;
+  }, [siteBalances]);
   const ratesList = useMemo<BlRate[]>(() => (Array.isArray(rates) ? rates : []), [rates]);
   const changesList = useMemo<BlChange[]>(() => (Array.isArray(changesResult?.changes) ? changesResult.changes : []), [changesResult]);
   const changesTotal = changesResult?.total ?? 0;
@@ -638,6 +648,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
                   <TableHead>类型</TableHead>
                   <TableHead>间隔</TableHead>
                   <TableHead>充值倍率</TableHead>
+                  <TableHead className="text-right">余额</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>最近成功</TableHead>
                   <TableHead className="w-56 text-right">操作</TableHead>
@@ -655,6 +666,27 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
                     <TableCell>{siteTypeLabel(site.siteType)}</TableCell>
                     <TableCell className="font-mono">{site.intervalMin}m</TableCell>
                     <TableCell className="font-mono">{formatRate(site.rechargeRatio)}</TableCell>
+                    <TableCell className="text-right">
+                      {(() => {
+                        const balance = balanceBySiteId.get(site.id);
+                        if (!balance) {
+                          return balancesLoading || balancesFetching ? (
+                            <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          );
+                        }
+                        if (balance.status === "ok") {
+                          return <span className="font-mono">{formatRate(balance.balance)}</span>;
+                        }
+                        const label = balance.status === "unsupported" ? "不支持" : "失败";
+                        return (
+                          <span className="text-xs text-muted-foreground" title={balance.message ?? undefined}>
+                            {label}
+                          </span>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell>
                       <span
                         className={

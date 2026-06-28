@@ -18,7 +18,7 @@ import {
 } from "@/server/bl-bindings";
 import { collectBlCollectionSite, collectDueBlCollectionSites } from "@/server/bl-collection/collector";
 import { blCollectionHealth, blCollectionPlatforms } from "@/server/bl-collection/data";
-import { deleteBlCollectionSite, getBlCollectionSite, listBlCollectionSites, saveBlCollectionSite, testBlCollectionSite } from "@/server/bl-collection/sites";
+import { deleteBlCollectionSite, fetchBlCollectionSiteBalances, getBlCollectionSite, listBlCollectionSites, saveBlCollectionSite, testBlCollectionSite } from "@/server/bl-collection/sites";
 import { applyBoundRateRulesForConnection } from "@/server/bl-rate-sync";
 import { publishRateChangeAnnouncements } from "@/server/announcement-rules";
 import { normalizeRateMultiplier } from "@/server/rates";
@@ -93,6 +93,9 @@ export const blRouter = createTRPCRouter({
   collectionSites: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive().optional() }).optional())
     .query(async ({ input }) => listBlCollectionSites(input?.connectionId)),
+  collectionSiteBalances: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive() }))
+    .query(async ({ input }) => fetchBlCollectionSiteBalances(input.connectionId)),
   saveCollectionSite: protectedProcedure
     .input(z.object({
       id: z.number().int().positive().optional(),

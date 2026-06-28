@@ -13,6 +13,7 @@ export type BlCollectorClient = {
   groupsAvailable(accessToken: string): Promise<unknown[]>;
   groupRates(accessToken: string): Promise<Record<string, unknown>>;
   channelsAvailable(accessToken: string): Promise<unknown[]>;
+  authMe?(accessToken: string): Promise<Record<string, unknown>>;
 };
 
 export type BlCollectionSiteInput = {

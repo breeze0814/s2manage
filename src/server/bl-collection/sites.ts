@@ -187,6 +187,38 @@ export async function testBlCollectionSite(site: BlCollectionSite) {
   }
 }
 
+export type BlCollectionSiteBalance = {
+  siteId: number;
+  status: "ok" | "unsupported" | "error";
+  balance?: number | null;
+  message?: string | null;
+};
+
+function pickBalanceNumber(data: Record<string, unknown>) {
+  const value = data.balance;
+  const numeric = typeof value === "string" && value.trim() ? Number(value) : value;
+  return typeof numeric === "number" && Number.isFinite(numeric) ? numeric : null;
+}
+
+async function fetchBlCollectionSiteBalance(site: BlCollectionSite): Promise<BlCollectionSiteBalance> {
+  const client = clientForBlCollectionSite(site);
+  if (typeof client.authMe !== "function") {
+    return { siteId: site.id, status: "unsupported", message: "该源站类型不支持余额查询" };
+  }
+  try {
+    const token = await ensureBlCollectionToken(site, client);
+    const data = await client.authMe(token.access_token);
+    return { siteId: site.id, status: "ok", balance: pickBalanceNumber(data) };
+  } catch (error) {
+    return { siteId: site.id, status: "error", message: friendlyBlCollectionError(error) };
+  }
+}
+
+export async function fetchBlCollectionSiteBalances(connectionId: number): Promise<BlCollectionSiteBalance[]> {
+  const sites = await listBlCollectionSites(connectionId);
+  return Promise.all(sites.map((site) => fetchBlCollectionSiteBalance(site)));
+}
+
 export async function ensureBlCollectionToken(
   site: BlCollectionSite,
   client = clientForBlCollectionSite(site),

@@ -4,6 +4,8 @@ import type { BlCollectorClient, BlTokenPayload } from "@/server/bl-collection/t
 
 type NewApiPricing = Record<string, unknown>;
 
+const NEW_API_QUOTA_PER_UNIT = 500_000;
+
 export class BlNewApiClient implements BlCollectorClient {
   private pricingCache?: NewApiPricing;
 
@@ -79,6 +81,27 @@ export class BlNewApiClient implements BlCollectorClient {
     return {};
   }
 
+  async authMe(accessToken: string) {
+    const { status, body: raw } = await requestText({
+      method: "GET",
+      url: `${this.baseUrl.replace(/\/+$/, "")}/api/user/self`,
+      headers: this.authHeaders(accessToken),
+      timeoutMs: this.timeoutMs,
+      proxyUrl: this.proxyUrl,
+    });
+
+    if (status === 401 || status === 403) throw new Error("session 已过期，将自动重新登录");
+    if (status !== 200) throw new Error(`接口返回 HTTP ${status}: ${raw.slice(0, 200)}`);
+
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    if (payload.success !== true) {
+      throw new Error(safeJsonString(payload.message) || "获取账户信息失败");
+    }
+    const data = asRecord(payload.data);
+    const quota = floatOrNull(data.quota);
+    return { ...data, balance: quota === null ? null : quota / NEW_API_QUOTA_PER_UNIT };
+  }
+
   async channelsAvailable(accessToken: string) {
     const pricing = await this.pricing(accessToken);
     const models = Array.isArray(pricing.data) ? pricing.data : [];
@@ -139,9 +162,7 @@ export class BlNewApiClient implements BlCollectorClient {
     return [...grouped.values()];
   }
 
-  private async pricing(accessToken: string) {
-    if (this.pricingCache) return this.pricingCache;
-
+  private authHeaders(accessToken: string) {
     const headers: Record<string, string> = { Accept: "application/json" };
     const [token, userId] = accessToken.split("::", 2);
 
@@ -151,11 +172,16 @@ export class BlNewApiClient implements BlCollectorClient {
     } else if (token && token !== "public") {
       headers.Authorization = `Bearer ${token}`;
     }
+    return headers;
+  }
+
+  private async pricing(accessToken: string) {
+    if (this.pricingCache) return this.pricingCache;
 
     const { status, body: raw } = await requestText({
       method: "GET",
       url: `${this.baseUrl.replace(/\/+$/, "")}/api/pricing`,
-      headers,
+      headers: this.authHeaders(accessToken),
       timeoutMs: this.timeoutMs,
       proxyUrl: this.proxyUrl,
     });

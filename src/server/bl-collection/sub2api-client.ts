@@ -29,6 +29,17 @@ export class BlSub2ApiClient implements BlCollectorClient {
     return this.requestAndExpect<unknown[]>("GET", "/groups/available", accessToken, undefined, "获取分组失败");
   }
 
+  async authMe(accessToken: string) {
+    const data = await this.requestAndExpect<Record<string, unknown>>(
+      "GET",
+      "/auth/me",
+      accessToken,
+      undefined,
+      "获取账户信息失败",
+    );
+    return data && typeof data === "object" ? data : {};
+  }
+
   async groupRates(accessToken: string) {
     const data = await this.requestAndExpect<Record<string, unknown>>(
       "GET",
