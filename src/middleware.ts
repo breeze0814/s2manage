@@ -25,27 +25,20 @@ function firstForwardedValue(value: string | null) {
   return value?.split(",")[0]?.trim() || "";
 }
 
-function withoutPort(host: string) {
-  if (!host) return "";
-  if (host.startsWith("[")) {
-    const end = host.indexOf("]");
-    return end >= 0 ? host.slice(0, end + 1) : host;
-  }
-  return host.split(":")[0] ?? "";
-}
-
 function forwardedOrigin(request: NextRequest) {
+  // Behind a reverse proxy, trust the forwarded host (it carries the public
+  // host and, if non-standard, its port). On direct access there is no
+  // forwarded host, so fall back to the request origin which already includes
+  // the listening port (e.g. :3000) — stripping it would redirect to port 80.
   const forwardedHost = firstForwardedValue(request.headers.get("x-forwarded-host"));
-  const requestHost = firstForwardedValue(request.headers.get("host"));
-  const host = withoutPort(forwardedHost || requestHost || request.nextUrl.hostname || request.nextUrl.host);
-  if (!host) return request.nextUrl.origin;
+  if (!forwardedHost) return request.nextUrl.origin;
 
   const forwardedProto = firstForwardedValue(request.headers.get("x-forwarded-proto")).toLowerCase();
   const proto = forwardedProto === "http" || forwardedProto === "https"
     ? forwardedProto
     : request.nextUrl.protocol.replace(/:$/, "") || "http";
 
-  return `${proto}://${host}`;
+  return `${proto}://${forwardedHost}`;
 }
 
 export async function middleware(request: NextRequest) {
