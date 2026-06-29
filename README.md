@@ -119,6 +119,7 @@ Web 服务和 worker 是两个进程。只启动 Web 可以使用管理页面，
 DATABASE_URL="postgresql://s2amanager:password@127.0.0.1:5432/s2amanager?schema=public"
 APP_SECRET="change-me-to-a-24-plus-char-secret!"
 ENCRYPTION_KEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+S2A_SESSION_COOKIE_SECURE=false
 ```
 
 生产环境必须替换：
@@ -126,6 +127,7 @@ ENCRYPTION_KEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 - `DATABASE_URL`：PostgreSQL 连接字符串。
 - `APP_SECRET`：登录会话签名密钥，至少 24 位随机字符串。
 - `ENCRYPTION_KEY`：32 字节 base64 字符串，可用 `openssl rand -base64 32` 生成。已有加密数据后不要更换，否则已保存的 API Key 和源站凭证无法解密。
+- `S2A_SESSION_COOKIE_SECURE`：默认 `false`，允许开发和生产环境通过 HTTP 保存登录态；仅在 HTTPS-only 部署时设为 `true`。
 
 可选环境变量：
 

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { db } from "@/server/db";
 import { appSecret } from "@/server/env";
+import { sessionCookieSecure } from "@/server/session-cookie";
 
 const COOKIE_NAME = "s2a_session";
 const encoder = new TextEncoder();
@@ -35,7 +36,7 @@ export async function createSessionCookie(email: string) {
     .sign(secretKey());
   cookies().set(COOKIE_NAME, token, {
     httpOnly: true, sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: sessionCookieSecure(),
     path: "/", maxAge: 60 * 60 * 24 * 7,
   });
 }
