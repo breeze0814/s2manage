@@ -10,6 +10,7 @@ import { syncRouter } from "@/server/api/routers/sync";
 import { appSettingsRouter } from "@/server/api/routers/app-settings";
 import { upstreamMonitorRouter } from "@/server/api/routers/upstream-monitor";
 import { serviceStatusRouter } from "@/server/api/routers/service-status";
+import { botSettingsRouter } from "@/server/api/routers/bot-settings";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -23,6 +24,7 @@ export const appRouter = createTRPCRouter({
   appSettings: appSettingsRouter,
   upstreamMonitor: upstreamMonitorRouter,
   serviceStatus: serviceStatusRouter,
+  botSettings: botSettingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

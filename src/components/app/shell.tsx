@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Activity,
   Bell,
+  Bot,
   CheckCircle2,
   ChevronLeft,
   ClipboardList,
@@ -28,6 +29,8 @@ import { AccountsPanel } from "@/components/app/accounts-panel";
 import { AnnouncementsPanel } from "@/components/app/announcements-panel";
 import { AppSettingsPage } from "@/components/app/app-settings-page";
 import { BlSyncPanel } from "@/components/app/bl-sync-panel";
+import { BotManagementPanel } from "@/components/app/bot-management-panel";
+import { BotWsAutoStarter } from "@/components/app/bot-ws-auto-starter";
 import { GroupsPanel } from "@/components/app/groups-panel";
 import { LogsPanel } from "@/components/app/logs-panel";
 import { ProjectPromoLinks } from "@/components/app/project-promo-links";
@@ -43,7 +46,7 @@ import { useToast } from "@/components/ui/toast";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
-type Tab = "service-status" | "groups" | "bl-sync" | "accounts" | "upstream-monitor" | "announcements" | "logs" | "settings";
+type Tab = "service-status" | "groups" | "bl-sync" | "accounts" | "upstream-monitor" | "announcements" | "logs" | "settings" | "bot-management";
 type ConnectionEdit = { id: number; name: string; baseUrl: string; syncMode: string };
 type ConnectionItem = ConnectionEdit & { syncMode: string };
 
@@ -56,6 +59,7 @@ const tabs: Array<{ id: Tab; label: string; description: string; icon: React.Com
   { id: "announcements", label: "公告管理", description: "维护站点公告", icon: Bell },
   { id: "logs", label: "日志管理", description: "日志筛选、搜索与保留策略", icon: ListFilter },
   { id: "settings", label: "站点设置", description: "站点基础内容", icon: ClipboardList },
+  { id: "bot-management", label: "Bot 管理", description: "客户群 Bot 通知与关键字配置", icon: Bot },
 ];
 
 function ConnectionForm({
@@ -563,6 +567,8 @@ export function Shell() {
           </div>
         ) : null}
 
+        {selected ? <BotWsAutoStarter connectionId={selected.id} /> : null}
+
         {showAppSettings ? (
           <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-5 md:p-6" data-motion="section">
             <AppSettingsPage />
@@ -603,6 +609,7 @@ export function Shell() {
               {activeTab === "announcements" ? <AnnouncementsPanel connectionId={selected.id} /> : null}
               {activeTab === "logs" ? <LogsPanel /> : null}
               {activeTab === "settings" ? <SiteSettingsPanel connectionId={selected.id} /> : null}
+              {activeTab === "bot-management" ? <BotManagementPanel connectionId={selected.id} /> : null}
             </section>
           </>
         ) : (

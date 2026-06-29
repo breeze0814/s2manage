@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const shellSource = readFileSync("src/components/app/shell.tsx", "utf8");
+const botPanelSource = readFileSync("src/components/app/bot-management-panel.tsx", "utf8");
+
+assert.match(shellSource, /BotManagementPanel/, "Shell should import and render the Bot management panel");
+assert.match(shellSource, /id:\s*"bot-management"/, "Shell should register a bot-management tab");
+assert.match(shellSource, /label:\s*"Bot 管理"/, "Bot management tab should use the approved label");
+
+assert.match(botPanelSource, /QQBot 管理/, "Bot panel should be focused on QQBot management");
+assert.match(botPanelSource, /compactBotLayout/, "Bot panel should use the compact layout variant");
+assert.match(botPanelSource, /botOpsLeftColumn/, "Bot panel should keep test and feature controls in the left column");
+assert.match(botPanelSource, /botLogsRightColumn/, "Bot panel should keep WebSocket logs in the right column");
+assert.match(botPanelSource, /useRef<HTMLDivElement>/, "Bot panel should keep a log container ref for automatic scrolling");
+assert.match(botPanelSource, /scrollTop\s*=\s*logContainer\.scrollHeight/, "Bot panel should auto-scroll logs to the newest entry");
+assert.match(botPanelSource, /基本配置/, "Bot panel should keep a compact basic configuration section");
+assert.match(botPanelSource, /功能列表/, "Bot panel should present features as a simple enablement list");
+assert.match(botPanelSource, /测试分析/, "Bot panel should include the test analysis module");
+assert.match(botPanelSource, /WS 实时日志/, "Bot panel should include the WebSocket live log section");
+assert.match(botPanelSource, /当前 WS 状态/, "Bot panel should show the current WebSocket connection status");
+assert.match(botPanelSource, /listenerStatusText/, "Bot panel should render a readable WebSocket status label");
+assert.match(botPanelSource, /群组列表/, "Bot panel should show QQ groups as a selectable list");
+assert.match(botPanelSource, /消息发送/, "Bot panel should include a direct message sending box");
+assert.match(botPanelSource, /SelectTrigger/, "Bot panel should use a select control for QQ groups");
+assert.match(botPanelSource, /实时接收 NapCat WebSocket 消息/, "WebSocket log should describe live NapCat message streaming");
+assert.match(botPanelSource, /当前分组倍率下已开启分组的实时倍率/, "Test analysis should describe sending live rates for enabled groups");
+assert.match(botPanelSource, /启用 QQBot/, "Feature list should expose the QQBot enable switch");
+assert.match(botPanelSource, /分组倍率变动推送/, "Feature list should expose rate-change push");
+assert.match(botPanelSource, /@ 关键字触发/, "Feature list should expose mention keyword trigger");
+assert.match(botPanelSource, /目标 QQ 群号/, "Basic configuration should collect the target QQ group id");
+assert.match(botPanelSource, /NapCat Token/, "Bot panel should collect the optional NapCat token");
+assert.doesNotMatch(botPanelSource, /Telegram/i, "Bot panel should not expose Telegram configuration yet");
+assert.doesNotMatch(botPanelSource, /自动重连/, "Bot panel should not expose advanced reconnect settings yet");
+assert.doesNotMatch(botPanelSource, /API 超时/, "Bot panel should not expose advanced NapLink API settings yet");
+assert.doesNotMatch(botPanelSource, /重连倍率/, "Bot panel should not expose advanced reconnect backoff settings yet");
