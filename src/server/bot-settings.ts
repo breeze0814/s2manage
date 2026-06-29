@@ -5,6 +5,12 @@ import { decrypt } from "@/server/crypto";
 import { db } from "@/server/db";
 import { getSecretSetting, getSetting, setSecretSetting, setSetting } from "@/server/settings";
 import { Sub2ApiAdminClient, type Sub2ApiGroup } from "@/server/clients/sub2api-admin";
+import {
+  bindQqBotUser,
+  resolveQqBotUserBindingCommandDecision,
+  unbindQqBotUser,
+} from "@/server/qqbot-user-bindings";
+import { extractQqBotCommandText } from "@/server/qqbot-command";
 
 export type QqBotSettings = {
   enabled: boolean;
@@ -324,10 +330,11 @@ export function resolveQqBotMessageCommandDecision(input: {
   if (!botUserId) {
     return { action: "skip", message, botUserId, reason: "未获取当前 Bot QQ，无法判断 @ 消息" };
   }
-  if (!isQqBotMentioned(message.text, botUserId)) {
-    return { action: "skip", message, botUserId, reason: `消息未 @ 当前 Bot QQ ${botUserId}` };
+  const commandText = extractQqBotCommandText(message.text, botUserId);
+  if (commandText === null) {
+    return { action: "skip", message, botUserId, reason: `消息未以 @ 当前 Bot QQ ${botUserId} 作为前缀` };
   }
-  if (!isQqBotRateCommand(message.text)) {
+  if (!isQqBotRateCommand(commandText)) {
     return { action: "skip", message, botUserId, reason: "未匹配到 QQBot 指令" };
   }
 
@@ -615,21 +622,101 @@ async function refreshRuntimeBotLoginInfo(connectionId: number, runtime: QqBotRu
   return loginInfo;
 }
 
-async function buildCurrentEnabledGroupRatesMessage(connectionId: number) {
+async function getSub2ApiClient(connectionId: number) {
   const connection = await db.connection.findUniqueOrThrow({ where: { id: connectionId } });
-  const sub2Client = new Sub2ApiAdminClient(connection.baseUrl, decrypt(connection.adminApiKey));
+  return {
+    connection,
+    sub2Client: new Sub2ApiAdminClient(connection.baseUrl, decrypt(connection.adminApiKey)),
+  };
+}
+
+async function buildCurrentEnabledGroupRatesMessage(connectionId: number) {
+  const { sub2Client } = await getSub2ApiClient(connectionId);
   const groups = await sub2Client.listGroups();
   return buildQqBotRateCommandReplyMessage({ groups });
 }
 
+function buildQqBotBindingReplyMessage(input: {
+  action: "bind" | "unbind";
+  qqUserId: string;
+  sub2Email: string;
+  sub2UserId: number;
+}) {
+  const prefix = input.action === "bind" ? "绑定成功" : "解绑成功";
+  return `${prefix}：QQ ${input.qqUserId} <-> Sub2 ${input.sub2Email} (#${input.sub2UserId})`;
+}
+
+async function sendQqBotReply(runtime: QqBotRuntime, message: QqBotIncomingMessage, content: string) {
+  if (message.messageType === "private") {
+    await runtime.client.sendPrivateMessage(message.userId, content);
+    runtime.pushLog("sendPrivateMessage", `私聊消息已发送到 QQ ${message.userId}`);
+    return;
+  }
+  if (message.messageType === "group") {
+    const reply = buildQqBotMentionReplyMessage(message.userId, content);
+    await runtime.client.sendGroupMessage(message.groupId, reply);
+    runtime.pushLog("sendGroupMessage", `群消息已发送到 QQ 群 ${message.groupId}`);
+    return;
+  }
+  throw new Error(`不支持的消息类型：${message.messageType || "unknown"}`);
+}
+
 async function handleQqBotIncomingMessageCommand(connectionId: number, runtime: QqBotRuntime, data: unknown) {
   const settings = await getQqBotSettings(connectionId);
+  const message = normalizeQqBotIncomingMessage(data);
+  const bindingDecision = resolveQqBotUserBindingCommandDecision({
+    settings: {
+      enabled: settings.enabled,
+    },
+    botUserId: runtime.botUserId,
+    message,
+  });
+
+  if (bindingDecision.action === "bind-user" || bindingDecision.action === "unbind-user" || bindingDecision.action === "invalid-bind") {
+    if (bindingDecision.action === "invalid-bind") {
+      runtime.pushLog("command", `QQBot 绑定指令格式错误：${bindingDecision.reason}`);
+      await sendQqBotReply(runtime, message, bindingDecision.reason);
+      rememberQqBotLogs(connectionId, runtime.logs);
+      return;
+    }
+
+    try {
+      const { sub2Client } = await getSub2ApiClient(connectionId);
+      const result = bindingDecision.action === "bind-user"
+        ? await bindQqBotUser({
+          db,
+          connectionId,
+          qqUserId: message.userId,
+          email: bindingDecision.email,
+          sub2Client,
+        })
+        : await unbindQqBotUser({
+          db,
+          connectionId,
+          qqUserId: message.userId,
+        });
+      const reply = buildQqBotBindingReplyMessage({
+        action: bindingDecision.action === "bind-user" ? "bind" : "unbind",
+        qqUserId: message.userId,
+        sub2Email: result.binding.sub2Email,
+        sub2UserId: result.binding.sub2UserId,
+      });
+      runtime.pushLog("command", `${bindingDecision.action === "bind-user" ? "绑定" : "解绑"} QQ ${message.userId} 成功`);
+      await sendQqBotReply(runtime, message, reply);
+    } catch (error) {
+      const errorText = errorMessage(error);
+      runtime.pushLog("command", `QQBot 绑定指令失败：${errorText}`);
+      await sendQqBotReply(runtime, message, errorText);
+    }
+    rememberQqBotLogs(connectionId, runtime.logs);
+    return;
+  }
+
   const decision = resolveQqBotMessageCommandDecision({
     settings,
     runtimeBotUserId: runtime.botUserId,
     data,
   });
-  const message = decision.message;
 
   if (decision.action === "skip") {
     runtime.pushLog("command", `跳过消息处理：${decision.reason}`);
@@ -639,10 +726,8 @@ async function handleQqBotIncomingMessageCommand(connectionId: number, runtime: 
 
   runtime.pushLog("command", `收到 QQ 群 ${message.groupId} 用户 ${message.userId} @Bot 指令`);
   const ratesMessage = await buildCurrentEnabledGroupRatesMessage(connectionId);
-  const reply = buildQqBotMentionReplyMessage(message.userId, ratesMessage);
   runtime.pushLog("command", `匹配分组倍率指令，回复 QQ 群 ${message.groupId} 用户 ${message.userId}`);
-  await runtime.client.sendGroupMessage(message.groupId, reply);
-  runtime.pushLog("sendGroupMessage", `群消息已发送到 QQ 群 ${message.groupId}`);
+  await sendQqBotReply(runtime, message, ratesMessage);
   rememberQqBotLogs(connectionId, runtime.logs);
 }
 

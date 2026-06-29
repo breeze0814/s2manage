@@ -35,6 +35,7 @@ model Connection {
   upstreamMonitorRules UpstreamMonitorRule[]
   upstreamMonitorResults UpstreamMonitorResult[]
   upstreamMonitorRateExclusions UpstreamMonitorRateExclusion[]
+  qqBotUserBindings QqBotUserBinding[]
   blCollectionSites BlCollectionSite[]
   blCollectionRuns BlCollectionRun[]
   blCollectedGroupRates BlCollectedGroupRate[]
@@ -50,6 +51,24 @@ model Setting {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("settings")
+}
+
+model QqBotUserBinding {
+  id           Int        @id @default(autoincrement())
+  connectionId Int        @map("connection_id")
+  qqUserId     String     @map("qq_user_id")
+  sub2UserId   Int        @map("sub2_user_id")
+  sub2Email    String     @map("sub2_email")
+  sub2Snapshot Json       @map("sub2_snapshot")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, qqUserId])
+  @@unique([connectionId, sub2UserId])
+  @@index([connectionId, qqUserId])
+  @@index([connectionId, sub2UserId])
+  @@map("qq_bot_user_bindings")
 }
 
 model BlSourceBinding {

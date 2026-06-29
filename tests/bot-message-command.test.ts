@@ -79,6 +79,21 @@ assert.equal(decision.message.groupId, "1035220036");
 assert.equal(decision.message.userId, "712127095");
 assert.equal(decision.message.text, "[CQ:at,qq=2431959203] 分组");
 
+assert.equal(
+  resolveQqBotMessageCommandDecision({
+    settings: enabledSettings,
+    runtimeBotUserId: "",
+    data: {
+      message_type: "group",
+      sub_type: "normal",
+      group_id: 1035220036,
+      user_id: 712127095,
+      raw_message: "先说话 [CQ:at,qq=2431959203] 分组",
+    },
+  }).action,
+  "skip",
+);
+
 assert.match(
   resolveQqBotMessageCommandDecision({
     settings: { ...enabledSettings, mentionKeywordEnabled: false },
