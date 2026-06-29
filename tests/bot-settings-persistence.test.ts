@@ -20,6 +20,8 @@ assert.match(serviceSource, /botUserId/, "Bot settings should persist the curren
 assert.match(serviceSource, /botLoginUpdatedAt/, "Bot settings should persist when the bot login info was refreshed");
 assert.match(routerSource, /get:\s*protectedProcedure/, "Bot settings router should expose a protected get endpoint");
 assert.match(routerSource, /save:\s*protectedProcedure/, "Bot settings router should expose a protected save endpoint");
+assert.match(routerSource, /inviteActivity:\s*protectedProcedure/, "Bot settings router should expose the invite activity endpoint");
+assert.match(routerSource, /setInviteActivityEnabled:\s*protectedProcedure/, "Bot settings router should expose the invite activity toggle endpoint");
 assert.match(routerSource, /connectionId:\s*z\.number\(\)\.int\(\)\.positive\(\)/, "Bot settings router should scope requests by connectionId");
 
 assert.match(panelSource, /trpc\.botSettings\.get\.useQuery/, "Bot panel should load saved QQBot settings");

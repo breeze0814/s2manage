@@ -10,6 +10,10 @@ import {
   resolveQqBotUserBindingCommandDecision,
   unbindQqBotUser,
 } from "@/server/qqbot-user-bindings";
+import {
+  handleQqBotAffiliateActivityCommand,
+  resolveQqBotAffiliateActivityCommandDecision,
+} from "@/server/qqbot-affiliate-activity";
 import { extractQqBotCommandText } from "@/server/qqbot-command";
 
 export type QqBotSettings = {
@@ -708,6 +712,31 @@ async function handleQqBotIncomingMessageCommand(connectionId: number, runtime: 
       runtime.pushLog("command", `QQBot 绑定指令失败：${errorText}`);
       await sendQqBotReply(runtime, message, errorText);
     }
+    rememberQqBotLogs(connectionId, runtime.logs);
+    return;
+  }
+
+  const inviteDecision = resolveQqBotAffiliateActivityCommandDecision({
+    settings: {
+      enabled: settings.enabled,
+      mentionKeywordEnabled: settings.mentionKeywordEnabled,
+      targetGroupId: settings.targetGroupId,
+    },
+    botUserId: runtime.botUserId,
+    message,
+  });
+
+  if (inviteDecision.action === "reply-invite") {
+    runtime.pushLog("command", `收到 QQ 群 ${message.groupId} 用户 ${message.userId} 邀请活动指令`);
+    const result = await handleQqBotAffiliateActivityCommand({
+      connectionId,
+      qqUserId: message.userId,
+      currentDate: new Date(),
+      sendReply: async (content) => sendQqBotReply(runtime, message, content),
+    });
+    runtime.pushLog("command", result.ok
+      ? `邀请活动统计完成：今日 ${result.summary.todayBoundInviteeCount}`
+      : `邀请活动指令失败：${result.reason}`);
     rememberQqBotLogs(connectionId, runtime.logs);
     return;
   }

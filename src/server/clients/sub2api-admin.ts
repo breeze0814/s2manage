@@ -1,6 +1,7 @@
 import { requestText } from "@/server/http";
 import { normalizeRateMultiplier } from "@/server/rates";
 import {
+  normalizeAffiliateInvitesResult,
   normalizeAccountModels,
   normalizeDataPayload,
   normalizeUserSearchResult,
@@ -12,6 +13,8 @@ import {
 import type {
   Sub2ApiAccountTestResult,
   Sub2ApiAccountWrite,
+  Sub2ApiAffiliateInvitesInput,
+  Sub2ApiAffiliateInvitesResult,
   Sub2ApiGroup,
   Sub2ApiGroupWrite,
   Sub2ApiRedeemCode,
@@ -25,6 +28,9 @@ export type {
   Sub2ApiAccountModel,
   Sub2ApiAccountTestResult,
   Sub2ApiAccountWrite,
+  Sub2ApiAffiliateInvite,
+  Sub2ApiAffiliateInvitesInput,
+  Sub2ApiAffiliateInvitesResult,
   Sub2ApiDataAccount,
   Sub2ApiDataPayload,
   Sub2ApiGroup,
@@ -98,6 +104,17 @@ export class Sub2ApiAdminClient {
       search: input.search ?? "",
     });
     return normalizeUserSearchResult(await this.request<unknown>("GET", `/users?${query}`));
+  }
+
+  async listAffiliateInvites(input: Sub2ApiAffiliateInvitesInput = {}): Promise<Sub2ApiAffiliateInvitesResult> {
+    const query = buildListQuery({
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 20,
+      search: input.search ?? "",
+      ...(input.startAt !== undefined ? { start_at: input.startAt } : {}),
+      ...(input.endAt !== undefined ? { end_at: input.endAt } : {}),
+    });
+    return normalizeAffiliateInvitesResult(await this.request<unknown>("GET", `/affiliates/invites?${query}`));
   }
 
   async generateRedeemCodes(input: Sub2ApiRedeemCodeGenerateInput): Promise<Sub2ApiRedeemCode[]> {

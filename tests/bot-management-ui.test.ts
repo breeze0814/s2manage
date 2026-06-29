@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const shellSource = readFileSync("src/components/app/shell.tsx", "utf8");
 const botPanelSource = readFileSync("src/components/app/bot-management-panel.tsx", "utf8");
+const botActivitySource = readFileSync("src/components/app/bot-activity-panel.tsx", "utf8");
 
 assert.match(shellSource, /BotManagementPanel/, "Shell should import and render the Bot management panel");
 assert.match(shellSource, /id:\s*"bot-management"/, "Shell should register a bot-management tab");
@@ -10,11 +11,17 @@ assert.match(shellSource, /label:\s*"Bot 管理"/, "Bot management tab should us
 
 assert.match(botPanelSource, /QQBot 管理/, "Bot panel should be focused on QQBot management");
 assert.match(botPanelSource, /compactBotLayout/, "Bot panel should use the compact layout variant");
+assert.match(botPanelSource, /BotActivityPanel/, "Bot panel should include the activity module");
 assert.match(botPanelSource, /botOpsLeftColumn/, "Bot panel should keep test and feature controls in the left column");
 assert.match(botPanelSource, /botLogsRightColumn/, "Bot panel should keep WebSocket logs in the right column");
 assert.match(botPanelSource, /useRef<HTMLDivElement>/, "Bot panel should keep a log container ref for automatic scrolling");
 assert.match(botPanelSource, /scrollTop\s*=\s*logContainer\.scrollHeight/, "Bot panel should auto-scroll logs to the newest entry");
 assert.match(botPanelSource, /基本配置/, "Bot panel should keep a compact basic configuration section");
+assert.match(botActivitySource, /活动/, "Bot activity panel should expose the activity section");
+assert.match(botActivitySource, /启用邀请活动/, "Bot activity panel should expose the invite activity switch");
+assert.match(botActivitySource, /邀请活动排行榜/, "Bot activity panel should render the leaderboard");
+assert.match(botActivitySource, /@bot 邀请/, "Bot activity panel should describe the invite command");
+assert.match(botActivitySource, /今日已绑定邀请关系/, "Bot activity panel should display today invite counts");
 assert.match(botPanelSource, /功能列表/, "Bot panel should present features as a simple enablement list");
 assert.match(botPanelSource, /测试分析/, "Bot panel should include the test analysis module");
 assert.match(botPanelSource, /WS 实时日志/, "Bot panel should include the WebSocket live log section");

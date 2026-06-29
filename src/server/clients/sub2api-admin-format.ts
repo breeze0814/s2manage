@@ -1,6 +1,7 @@
 import type {
   ApiEnvelope,
   ListEnvelope,
+  Sub2ApiAffiliateInvitesResult,
   Sub2ApiAccountModel,
   Sub2ApiAccountTestResult,
   Sub2ApiDataAccount,
@@ -171,6 +172,25 @@ export function normalizeUserSearchResult(payload: unknown): Sub2ApiUserSearchRe
 
   return {
     items: items as Sub2ApiUser[],
+    total: typeof nested.total === "number" ? nested.total : items.length,
+    page: typeof nested.page === "number" ? nested.page : 1,
+    page_size: typeof nested.page_size === "number" ? nested.page_size : items.length,
+    pages: typeof nested.pages === "number" ? nested.pages : 1,
+  };
+}
+
+export function normalizeAffiliateInvitesResult(payload: unknown): Sub2ApiAffiliateInvitesResult {
+  if (!payload || typeof payload !== "object") throw new Error("Unexpected invites list response shape");
+  const record = payload as Record<string, unknown>;
+  const nested = record.data && typeof record.data === "object" && !Array.isArray(record.data)
+    ? record.data as Record<string, unknown>
+    : record;
+  const items = Array.isArray(nested.items) ? nested.items : null;
+
+  if (!items) throw new Error("Unexpected invites list response shape");
+
+  return {
+    items: items as Sub2ApiAffiliateInvitesResult["items"],
     total: typeof nested.total === "number" ? nested.total : items.length,
     page: typeof nested.page === "number" ? nested.page : 1,
     page_size: typeof nested.page_size === "number" ? nested.page_size : items.length,

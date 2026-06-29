@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, ListChecks, PauseCircle, Play, Radio, Save, Send, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { BotActivityPanel } from "@/components/app/bot-activity-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -311,7 +312,7 @@ export function BotManagementPanel({ connectionId }: { connectionId: number }) {
             <Bot className="size-4 text-primary" />
             QQBot 管理
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{connectionLabel}，仅保留基础配置、功能开关、测试分析和 WS 实时日志。</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{connectionLabel}，包含活动、功能开关、测试分析和 WS 实时日志。</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Badge variant={draft.enabled ? "success" : "secondary"}>{draft.enabled ? "已启用" : "未启用"}</Badge>
@@ -378,6 +379,7 @@ export function BotManagementPanel({ connectionId }: { connectionId: number }) {
 
       <div className="grid gap-3 xl:grid-cols-[minmax(320px,0.9fr)_minmax(420px,1.1fr)]">
         <div className="space-y-3" data-layout="botOpsLeftColumn">
+          <BotActivityPanel connectionId={connectionId} />
           <Card>
             <CardHeader className="px-3 py-2.5">
               <CardTitle className="flex items-center gap-2 text-sm">

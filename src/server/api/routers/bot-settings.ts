@@ -11,6 +11,10 @@ import {
   stopQqBotWsListener,
   testQqBotWsConnection,
 } from "@/server/bot-settings";
+import {
+  loadQqBotAffiliateActivity,
+  setQqBotAffiliateActivityEnabled,
+} from "@/server/qqbot-affiliate-activity";
 
 const qqBotSettingsInput = z.object({
   connectionId: z.number().int().positive(),
@@ -82,4 +86,17 @@ export const botSettingsRouter = createTRPCRouter({
   groups: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive() }))
     .query(({ input }) => getQqBotGroups(input.connectionId)),
+  inviteActivity: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive(), qqUserId: z.string().trim().min(1).optional(), currentDate: z.date().optional() }))
+    .query(({ input }) => loadQqBotAffiliateActivity({
+      connectionId: input.connectionId,
+      qqUserId: input.qqUserId,
+      currentDate: input.currentDate,
+    })),
+  setInviteActivityEnabled: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive(), enabled: z.boolean() }))
+    .mutation(({ input }) => setQqBotAffiliateActivityEnabled({
+      connectionId: input.connectionId,
+      enabled: input.enabled,
+    })),
 });

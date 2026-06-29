@@ -69,6 +69,39 @@ void (async () => {
     };
   });
 
+  const inviteServer = await startServer(async (req) => {
+    assert.equal(req.method, "GET");
+    assert.equal(req.url, "/api/v1/admin/affiliates/invites?page=1&page_size=20&search=&start_at=2026-06-29&end_at=2026-06-30");
+    assert.equal(req.headers["x-api-key"], "test-key");
+    assert.equal(req.headers.accept, "application/json");
+    return {
+      status: 200,
+      body: {
+        code: 0,
+        message: "success",
+        data: {
+          items: [
+            {
+              inviter_id: 21,
+              inviter_email: "1198046748@qq.com",
+              inviter_username: "Log7",
+              invitee_id: 58,
+              invitee_email: "1824814636@qq.com",
+              invitee_username: "",
+              aff_code: "TX67JT22SLBF",
+              total_rebate: 46,
+              created_at: "2026-06-16T21:02:12.424521+08:00",
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20,
+          pages: 1,
+        },
+      },
+    };
+  });
+
   const redeemServer = await startServer(async (req) => {
     assert.equal(req.method, "POST");
     assert.equal(req.url, "/api/v1/admin/redeem-codes/generate");
@@ -103,6 +136,18 @@ void (async () => {
     assert.equal(users.pages, 1);
     assert.equal(users.items[0]?.email, "xhc0812320@gmail.com");
 
+    const inviteClient = new Sub2ApiAdminClient(inviteServer.baseUrl, "test-key");
+    const invites = await inviteClient.listAffiliateInvites({
+      page: 1,
+      pageSize: 20,
+      startAt: "2026-06-29",
+      endAt: "2026-06-30",
+    });
+
+    assert.equal(invites.total, 1);
+    assert.equal(invites.items[0]?.inviter_id, 21);
+    assert.equal(invites.items[0]?.invitee_id, 58);
+
     const redeemClient = new Sub2ApiAdminClient(redeemServer.baseUrl, "test-key");
     const redeemCodes = await redeemClient.generateRedeemCodes({ count: 1, type: "balance", value: 10 });
 
@@ -110,7 +155,7 @@ void (async () => {
     assert.equal(redeemCodes[0]?.code, "baba95a6ac42883bf7a5c97b45898be8");
     assert.equal(redeemCodes[0]?.value, 10);
   } finally {
-    await Promise.all([userServer.close(), redeemServer.close()]);
+    await Promise.all([userServer.close(), inviteServer.close(), redeemServer.close()]);
   }
 })().catch((error) => {
   setImmediate(() => {

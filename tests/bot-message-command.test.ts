@@ -8,6 +8,7 @@ import {
   normalizeQqBotIncomingMessage,
   resolveQqBotMessageCommandDecision,
 } from "../src/server/bot-settings";
+import { extractQqBotCommandText } from "../src/server/qqbot-command";
 
 const mentionedRateMessage = normalizeQqBotIncomingMessage({
   message_type: "group",
@@ -48,6 +49,8 @@ const normalMessage = normalizeQqBotIncomingMessage({
 
 assert.equal(isQqBotMentioned(normalMessage.text, "2431959203"), false);
 assert.equal(isQqBotRateCommand(normalMessage.text), false);
+assert.equal(extractQqBotCommandText("[CQ:at,qq=2431959203] 邀请", "2431959203"), "邀请");
+assert.equal(extractQqBotCommandText("[CQ:at,qq=2431959203] 解绑", "2431959203"), "解绑");
 
 assert.equal(
   buildQqBotMentionReplyMessage("712127095", "当前分组倍率\n- 默认分组：1"),
