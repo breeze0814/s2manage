@@ -22,7 +22,7 @@ function MobileRecord({ children, className }: MobileRecordProps) {
       data-motion="card"
       data-motion-hover="lift"
       className={cn(
-        "rounded-lg border border-white/[0.55] bg-white/[0.56] p-3 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.36),0_14px_40px_hsl(217_34%_35%/0.11)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.08]",
+        "rounded-lg border border-border/70 bg-white/[0.72] p-3 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.32),0_12px_34px_hsl(214_34%_24%/0.11)] backdrop-blur-2xl dark:border-white/10 dark:bg-secondary/[0.72]",
         className,
       )}
     >
@@ -49,7 +49,7 @@ function MobileRecordFields({ children, className }: MobileRecordProps) {
 
 function MobileRecordField({ label, value, className }: MobileRecordFieldProps) {
   return (
-    <div className={cn("min-w-0 rounded-md border border-border/60 bg-white/[0.34] px-2.5 py-2 dark:bg-white/[0.04]", className)}>
+    <div className={cn("min-w-0 rounded-md border border-border/60 bg-white/[0.48] px-2.5 py-2 dark:bg-white/[0.05]", className)}>
       <div className="text-[11px] leading-4 text-muted-foreground">{label}</div>
       <div className="mt-1 min-w-0 text-sm leading-5">{value}</div>
     </div>
@@ -57,7 +57,7 @@ function MobileRecordField({ label, value, className }: MobileRecordFieldProps) 
 }
 
 function MobileRecordSection({ children, className }: MobileRecordProps) {
-  return <div className={cn("mt-3 min-w-0 rounded-md border border-border/60 bg-white/[0.24] p-2.5 dark:bg-white/[0.03]", className)}>{children}</div>;
+  return <div className={cn("mt-3 min-w-0 rounded-md border border-border/60 bg-white/[0.42] p-2.5 dark:bg-white/[0.04]", className)}>{children}</div>;
 }
 
 function MobileRecordActions({ children, className }: MobileRecordProps) {

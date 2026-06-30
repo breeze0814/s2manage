@@ -1669,20 +1669,20 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
             <AlertTriangle className="mr-1 h-4 w-4" />
             余额预警
             <span
-              className={`ml-1.5 inline-block size-2 rounded-full ${balanceWebhookEnabled ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+              className={`ml-1.5 inline-block size-2 rounded-full ${balanceWebhookEnabled ? "bg-teal-500" : "bg-muted-foreground/40"}`}
               aria-hidden="true"
             />
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="border-violet-500/40 bg-violet-500/10 text-violet-700 hover:bg-violet-500/20 hover:text-violet-700 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-300 dark:hover:text-violet-200"
+            className="border-teal-500/40 bg-teal-500/10 text-teal-700 hover:bg-teal-500/20 hover:text-teal-700 dark:border-teal-400/30 dark:bg-teal-400/10 dark:text-teal-300 dark:hover:text-teal-200"
             onClick={() => setPriorityDialogOpen(true)}
           >
             <Power className="mr-1 h-4 w-4" />
             调度优先级
             <span
-              className={`ml-1.5 inline-block size-2 rounded-full ${priorityRuleEnabled ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+              className={`ml-1.5 inline-block size-2 rounded-full ${priorityRuleEnabled ? "bg-teal-500" : "bg-muted-foreground/40"}`}
               aria-hidden="true"
             />
           </Button>

@@ -135,6 +135,34 @@ export type Sub2ApiUserSearchResult = {
   pages: number;
 };
 
+export type Sub2ApiAffiliateInvite = {
+  inviter_id: number;
+  inviter_email: string;
+  inviter_username?: string | null;
+  invitee_id: number;
+  invitee_email: string;
+  invitee_username?: string | null;
+  aff_code?: string | null;
+  total_rebate?: number | null;
+  created_at?: string | null;
+};
+
+export type Sub2ApiAffiliateInvitesInput = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  startAt?: string;
+  endAt?: string;
+};
+
+export type Sub2ApiAffiliateInvitesResult = {
+  items: Sub2ApiAffiliateInvite[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+};
+
 export type Sub2ApiRedeemCode = {
   id: number;
   code: string;

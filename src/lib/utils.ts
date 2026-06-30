@@ -15,9 +15,9 @@ export function formatNumber(value: unknown) {
 export function rateTone(value: unknown) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "text-muted-foreground";
-  if (numeric <= 1) return "text-emerald-700 dark:text-emerald-300";
+  if (numeric <= 1) return "text-teal-700 dark:text-teal-300";
   if (numeric <= 2) return "text-amber-700 dark:text-amber-300";
-  return "text-rose-700 dark:text-rose-400";
+  return "text-red-700 dark:text-red-300";
 }
 
 export function siteTypeLabel(value?: string | null) {

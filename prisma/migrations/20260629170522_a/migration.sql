@@ -1,0 +1,23 @@
+-- RenameIndex
+ALTER INDEX "bl_collected_changes_connection_id_site_id_entity_type_field_cr" RENAME TO "bl_collected_changes_connection_id_site_id_entity_type_fiel_idx";
+
+-- RenameIndex
+ALTER INDEX "bl_collected_model_prices_connection_id_site_id_channel_name_pl" RENAME TO "bl_collected_model_prices_connection_id_site_id_channel_nam_idx";
+
+-- RenameIndex
+ALTER INDEX "bl_source_bindings_connection_id_target_type_target_id_source_s" RENAME TO "bl_source_bindings_connection_id_target_type_target_id_sour_key";
+
+-- RenameIndex
+ALTER INDEX "upstream_monitor_rate_exclusions_connection_id_account_id_activ" RENAME TO "upstream_monitor_rate_exclusions_connection_id_account_id_a_idx";
+
+-- RenameIndex
+ALTER INDEX "upstream_monitor_rate_exclusions_connection_id_account_id_group" RENAME TO "upstream_monitor_rate_exclusions_connection_id_account_id_g_key";
+
+-- RenameIndex
+ALTER INDEX "upstream_monitor_rate_exclusions_connection_id_active_group_id_" RENAME TO "upstream_monitor_rate_exclusions_connection_id_active_group_idx";
+
+-- RenameIndex
+ALTER INDEX "upstream_monitor_rate_exclusions_connection_id_source_site_id_s" RENAME TO "upstream_monitor_rate_exclusions_connection_id_source_site__idx";
+
+-- RenameIndex
+ALTER INDEX "upstream_monitor_results_connection_id_account_id_created_at_id" RENAME TO "upstream_monitor_results_connection_id_account_id_created_a_idx";

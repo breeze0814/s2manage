@@ -266,7 +266,7 @@ function ConnectionCard({
         {result ? (
           <span title={result.message} className="mt-1 shrink-0">
             {result.ok ? (
-              <CheckCircle2 className={cn("size-4", active ? "text-emerald-200" : "text-emerald-600 dark:text-emerald-300")} />
+              <CheckCircle2 className={cn("size-4", active ? "text-teal-100" : "text-teal-600 dark:text-teal-300")} />
             ) : (
               <XCircle className="size-4 text-destructive" />
             )}
@@ -586,8 +586,8 @@ export function Shell() {
                       className={cn(
                         "flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium shadow-[inset_0_1px_0_hsl(0_0%_100%/0.18)] backdrop-blur-xl transition-colors sm:h-10 sm:gap-2 sm:px-3 sm:text-sm",
                         activeTab === tab.id
-                          ? "border-primary/35 bg-primary/90 text-primary-foreground"
-                          : "border-transparent text-muted-foreground hover:border-white/40 hover:bg-white/[0.34] hover:text-foreground dark:hover:border-white/10 dark:hover:bg-white/8",
+                          ? "border-primary/45 bg-primary/90 text-primary-foreground"
+                          : "border-transparent text-muted-foreground hover:border-primary/25 hover:bg-primary/[0.1] hover:text-foreground dark:hover:border-primary/25 dark:hover:bg-primary/[0.08]",
                       )}
                       data-motion="control"
                       data-motion-hover="lift"

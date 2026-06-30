@@ -26,15 +26,15 @@ type ToastContextValue = {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 const variantStyles: Record<ToastVariant, string> = {
-  success: "border-emerald-500/20 bg-emerald-500/12 text-emerald-800 dark:text-emerald-100",
-  error: "border-destructive/25 bg-destructive/[0.12] text-destructive",
-  info: "border-white/[0.45] bg-white/[0.72] text-foreground dark:border-white/10 dark:bg-zinc-950/[0.72]",
+  success: "border-teal-400/[0.24] bg-teal-400/[0.12] text-teal-800 dark:text-teal-100",
+  error: "border-red-400/[0.28] bg-red-400/[0.13] text-red-700 dark:text-red-200",
+  info: "border-primary/[0.24] bg-primary/[0.12] text-foreground dark:text-teal-50",
 };
 
 const iconStyles: Record<ToastVariant, string> = {
-  success: "text-emerald-600 dark:text-emerald-300",
-  error: "text-destructive",
-  info: "text-primary",
+  success: "text-teal-600 dark:text-teal-300",
+  error: "text-red-600 dark:text-red-300",
+  info: "text-teal-600 dark:text-teal-300",
 };
 
 const variantIcons = {

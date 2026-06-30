@@ -289,7 +289,7 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             已选采集源
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/12 px-1.5 text-xs font-semibold text-primary tabular-nums">
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/[0.12] px-1.5 text-xs font-semibold text-primary tabular-nums">
               {value.length}
             </span>
           </div>

@@ -691,7 +691,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
                       <span
                         className={
                           site.lastStatus === "online"
-                            ? "text-emerald-700 dark:text-emerald-300"
+                            ? "text-teal-700 dark:text-teal-300"
                             : site.lastStatus === "offline"
                               ? "text-destructive"
                               : "text-muted-foreground"

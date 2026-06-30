@@ -4,63 +4,63 @@
 
 @layer base {
   :root {
-    --background: 210 28% 96%;
-    --foreground: 224 28% 10%;
+    --background: 210 42% 97%;
+    --foreground: 214 44% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 224 28% 10%;
+    --card-foreground: 214 44% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 28% 10%;
-    --primary: 218 85% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 24% 92%;
-    --secondary-foreground: 224 20% 16%;
-    --muted: 210 22% 91%;
-    --muted-foreground: 220 10% 43%;
-    --accent: 182 36% 90%;
-    --accent-foreground: 214 36% 18%;
-    --destructive: 0 72% 52%;
+    --popover-foreground: 214 44% 12%;
+    --primary: 188 73% 45%;
+    --primary-foreground: 215 43% 10%;
+    --secondary: 210 32% 91%;
+    --secondary-foreground: 214 42% 18%;
+    --muted: 210 30% 91%;
+    --muted-foreground: 214 14% 43%;
+    --accent: 186 62% 88%;
+    --accent-foreground: 214 42% 16%;
+    --destructive: 354 72% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 215 18% 78%;
-    --input: 215 18% 80%;
-    --ring: 218 85% 53%;
+    --border: 212 25% 76%;
+    --input: 212 25% 79%;
+    --ring: 188 73% 45%;
     --radius: 0.625rem;
-    --glass-surface: hsl(0 0% 100% / 0.62);
-    --glass-surface-strong: hsl(0 0% 100% / 0.78);
-    --glass-surface-soft: hsl(0 0% 100% / 0.42);
-    --glass-border: hsl(0 0% 100% / 0.64);
-    --glass-border-muted: hsl(215 20% 72% / 0.42);
-    --glass-shadow: 0 28px 90px hsl(217 34% 35% / 0.16);
-    --glass-shadow-soft: 0 14px 44px hsl(217 34% 35% / 0.1);
+    --glass-surface: hsl(0 0% 100% / 0.7);
+    --glass-surface-strong: hsl(0 0% 100% / 0.86);
+    --glass-surface-soft: hsl(210 42% 97% / 0.56);
+    --glass-border: hsl(212 34% 70% / 0.5);
+    --glass-border-muted: hsl(212 28% 68% / 0.38);
+    --glass-shadow: 0 24px 80px hsl(214 34% 24% / 0.14);
+    --glass-shadow-soft: 0 12px 38px hsl(214 34% 24% / 0.1);
     color-scheme: light;
   }
 
   .dark {
-    --background: 224 26% 9%;
-    --foreground: 210 22% 95%;
-    --card: 224 24% 13%;
-    --card-foreground: 210 22% 95%;
-    --popover: 224 24% 12%;
-    --popover-foreground: 210 22% 95%;
-    --primary: 211 90% 67%;
-    --primary-foreground: 224 28% 8%;
-    --secondary: 222 18% 18%;
-    --secondary-foreground: 210 18% 92%;
-    --muted: 222 18% 18%;
-    --muted-foreground: 218 12% 67%;
-    --accent: 184 30% 21%;
-    --accent-foreground: 188 50% 88%;
-    --destructive: 0 72% 56%;
+    --background: 215 43% 10%;
+    --foreground: 210 36% 94%;
+    --card: 216 35% 14%;
+    --card-foreground: 210 36% 94%;
+    --popover: 216 36% 12%;
+    --popover-foreground: 210 36% 94%;
+    --primary: 188 73% 45%;
+    --primary-foreground: 215 43% 8%;
+    --secondary: 214 32% 17%;
+    --secondary-foreground: 212 28% 90%;
+    --muted: 216 31% 16%;
+    --muted-foreground: 214 14% 62%;
+    --accent: 188 58% 20%;
+    --accent-foreground: 182 78% 84%;
+    --destructive: 354 72% 61%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 15% 29%;
-    --input: 220 15% 31%;
-    --ring: 211 90% 67%;
-    --glass-surface: hsl(224 24% 16% / 0.58);
-    --glass-surface-strong: hsl(224 24% 18% / 0.76);
-    --glass-surface-soft: hsl(224 24% 15% / 0.42);
-    --glass-border: hsl(0 0% 100% / 0.14);
-    --glass-border-muted: hsl(0 0% 100% / 0.1);
-    --glass-shadow: 0 34px 100px hsl(0 0% 0% / 0.42);
-    --glass-shadow-soft: 0 18px 58px hsl(0 0% 0% / 0.3);
+    --border: 214 26% 25%;
+    --input: 214 28% 23%;
+    --ring: 188 73% 45%;
+    --glass-surface: hsl(216 35% 14% / 0.78);
+    --glass-surface-strong: hsl(214 32% 17% / 0.88);
+    --glass-surface-soft: hsl(216 31% 16% / 0.58);
+    --glass-border: hsl(214 26% 30% / 0.72);
+    --glass-border-muted: hsl(214 22% 31% / 0.48);
+    --glass-shadow: 0 28px 88px hsl(214 55% 5% / 0.42);
+    --glass-shadow-soft: 0 16px 48px hsl(214 55% 5% / 0.3);
     color-scheme: dark;
   }
 
@@ -80,7 +80,7 @@
     letter-spacing: 0;
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
     background:
-      linear-gradient(135deg, hsl(208 46% 96%) 0%, hsl(180 26% 92%) 37%, hsl(224 32% 95%) 72%, hsl(0 0% 98%) 100%);
+      linear-gradient(180deg, hsl(210 42% 98%) 0%, hsl(208 46% 95%) 100%);
   }
 
   h1,
@@ -92,7 +92,7 @@
 
   .dark body {
     background:
-      linear-gradient(135deg, hsl(224 32% 9%) 0%, hsl(205 28% 13%) 38%, hsl(184 24% 11%) 70%, hsl(224 24% 8%) 100%);
+      linear-gradient(180deg, hsl(214 38% 14%) 0%, hsl(215 43% 10%) 36%, hsl(216 52% 7%) 100%);
   }
 
   body::before {
@@ -102,16 +102,14 @@
     inset: 0;
     z-index: -2;
     background-image:
-      linear-gradient(120deg, hsl(207 100% 76% / 0.34), transparent 38%),
-      linear-gradient(236deg, hsl(160 76% 80% / 0.28), transparent 42%),
-      linear-gradient(0deg, hsl(0 0% 100% / 0.5), transparent 60%);
+      linear-gradient(180deg, hsl(188 73% 45% / 0.16), transparent 32%),
+      linear-gradient(90deg, hsl(210 44% 92% / 0.5), transparent 58%);
   }
 
   .dark body::before {
     background-image:
-      linear-gradient(120deg, hsl(208 92% 55% / 0.18), transparent 40%),
-      linear-gradient(236deg, hsl(164 78% 46% / 0.12), transparent 44%),
-      linear-gradient(0deg, hsl(224 20% 20% / 0.2), transparent 62%);
+      linear-gradient(180deg, hsl(202 58% 19% / 0.62), transparent 34%),
+      linear-gradient(90deg, hsl(188 73% 45% / 0.08), transparent 42%);
   }
 
   body::after {
@@ -120,7 +118,7 @@
     position: fixed;
     inset: 0;
     z-index: -1;
-    opacity: 0.45;
+    opacity: 0.18;
     background-image: url("data:image/svg+xml,%3Csvg width='160' height='160' viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.22'/%3E%3Cpath d='M0 40h160M0 80h160M0 120h160M40 0v160M80 0v160M120 0v160' stroke='white' stroke-opacity='.26' stroke-width='.5'/%3E%3C/svg%3E");
     mix-blend-mode: soft-light;
   }
@@ -140,6 +138,44 @@
 @layer components {
   .app-shell {
     background: transparent;
+  }
+
+  .app-shell [data-motion="sidebar"] {
+    position: relative;
+    overflow: hidden;
+    border-color: hsl(214 26% 25% / 0.82);
+    background:
+      linear-gradient(180deg, hsl(217 38% 15% / 0.98), hsl(219 44% 11% / 0.98)),
+      hsl(219 44% 11%);
+  }
+
+  .app-shell [data-motion="sidebar"]::before {
+    pointer-events: none;
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(90deg, hsl(188 73% 45% / 0.1), transparent 28%),
+      linear-gradient(180deg, hsl(210 40% 24% / 0.28), transparent 42%);
+    opacity: 0.62;
+  }
+
+  .app-shell [data-motion="sidebar"] > * {
+    position: relative;
+  }
+
+  .app-shell [data-motion="header"],
+  .app-shell [data-motion="nav"] {
+    border-color: hsl(214 26% 25% / 0.82);
+    background: hsl(214 32% 17% / 0.82);
+  }
+
+  .app-shell [data-motion="nav"] button[class*="bg-primary"],
+  .app-shell [data-motion="card"][class*="bg-primary"] {
+    border-color: hsl(188 73% 45% / 0.42);
+    background: hsl(188 73% 45% / 0.95);
+    color: hsl(215 43% 8%);
+    box-shadow: 0 10px 26px hsl(188 73% 45% / 0.16);
   }
 
   .auth-screen {

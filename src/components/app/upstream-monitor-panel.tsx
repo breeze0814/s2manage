@@ -161,7 +161,7 @@ function monitorStatusLabel(status?: string | null) {
 }
 
 function timelineBarClass(status?: string | null) {
-  if (status === "success") return "bg-emerald-500";
+  if (status === "success") return "bg-teal-500";
   if (status === "failed" || status === "resume_failed") return "bg-red-500";
   if (status === "resumed") return "bg-amber-500";
   return "bg-muted";
@@ -517,7 +517,7 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
                       </Button>
                       {paused ? (
                         <Button variant="outline" size="icon" className="h-8 w-8" title="立即恢复调度" onClick={() => handleResume(row)} disabled={rowPending}>
-                          {resumePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 text-emerald-600" />}
+                          {resumePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 text-teal-600" />}
                         </Button>
                       ) : null}
                       <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" title="删除规则" onClick={() => handleDelete(row)} disabled={rowPending}>
@@ -620,7 +620,7 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
                           </Button>
                           {paused ? (
                             <Button variant="ghost" size="icon" className="h-8 w-8" title="立即恢复调度" onClick={() => handleResume(row)} disabled={rowPending}>
-                              {resumePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 text-emerald-600" />}
+                              {resumePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 text-teal-600" />}
                             </Button>
                           ) : null}
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除规则" onClick={() => handleDelete(row)} disabled={rowPending}>

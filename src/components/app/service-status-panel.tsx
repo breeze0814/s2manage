@@ -74,7 +74,7 @@ function StatusCard({
   tone: StatusTone;
 }) {
   const toneClass = tone === "ok"
-    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+    ? "bg-teal-500/10 text-teal-700 dark:text-teal-300"
     : tone === "warn"
       ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
       : "bg-destructive/10 text-destructive";

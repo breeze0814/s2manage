@@ -320,20 +320,20 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold">分组倍率管理</h2>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:items-center sm:justify-end [&>button]:flex-1 sm:[&>button]:flex-none">
-          <Button size="sm" onClick={openCreate} disabled={isSaving}>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:justify-end">
+          <Button size="sm" className="min-w-0" onClick={openCreate} disabled={isSaving}>
             <Plus className="mr-1 h-4 w-4" />
             新增分组
           </Button>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching}>
+          <Button variant="outline" size="sm" className="min-w-0" onClick={handleRefresh} disabled={isFetching}>
             {isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
             刷新
           </Button>
         </div>
       </div>
 
-      {listError ? <p className="text-sm text-destructive">加载分组失败：{listError.message}</p> : null}
-      {bindingData?.rateError ? <p className="text-sm text-destructive">加载采集生效倍率失败：{bindingData.rateError}</p> : null}
+      {listError ? <p className="text-sm text-destructive [overflow-wrap:anywhere]">加载分组失败：{listError.message}</p> : null}
+      {bindingData?.rateError ? <p className="text-sm text-destructive [overflow-wrap:anywhere]">加载采集生效倍率失败：{bindingData.rateError}</p> : null}
 
       <Card>
         <CardContent className="p-3 md:p-0">

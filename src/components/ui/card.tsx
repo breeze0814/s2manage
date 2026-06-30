@@ -5,7 +5,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border border-white/[0.55] bg-white/[0.56] text-card-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.36),0_18px_58px_hsl(217_34%_35%/0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.08] dark:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.08),0_22px_70px_hsl(0_0%_0%/0.32)]",
+      "rounded-lg border border-border/70 bg-white/[0.72] text-card-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.32),0_16px_46px_hsl(214_34%_24%/0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-secondary/[0.72] dark:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.06),0_18px_56px_hsl(214_55%_5%/0.3)]",
       className,
     )}
     data-motion="card"

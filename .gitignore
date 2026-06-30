@@ -23,6 +23,7 @@
 # local tooling
 .claude/
 .playwright-mcp/
+.superpowers/
 
 # debug
 npm-debug.log*
