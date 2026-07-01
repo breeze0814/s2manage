@@ -5,6 +5,7 @@ import { decrypt } from "@/server/crypto";
 import { db } from "@/server/db";
 import { getSecretSetting, getSetting, setSecretSetting, setSetting } from "@/server/settings";
 import { Sub2ApiAdminClient, type Sub2ApiGroup } from "@/server/clients/sub2api-admin";
+import { formatRateMultiplier } from "@/server/rates";
 import {
   bindQqBotUser,
   resolveQqBotUserBindingCommandDecision,
@@ -170,7 +171,7 @@ function isEnabledGroup(group: Sub2ApiGroup) {
 }
 
 function formatRate(value: unknown) {
-  return Number(finiteRate(value).toFixed(6)).toString();
+  return formatRateMultiplier(finiteRate(value));
 }
 
 export function buildEnabledGroupRatesMessage(input: { connectionName: string; groups: Sub2ApiGroup[]; template: string; generatedAt?: Date }) {

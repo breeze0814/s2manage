@@ -19,9 +19,9 @@ const targetMessage = buildQqBotTargetGroupRateChangeMessage({
 });
 
 assert.match(targetMessage, /^分组倍率已更新\n/);
-assert.match(targetMessage, /变动分组：余额 1 -> 1.1167/);
+assert.match(targetMessage, /变动分组：余额 1 -> 1.12/);
 assert.match(targetMessage, /当前分组倍率：/);
-assert.match(targetMessage, /- 余额：1.1167/);
+assert.match(targetMessage, /- 余额：1.12/);
 assert.match(targetMessage, /- VIP：0.9/);
 assert.doesNotMatch(targetMessage, /关闭分组/);
 assert.doesNotMatch(targetMessage, /来源/);

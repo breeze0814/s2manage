@@ -194,7 +194,7 @@ const commandReply = buildQqBotRateCommandReplyMessage({
 });
 
 assert.match(commandReply, /^当前分组倍率\n/);
-assert.match(commandReply, /- 余额：1.1167/);
+assert.match(commandReply, /- 余额：1.12/);
 assert.match(commandReply, /- team福利分组 不定时开放：0.1/);
 assert.doesNotMatch(commandReply, /关闭分组/);
 assert.doesNotMatch(commandReply, /^me$/m);

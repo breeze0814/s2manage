@@ -1,4 +1,4 @@
-export const RATE_DECIMAL_PLACES = 4;
+export const RATE_DECIMAL_PLACES = 2;
 const RATE_FACTOR = 10 ** RATE_DECIMAL_PLACES;
 
 export function normalizeRateMultiplier(value: number) {
