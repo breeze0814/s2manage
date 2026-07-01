@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 15074",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "next start -p 15074",
     "lint": "eslint src --ext .ts,.tsx --no-eslintrc --config .eslintrc.json --resolve-plugins-relative-to .",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",

@@ -29,7 +29,7 @@ function forwardedOrigin(request: NextRequest) {
   // Behind a reverse proxy, trust the forwarded host (it carries the public
   // host and, if non-standard, its port). On direct access there is no
   // forwarded host, so fall back to the request origin which already includes
-  // the listening port (e.g. :3000) — stripping it would redirect to port 80.
+  // the listening port (e.g. :15074) — stripping it would redirect to port 80.
   const forwardedHost = firstForwardedValue(request.headers.get("x-forwarded-host"));
   if (!forwardedHost) return request.nextUrl.origin;
 

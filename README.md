@@ -96,7 +96,7 @@ npm run dev
 开发服务默认监听：
 
 ```text
-http://127.0.0.1:3000
+http://127.0.0.1:15074
 ```
 
 端口可通过进程环境变量 `PORT` 修改，例如 `PORT=8080 npm run dev`。注意 Next.js 不会从 `.env` 文件读取 `PORT`，需在 shell、Docker 或 systemd 中作为进程环境变量传入。

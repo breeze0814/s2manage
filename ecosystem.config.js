@@ -19,7 +19,7 @@ module.exports = {
       // Next.js 不从 .env 读取 PORT，需作为进程级环境变量传入。
       env: {
         NODE_ENV: "production",
-        PORT: 3000,
+        PORT: 15074,
       },
       out_file: "logs/pm2-web-out.log",
       error_file: "logs/pm2-web-error.log",
