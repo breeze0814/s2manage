@@ -5,6 +5,11 @@ import { decrypt } from "@/server/crypto";
 import { collectDueBlCollectionSites } from "@/server/bl-collection/collector";
 import { applyBoundRateRules, applyBoundRateRulesForConnection } from "@/server/bl-rate-sync";
 import { publishRateChangeAnnouncements } from "@/server/announcement-rules";
+import {
+  sendQqBotSourceSiteChangePrivatePush,
+  sendQqBotTargetGroupRateChangePush,
+  type QqBotSourceSiteChangeMessageRow,
+} from "@/server/bot-settings";
 import { runDueUpstreamMonitors } from "@/server/upstream-monitor";
 import { normalizeWorkerIntervalSeconds, workerRuntimeSettingsFromRows } from "@/server/worker-settings";
 import { normalizeRateMultiplier, ratesEqual } from "@/server/rates";
@@ -50,6 +55,55 @@ async function logSync(connectionId: number, action: string, target: string, det
     await writeSyncLog(db, { connectionId, action, target, detail, status, error });
   } catch {
     // Keep the worker moving even if local log persistence fails.
+  }
+}
+
+async function notifySourceSiteChanges(connectionId: number, runIds?: number[]) {
+  const ids = Array.from(new Set((runIds ?? []).filter((id) => Number.isInteger(id) && id > 0)));
+  if (ids.length === 0) return;
+
+  const changes = await db.blCollectedChange.findMany({
+    where: { connectionId, runId: { in: ids } },
+    include: { site: { select: { name: true } } },
+    orderBy: [{ siteId: "asc" }, { id: "asc" }],
+  });
+  if (changes.length === 0) return;
+
+  const bySite = new Map<number, { siteName: string; rows: QqBotSourceSiteChangeMessageRow[] }>();
+  for (const change of changes) {
+    const current = bySite.get(change.siteId) ?? { siteName: change.site.name, rows: [] };
+    current.rows.push({
+      entityType: change.entityType,
+      entityKey: change.entityKey,
+      field: change.field,
+      oldValue: change.oldValue,
+      newValue: change.newValue,
+      changeType: change.changeType,
+    });
+    bySite.set(change.siteId, current);
+  }
+
+  for (const [siteId, siteChanges] of bySite) {
+    try {
+      const result = await sendQqBotSourceSiteChangePrivatePush({
+        connectionId,
+        siteName: siteChanges.siteName,
+        changes: siteChanges.rows,
+      });
+      if (!result.ok) continue;
+      await logSync(connectionId, "qqbot_source_site_change_private_push", `site:${siteId}`, {
+        siteId,
+        siteName: siteChanges.siteName,
+        changeCount: siteChanges.rows.length,
+      }, "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logSync(connectionId, "qqbot_source_site_change_private_push", `site:${siteId}`, {
+        siteId,
+        siteName: siteChanges.siteName,
+        changeCount: siteChanges.rows.length,
+      }, "failed", message);
+    }
   }
 }
 
@@ -213,6 +267,7 @@ async function runCycle() {
     }
     for (const [connectionId, sourceSiteIds] of successfulSiteIdsByConnection) {
       try {
+        await notifySourceSiteChanges(connectionId, successfulRunIdsByConnection.get(connectionId));
         const result = await applyBoundRateRulesForConnection({
           db,
           connectionId,
@@ -320,6 +375,21 @@ async function runCycle() {
         };
         try {
           await s2Client.updateGroupRateMultiplier(target.id, rateMultiplier);
+          const refreshedGroups = await s2Client.listGroups().catch(() =>
+            groupsList.map((group) => group.id === target.id ? { ...group, rate_multiplier: rateMultiplier } : group),
+          );
+          await sendQqBotTargetGroupRateChangePush({
+            connectionId: conn.id,
+            changedGroupName: target.name,
+            oldRate: currentRate,
+            newRate: rateMultiplier,
+            groups: refreshedGroups,
+          }).catch((error) => logSync(conn.id, "qqbot_target_group_rate_change_push", `group:${target.id}`, {
+            targetGroupId: target.id,
+            targetGroupName: target.name,
+            oldRate: currentRate,
+            newRate: rateMultiplier,
+          }, "failed", error instanceof Error ? error.message : String(error)));
           const changedAt = new Date(change.created_at);
           await publishRateChangeAnnouncements({
             db,

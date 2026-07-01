@@ -20,6 +20,8 @@ type QqBotDraft = {
   token: string;
   targetGroupId: string;
   rateChangePushEnabled: boolean;
+  sourceChangePrivatePushEnabled: boolean;
+  sourceChangePrivatePushQq: string;
   mentionKeywordEnabled: boolean;
   liveRateTestEnabled: boolean;
   keywordRules: string;
@@ -64,6 +66,8 @@ const defaultDraft: QqBotDraft = {
   token: "",
   targetGroupId: "",
   rateChangePushEnabled: false,
+  sourceChangePrivatePushEnabled: false,
+  sourceChangePrivatePushQq: "",
   mentionKeywordEnabled: false,
   liveRateTestEnabled: true,
   keywordRules: defaultKeywordRules,
@@ -398,10 +402,28 @@ export function BotManagementPanel({ connectionId }: { connectionId: number }) {
               <FeatureSwitch
                 id="qqbot-rate-change-push"
                 title="分组倍率变动推送"
-                description="采集后检测到分组倍率变化时发送说明。"
+                description="目标分组倍率更新后，将变动提示和当前全部分组倍率推送到目标群。"
                 checked={draft.rateChangePushEnabled}
                 onChange={(checked) => setField("rateChangePushEnabled", checked)}
               />
+              <FeatureSwitch
+                id="qqbot-source-change-private-push"
+                title="源站信息变动推送"
+                description="采集源站信息发生变化后，私聊发送源站变动明细。"
+                checked={draft.sourceChangePrivatePushEnabled}
+                onChange={(checked) => setField("sourceChangePrivatePushEnabled", checked)}
+              />
+              <div className="space-y-1.5 rounded-md border border-border/70 px-2.5 py-2">
+                <Label htmlFor="qqbot-source-change-private-qq" className="text-sm">
+                  源站变动通知 QQ
+                </Label>
+                <Input
+                  id="qqbot-source-change-private-qq"
+                  value={draft.sourceChangePrivatePushQq}
+                  placeholder="填写接收私聊通知的 QQ 号"
+                  onChange={(event) => setField("sourceChangePrivatePushQq", event.target.value)}
+                />
+              </div>
               <FeatureSwitch
                 id="qqbot-mention-keyword"
                 title="@ 关键字触发"

@@ -4,6 +4,7 @@ import { Sub2ApiAdminClient, type Sub2ApiGroup } from "@/server/clients/sub2api-
 import { evaluateGroupRateRule } from "@/server/bl-bindings";
 import { decrypt } from "@/server/crypto";
 import { publishRateChangeAnnouncements } from "@/server/announcement-rules";
+import { sendQqBotTargetGroupRateChangePush } from "@/server/bot-settings";
 import { ratesEqual } from "@/server/rates";
 import { writeSyncLog } from "@/server/sync-logs";
 import { getAccountId, getAccountName, getAccountRate } from "@/server/account-utils";
@@ -435,6 +436,21 @@ async function applyBoundGroupRules(input: {
       }
 
       await input.s2Client.updateGroupRateMultiplier(target.id, rateMultiplier);
+      const refreshedGroups = await input.s2Client.listGroups().catch(() =>
+        input.groups.map((group) => group.id === target.id ? { ...group, rate_multiplier: rateMultiplier } : group),
+      );
+      await sendQqBotTargetGroupRateChangePush({
+        connectionId: input.connectionId,
+        changedGroupName: target.name,
+        oldRate: latestRate,
+        newRate: rateMultiplier,
+        groups: refreshedGroups,
+      }).catch((error) => logSync(input.db, input.connectionId, "qqbot_target_group_rate_change_push", `group:${target.id}`, {
+        targetGroupId: target.id,
+        targetGroupName: target.name,
+        oldRate: latestRate,
+        newRate: rateMultiplier,
+      }, "failed", error instanceof Error ? error.message : String(error)));
       const firstSource = sources[0];
       await publishRateChangeAnnouncements({
         db: input.db,

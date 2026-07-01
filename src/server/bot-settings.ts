@@ -22,6 +22,8 @@ export type QqBotSettings = {
   token: string;
   targetGroupId: string;
   rateChangePushEnabled: boolean;
+  sourceChangePrivatePushEnabled: boolean;
+  sourceChangePrivatePushQq: string;
   mentionKeywordEnabled: boolean;
   liveRateTestEnabled: boolean;
   keywordRules: string;
@@ -62,6 +64,8 @@ export const defaultQqBotSettings: QqBotSettings = {
   token: "",
   targetGroupId: "",
   rateChangePushEnabled: false,
+  sourceChangePrivatePushEnabled: false,
+  sourceChangePrivatePushQq: "",
   mentionKeywordEnabled: false,
   liveRateTestEnabled: true,
   keywordRules: ["倍率：查询当前开启分组倍率", "最近变动：返回最近分组倍率变动"].join("\n"),
@@ -98,6 +102,8 @@ function normalizeStoredSettings(input: unknown): StoredQqBotSettings {
     wsUrl: stringValue(record.wsUrl, defaultQqBotSettings.wsUrl),
     targetGroupId: stringValue(record.targetGroupId, defaultQqBotSettings.targetGroupId),
     rateChangePushEnabled: booleanValue(record.rateChangePushEnabled, defaultQqBotSettings.rateChangePushEnabled),
+    sourceChangePrivatePushEnabled: booleanValue(record.sourceChangePrivatePushEnabled, defaultQqBotSettings.sourceChangePrivatePushEnabled),
+    sourceChangePrivatePushQq: stringValue(record.sourceChangePrivatePushQq, defaultQqBotSettings.sourceChangePrivatePushQq),
     mentionKeywordEnabled: booleanValue(record.mentionKeywordEnabled, defaultQqBotSettings.mentionKeywordEnabled),
     liveRateTestEnabled: booleanValue(record.liveRateTestEnabled, defaultQqBotSettings.liveRateTestEnabled),
     keywordRules: stringValue(record.keywordRules, defaultQqBotSettings.keywordRules),
@@ -193,6 +199,73 @@ export function buildQqBotRateCommandReplyMessage(input: {
     lines.push(...enabledGroups.map((group) => `- ${group.name}：${formatRate(group.rate_multiplier)}`));
   }
   lines.push(`更新时间：${generatedAt}`);
+  return lines.join("\n");
+}
+
+export function buildQqBotTargetGroupRateChangeMessage(input: {
+  changedGroupName: string;
+  oldRate?: number | null;
+  newRate: number;
+  groups: Sub2ApiGroup[];
+  generatedAt?: Date;
+}) {
+  const generatedAt = (input.generatedAt ?? new Date()).toLocaleString("zh-CN", { hour12: false });
+  const enabledGroups = input.groups.filter(isEnabledGroup);
+  const lines = [
+    "分组倍率已更新",
+    `变动分组：${input.changedGroupName} ${input.oldRate === null || input.oldRate === undefined ? "-" : formatRate(input.oldRate)} -> ${formatRate(input.newRate)}`,
+    "",
+    "当前分组倍率：",
+  ];
+
+  if (enabledGroups.length === 0) {
+    lines.push("暂无已开启分组");
+  } else {
+    lines.push(...enabledGroups.map((group) => `- ${group.name}：${formatRate(group.rate_multiplier)}`));
+  }
+
+  lines.push(`更新时间：${generatedAt}`);
+  return lines.join("\n");
+}
+
+export type QqBotSourceSiteChangeMessageRow = {
+  entityType: string;
+  entityKey: string;
+  field: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  changeType: string;
+  groupName?: string | null;
+};
+
+function sourceChangeLabel(change: QqBotSourceSiteChangeMessageRow) {
+  return change.groupName || change.entityKey;
+}
+
+function sourceChangeValue(value: string | null | undefined) {
+  return value === null || value === undefined || value === "" ? "-" : value;
+}
+
+export function buildQqBotSourceSiteChangePrivateMessage(input: {
+  siteName: string;
+  changes: QqBotSourceSiteChangeMessageRow[];
+  generatedAt?: Date;
+}) {
+  const generatedAt = (input.generatedAt ?? new Date()).toLocaleString("zh-CN", { hour12: false });
+  const lines = [
+    "源站信息变动",
+    `源站：${input.siteName}`,
+  ];
+
+  if (input.changes.length === 0) {
+    lines.push("暂无变动明细");
+  } else {
+    lines.push(...input.changes.map((change) =>
+      `- ${sourceChangeLabel(change)}：${change.field} ${sourceChangeValue(change.oldValue)} -> ${sourceChangeValue(change.newValue)}`,
+    ));
+  }
+
+  lines.push(`时间：${generatedAt}`);
   return lines.join("\n");
 }
 
@@ -1186,6 +1259,50 @@ export async function sendQqBotManualMessage(connectionId: number, input: { targ
     return sendQqBotPrivateMessage(connectionId, input.targetId, input.message);
   }
   return sendQqBotGroupMessage(connectionId, input.targetId, input.message);
+}
+
+export async function sendQqBotTargetGroupRateChangePush(input: {
+  connectionId: number;
+  changedGroupName: string;
+  oldRate?: number | null;
+  newRate: number;
+  groups: Sub2ApiGroup[];
+  generatedAt?: Date;
+}) {
+  const settings = await getQqBotSettings(input.connectionId);
+  if (!settings.enabled || !settings.rateChangePushEnabled || !settings.targetGroupId.trim()) {
+    return { ok: false as const, skipped: true as const, reason: "QQBot target group rate change push disabled or incomplete" };
+  }
+
+  const message = buildQqBotTargetGroupRateChangeMessage({
+    changedGroupName: input.changedGroupName,
+    oldRate: input.oldRate,
+    newRate: input.newRate,
+    groups: input.groups,
+    generatedAt: input.generatedAt,
+  });
+  const sent = await sendQqBotGroupMessage(input.connectionId, settings.targetGroupId, message);
+  return { ok: true as const, skipped: false as const, message, logs: sent.logs };
+}
+
+export async function sendQqBotSourceSiteChangePrivatePush(input: {
+  connectionId: number;
+  siteName: string;
+  changes: QqBotSourceSiteChangeMessageRow[];
+  generatedAt?: Date;
+}) {
+  const settings = await getQqBotSettings(input.connectionId);
+  if (!settings.enabled || !settings.sourceChangePrivatePushEnabled || !settings.sourceChangePrivatePushQq.trim()) {
+    return { ok: false as const, skipped: true as const, reason: "QQBot source site change private push disabled or incomplete" };
+  }
+
+  const message = buildQqBotSourceSiteChangePrivateMessage({
+    siteName: input.siteName,
+    changes: input.changes,
+    generatedAt: input.generatedAt,
+  });
+  const sent = await sendQqBotPrivateMessage(input.connectionId, settings.sourceChangePrivatePushQq, message);
+  return { ok: true as const, skipped: false as const, message, logs: sent.logs };
 }
 
 export async function sendQqBotTestAnalysis(connectionId: number) {
