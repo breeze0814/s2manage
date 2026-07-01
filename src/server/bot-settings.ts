@@ -305,17 +305,32 @@ export function buildQqBotMentionReplyMessage(userId: string, message: string) {
   return targetUserId ? `[CQ:at,qq=${targetUserId}] ${content}` : content;
 }
 
-export type QqBotMessageCommandDecision =
-  | { action: "reply-rate"; message: QqBotIncomingMessage; botUserId: string; reason?: never }
-  | { action: "skip"; message: QqBotIncomingMessage; botUserId: string; reason: string };
+export function buildQqBotHelpReplyMessage() {
+  return [
+    "可触发指令",
+    "@bot help / @bot 帮助：查看全部可触发指令",
+    "@bot 绑定 <邮箱>：绑定当前 QQ 与用户账号",
+    "@bot 解绑：解除当前 QQ 的用户绑定",
+    "@bot 邀请：查看邀请活动状态和邀请指令",
+    "@bot 我的邀请：查看你的今日和历史邀请数据",
+    "@bot 邀请排行：查看今日邀请排行榜",
+    "@bot 分组 / @bot 倍率 / @bot 当前分组倍率：查看当前已开启分组倍率",
+  ].join("\n");
+}
 
-export function resolveQqBotMessageCommandDecision(input: {
+type QqBotCommandPrefixDecision =
+  | { action: "matched"; message: QqBotIncomingMessage; botUserId: string; commandText: string; reason?: never }
+  | { action: "skip"; message: QqBotIncomingMessage; botUserId: string; commandText?: never; reason: string };
+
+function resolveQqBotCommandPrefix(input: {
   settings: Pick<QqBotSettings, "enabled" | "mentionKeywordEnabled" | "targetGroupId" | "botUserId">;
   runtimeBotUserId?: string;
-  data: unknown;
-}): QqBotMessageCommandDecision {
-  const message = normalizeQqBotIncomingMessage(input.data);
-  const botUserId = (input.runtimeBotUserId || input.settings.botUserId).trim();
+  data?: unknown;
+  message?: QqBotIncomingMessage;
+  botUserId?: string;
+}): QqBotCommandPrefixDecision {
+  const message = input.message ?? normalizeQqBotIncomingMessage(input.data);
+  const botUserId = (input.botUserId || input.runtimeBotUserId || input.settings.botUserId).trim();
 
   if (!input.settings.enabled) {
     return { action: "skip", message, botUserId, reason: "QQBot 未启用" };
@@ -334,15 +349,63 @@ export function resolveQqBotMessageCommandDecision(input: {
   if (!botUserId) {
     return { action: "skip", message, botUserId, reason: "未获取当前 Bot QQ，无法判断 @ 消息" };
   }
+
   const commandText = extractQqBotCommandText(message.text, botUserId);
   if (commandText === null) {
     return { action: "skip", message, botUserId, reason: `消息未以 @ 当前 Bot QQ ${botUserId} 作为前缀` };
   }
-  if (!isQqBotRateCommand(commandText)) {
-    return { action: "skip", message, botUserId, reason: "未匹配到 QQBot 指令" };
+
+  return { action: "matched", message, botUserId, commandText };
+}
+
+export type QqBotHelpCommandDecision =
+  | { action: "reply-help"; message: QqBotIncomingMessage; botUserId: string; reason?: never }
+  | { action: "skip"; message: QqBotIncomingMessage; botUserId: string; reason: string };
+
+export function resolveQqBotHelpCommandDecision(input: {
+  settings: Pick<QqBotSettings, "enabled" | "mentionKeywordEnabled" | "targetGroupId" | "botUserId">;
+  botUserId?: string;
+  message: QqBotIncomingMessage;
+}): QqBotHelpCommandDecision {
+  const prefixDecision = resolveQqBotCommandPrefix({
+    settings: input.settings,
+    botUserId: input.botUserId,
+    message: input.message,
+  });
+
+  if (prefixDecision.action === "skip") return prefixDecision;
+  if (!["help", "帮助"].includes(prefixDecision.commandText)) {
+    return {
+      action: "skip",
+      message: prefixDecision.message,
+      botUserId: prefixDecision.botUserId,
+      reason: "未匹配到 QQBot 帮助指令",
+    };
   }
 
-  return { action: "reply-rate", message, botUserId };
+  return { action: "reply-help", message: prefixDecision.message, botUserId: prefixDecision.botUserId };
+}
+
+export type QqBotMessageCommandDecision =
+  | { action: "reply-rate"; message: QqBotIncomingMessage; botUserId: string; reason?: never }
+  | { action: "skip"; message: QqBotIncomingMessage; botUserId: string; reason: string };
+
+export function resolveQqBotMessageCommandDecision(input: {
+  settings: Pick<QqBotSettings, "enabled" | "mentionKeywordEnabled" | "targetGroupId" | "botUserId">;
+  runtimeBotUserId?: string;
+  data: unknown;
+}): QqBotMessageCommandDecision {
+  const prefixDecision = resolveQqBotCommandPrefix({
+    settings: input.settings,
+    runtimeBotUserId: input.runtimeBotUserId,
+    data: input.data,
+  });
+  if (prefixDecision.action === "skip") return prefixDecision;
+  if (!isQqBotRateCommand(prefixDecision.commandText)) {
+    return { action: "skip", message: prefixDecision.message, botUserId: prefixDecision.botUserId, reason: "未匹配到 QQBot 指令" };
+  }
+
+  return { action: "reply-rate", message: prefixDecision.message, botUserId: prefixDecision.botUserId };
 }
 
 function messageCategoryLabel(messageType: string, subType: string) {
@@ -668,6 +731,24 @@ async function sendQqBotReply(runtime: QqBotRuntime, message: QqBotIncomingMessa
 async function handleQqBotIncomingMessageCommand(connectionId: number, runtime: QqBotRuntime, data: unknown) {
   const settings = await getQqBotSettings(connectionId);
   const message = normalizeQqBotIncomingMessage(data);
+  const helpDecision = resolveQqBotHelpCommandDecision({
+    settings: {
+      enabled: settings.enabled,
+      mentionKeywordEnabled: settings.mentionKeywordEnabled,
+      targetGroupId: settings.targetGroupId,
+      botUserId: settings.botUserId,
+    },
+    botUserId: runtime.botUserId,
+    message,
+  });
+
+  if (helpDecision.action === "reply-help") {
+    runtime.pushLog("command", `收到 QQ 群 ${message.groupId} 用户 ${message.userId} 帮助指令`);
+    await sendQqBotReply(runtime, message, buildQqBotHelpReplyMessage());
+    rememberQqBotLogs(connectionId, runtime.logs);
+    return;
+  }
+
   const bindingDecision = resolveQqBotUserBindingCommandDecision({
     settings: {
       enabled: settings.enabled,
@@ -727,15 +808,16 @@ async function handleQqBotIncomingMessageCommand(connectionId: number, runtime: 
   });
 
   if (inviteDecision.action === "reply-invite") {
-    runtime.pushLog("command", `收到 QQ 群 ${message.groupId} 用户 ${message.userId} 邀请活动指令`);
+    runtime.pushLog("command", `收到 QQ 群 ${message.groupId} 用户 ${message.userId} 邀请活动指令：${inviteDecision.command}`);
     const result = await handleQqBotAffiliateActivityCommand({
+      command: inviteDecision.command,
       connectionId,
       qqUserId: message.userId,
       currentDate: new Date(),
       sendReply: async (content) => sendQqBotReply(runtime, message, content),
     });
     runtime.pushLog("command", result.ok
-      ? `邀请活动统计完成：今日 ${result.summary.todayBoundInviteeCount}`
+      ? `邀请活动指令完成：${inviteDecision.command}`
       : `邀请活动指令失败：${result.reason}`);
     rememberQqBotLogs(connectionId, runtime.logs);
     return;

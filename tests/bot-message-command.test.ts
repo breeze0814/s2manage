@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  buildQqBotHelpReplyMessage,
   buildQqBotMentionReplyMessage,
   buildQqBotRateCommandReplyMessage,
+  resolveQqBotHelpCommandDecision,
   isQqBotMentioned,
   isQqBotRateCommand,
   isQqBotTargetGroupMessage,
@@ -63,6 +65,61 @@ const enabledSettings = {
   targetGroupId: "1035220036",
   botUserId: "2431959203",
 };
+
+const helpDecision = resolveQqBotHelpCommandDecision({
+  settings: enabledSettings,
+  botUserId: "2431959203",
+  message: normalizeQqBotIncomingMessage({
+    message_type: "group",
+    sub_type: "normal",
+    group_id: 1035220036,
+    user_id: 712127095,
+    raw_message: "[CQ:at,qq=2431959203] help",
+  }),
+});
+
+assert.equal(helpDecision.action, "reply-help");
+
+assert.equal(
+  resolveQqBotHelpCommandDecision({
+    settings: enabledSettings,
+    botUserId: "2431959203",
+    message: normalizeQqBotIncomingMessage({
+      message_type: "group",
+      sub_type: "normal",
+      group_id: 1035220036,
+      user_id: 712127095,
+      raw_message: "[CQ:at,qq=2431959203] 帮助",
+    }),
+  }).action,
+  "reply-help",
+);
+
+assert.equal(
+  resolveQqBotHelpCommandDecision({
+    settings: enabledSettings,
+    botUserId: "2431959203",
+    message: normalizeQqBotIncomingMessage({
+      message_type: "group",
+      sub_type: "normal",
+      group_id: 1035220036,
+      user_id: 712127095,
+      raw_message: "help",
+    }),
+  }).action,
+  "skip",
+);
+
+const helpReply = buildQqBotHelpReplyMessage();
+assert.match(helpReply, /^可触发指令\n/);
+assert.match(helpReply, /@bot help \/ @bot 帮助：查看全部可触发指令/);
+assert.match(helpReply, /@bot 绑定 <邮箱>：绑定当前 QQ 与用户账号/);
+assert.match(helpReply, /@bot 解绑：解除当前 QQ 的用户绑定/);
+assert.match(helpReply, /@bot 邀请：查看邀请活动状态和邀请指令/);
+assert.match(helpReply, /@bot 我的邀请：查看你的今日和历史邀请数据/);
+assert.match(helpReply, /@bot 邀请排行：查看今日邀请排行榜/);
+assert.match(helpReply, /@bot 分组 \/ @bot 倍率 \/ @bot 当前分组倍率：查看当前已开启分组倍率/);
+assert.doesNotMatch(helpReply, /Sub2/);
 
 const decision = resolveQqBotMessageCommandDecision({
   settings: enabledSettings,

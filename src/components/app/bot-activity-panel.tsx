@@ -68,7 +68,7 @@ export function BotActivityPanel({ connectionId }: { connectionId: number }) {
         <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
           <div className="min-w-0">
             <Label className="text-sm">启用邀请活动</Label>
-            <p className="text-xs text-muted-foreground">控制邀请统计和 @bot 邀请 指令。</p>
+            <p className="text-xs text-muted-foreground">控制邀请统计和邀请活动相关指令。</p>
           </div>
           <Switch checked={affiliateEnabled} onCheckedChange={handleToggle} disabled={saveAffiliateEnabled.isPending} />
         </div>
@@ -86,9 +86,11 @@ export function BotActivityPanel({ connectionId }: { connectionId: number }) {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">活动说明</Label>
-            <p className="rounded-md border border-border/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
-            指令：@bot 邀请
-          </p>
+            <div className="space-y-1 rounded-md border border-border/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
+              <div>指令：@bot 邀请</div>
+              <div>指令：@bot 我的邀请</div>
+              <div>指令：@bot 邀请排行</div>
+            </div>
         </div>
       </div>
       {inviteActivityQuery.error ? (
@@ -126,7 +128,7 @@ export function BotActivityPanel({ connectionId }: { connectionId: number }) {
         </div>
         <div className="flex items-start gap-2 rounded-md border border-dashed border-amber-400/40 bg-amber-500/10 px-2.5 py-2 text-xs leading-5 text-amber-700 dark:text-amber-300">
           <ToggleLeft className="mt-0.5 size-3.5 shrink-0" />
-          <span>@bot 邀请 会统计当前已绑定用户的邀请关系，并只展示当天排行榜前 10 名。</span>
+          <span>@bot 邀请 查看状态和指令，@bot 我的邀请 查看个人数据，@bot 邀请排行 展示当天排行榜前 10 名。</span>
         </div>
       </CardContent>
     </Card>

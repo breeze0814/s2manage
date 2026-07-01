@@ -29,6 +29,8 @@ type InviteLeaderboardEntry = {
   total: number;
 };
 
+export type QqBotAffiliateActivityCommand = "help" | "my-invite" | "leaderboard";
+
 export type QqBotAffiliateActivitySummary = {
   date: string;
   affiliateEnabled: boolean;
@@ -130,19 +132,39 @@ function formatLeaderboardLines(entries: InviteLeaderboardEntry[]) {
   return entries.map((entry, index) => `${index + 1}. ${entry.inviterUsername || entry.inviterEmail} (${entry.inviterEmail})：${entry.total}`);
 }
 
-function buildInviteReply(summary: QqBotAffiliateActivitySummary) {
+function buildInviteHelpReply(affiliateEnabled: boolean) {
+  return [
+    "邀请活动",
+    `邀请活动状态：${affiliateEnabled ? "已开启" : "未开启"}`,
+    "邀请相关指令：",
+    "@bot 邀请：查看邀请活动状态和可用指令",
+    "@bot 我的邀请：查看你的今日和历史邀请数据",
+    "@bot 邀请排行：查看今日邀请排行榜",
+  ].join("\n");
+}
+
+function buildMyInviteReply(summary: QqBotAffiliateActivitySummary) {
   const lines = [
-    "邀请活动统计",
+    "我的邀请",
     `统计日期：${summary.date}`,
     `邀请活动状态：${summary.affiliateEnabled ? "已开启" : "未开启"}`,
-    `今日已绑定邀请关系：${summary.todayBoundInviteeCount}`,
   ];
 
   if (summary.viewer) {
-    lines.push(`你的邀请人数：总计 ${summary.viewer.totalBoundInvitees}，今日 ${summary.viewer.todayBoundInvitees}`);
+    lines.push(`今日邀请数据：${summary.viewer.todayBoundInvitees}`);
+    lines.push(`历史邀请数据：${summary.viewer.totalBoundInvitees}`);
   }
 
-  lines.push("邀请活动排行榜：");
+  return lines.join("\n");
+}
+
+function buildInviteLeaderboardReply(summary: QqBotAffiliateActivitySummary) {
+  const lines = [
+    "今日邀请排行",
+    `统计日期：${summary.date}`,
+    `今日已绑定邀请关系：${summary.todayBoundInviteeCount}`,
+  ];
+
   lines.push(...formatLeaderboardLines(summary.leaderboard));
   return lines.join("\n");
 }
@@ -161,21 +183,28 @@ export function resolveQqBotAffiliateActivityCommandDecision(input: {
 
   const commandText = extractQqBotCommandText(input.message.text, botUserId);
   if (commandText === null) return { action: "skip" as const, reason: `消息未以 @ 当前 Bot QQ ${botUserId} 作为前缀` };
-  if (commandText !== "邀请") return { action: "skip" as const, reason: "未匹配到 QQBot 邀请活动指令" };
+  const commandByText: Record<string, QqBotAffiliateActivityCommand> = {
+    邀请: "help",
+    我的邀请: "my-invite",
+    邀请排行: "leaderboard",
+  };
+  const command = commandByText[commandText];
+  if (!command) return { action: "skip" as const, reason: "未匹配到 QQBot 邀请活动指令" };
 
-  return { action: "reply-invite" as const };
+  return { action: "reply-invite" as const, command };
 }
 
 export async function loadQqBotAffiliateActivity(input: {
   connectionId: number;
   qqUserId?: string;
+  requireViewerBinding?: boolean;
   currentDate?: Date;
   dbClient?: QqBotAffiliateActivityDb;
   sub2Client?: QqBotAffiliateActivitySub2Client;
 }) {
   const dbClient = input.dbClient ?? db;
   const viewerBinding = input.qqUserId ? await ensureBinding(dbClient, input.connectionId, input.qqUserId) : null;
-  if (input.qqUserId && !viewerBinding) throw new Error("请先绑定 Sub2 用户后再查询邀请活动");
+  if (input.qqUserId && input.requireViewerBinding !== false && !viewerBinding) throw new Error("请先绑定 Sub2 用户后再查询邀请活动");
 
   let sub2Client = input.sub2Client;
   if (!sub2Client) {
@@ -220,6 +249,7 @@ export async function loadQqBotAffiliateActivity(input: {
 }
 
 export async function handleQqBotAffiliateActivityCommand(input: {
+  command?: QqBotAffiliateActivityCommand;
   connectionId: number;
   qqUserId: string;
   dbClient?: QqBotAffiliateActivityDb;
@@ -236,6 +266,13 @@ export async function handleQqBotAffiliateActivityCommand(input: {
   }
 
   const settings = await sub2Client.getSettings();
+  const command = input.command ?? "my-invite";
+  if (command === "help") {
+    const message = buildInviteHelpReply(Boolean(settings.affiliate_enabled));
+    await input.sendReply(message);
+    return { ok: true as const };
+  }
+
   if (!settings.affiliate_enabled) {
     const message = "邀请活动未开启";
     await input.sendReply(message);
@@ -246,11 +283,14 @@ export async function handleQqBotAffiliateActivityCommand(input: {
     const result = await loadQqBotAffiliateActivity({
       connectionId: input.connectionId,
       qqUserId: input.qqUserId,
+      requireViewerBinding: command === "my-invite",
       currentDate: input.currentDate,
       dbClient,
       sub2Client,
     });
-    const message = buildInviteReply(result.summary);
+    const message = command === "leaderboard"
+      ? buildInviteLeaderboardReply(result.summary)
+      : buildMyInviteReply(result.summary);
     await input.sendReply(message);
     return { ok: true as const, summary: result.summary };
   } catch (error) {

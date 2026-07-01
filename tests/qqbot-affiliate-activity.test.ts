@@ -42,14 +42,44 @@ const inviteCommandMessage = normalizeQqBotIncomingMessage({
   raw_message: "[CQ:at,qq=2431959203] 邀请",
 });
 
-assert.equal(
-  resolveQqBotAffiliateActivityCommandDecision({
-    settings: { enabled: true, mentionKeywordEnabled: true, targetGroupId: "1035220036" },
-    botUserId: "2431959203",
-    message: inviteCommandMessage,
-  }).action,
-  "reply-invite",
-);
+const inviteDecision = resolveQqBotAffiliateActivityCommandDecision({
+  settings: { enabled: true, mentionKeywordEnabled: true, targetGroupId: "1035220036" },
+  botUserId: "2431959203",
+  message: inviteCommandMessage,
+});
+
+assert.equal(inviteDecision.action, "reply-invite");
+assert.equal(inviteDecision.command, "help");
+
+const myInviteDecision = resolveQqBotAffiliateActivityCommandDecision({
+  settings: { enabled: true, mentionKeywordEnabled: true, targetGroupId: "1035220036" },
+  botUserId: "2431959203",
+  message: normalizeQqBotIncomingMessage({
+    message_type: "group",
+    sub_type: "normal",
+    group_id: 1035220036,
+    user_id: 712127095,
+    raw_message: "[CQ:at,qq=2431959203] 我的邀请",
+  }),
+});
+
+assert.equal(myInviteDecision.action, "reply-invite");
+assert.equal(myInviteDecision.command, "my-invite");
+
+const inviteLeaderboardDecision = resolveQqBotAffiliateActivityCommandDecision({
+  settings: { enabled: true, mentionKeywordEnabled: true, targetGroupId: "1035220036" },
+  botUserId: "2431959203",
+  message: normalizeQqBotIncomingMessage({
+    message_type: "group",
+    sub_type: "normal",
+    group_id: 1035220036,
+    user_id: 712127095,
+    raw_message: "[CQ:at,qq=2431959203] 邀请排行",
+  }),
+});
+
+assert.equal(inviteLeaderboardDecision.action, "reply-invite");
+assert.equal(inviteLeaderboardDecision.command, "leaderboard");
 
 assert.equal(
   resolveQqBotAffiliateActivityCommandDecision({
@@ -179,6 +209,7 @@ void (async () => {
 
   const replyMessages: string[] = [];
   const result = await handleQqBotAffiliateActivityCommand({
+    command: "my-invite",
     connectionId: 1,
     qqUserId: "712127095",
     dbClient: db as never,
@@ -212,13 +243,71 @@ void (async () => {
   assert.equal(result.summary?.viewer?.totalBoundInvitees, 3);
   assert.equal(result.summary?.viewer?.todayBoundInvitees, 3);
   assert.equal(replyMessages.length, 1);
-  assert.match(replyMessages[0] ?? "", /邀请活动统计/);
-  assert.match(replyMessages[0] ?? "", /你的邀请人数：总计 3，今日 3/);
-  assert.match(replyMessages[0] ?? "", /1\. Log7 \(1198046748@qq.com\)：3/);
-  assert.match(replyMessages[0] ?? "", /2\. Alice \(2222222222@qq.com\)：2/);
+  assert.match(replyMessages[0] ?? "", /我的邀请/);
+  assert.match(replyMessages[0] ?? "", /今日邀请数据：3/);
+  assert.match(replyMessages[0] ?? "", /历史邀请数据：3/);
+  assert.doesNotMatch(replyMessages[0] ?? "", /邀请活动排行榜/);
+
+  const leaderboardReplies: string[] = [];
+  const leaderboardResult = await handleQqBotAffiliateActivityCommand({
+    command: "leaderboard",
+    connectionId: 1,
+    qqUserId: "999999999",
+    dbClient: db as never,
+    sub2Client: {
+      async getSettings() {
+        return { affiliate_enabled: true };
+      },
+      async listAffiliateInvites(input: Record<string, unknown>) {
+        if (input.startAt === "2026-06-29" && input.endAt === "2026-06-30") {
+          return { items: dayInvites, total: dayInvites.length, page: 1, page_size: 100, pages: 1 };
+        }
+        return { items: allTimeInvites, total: allTimeInvites.length, page: 1, page_size: 100, pages: 1 };
+      },
+    } as never,
+    sendReply: async (message: string) => {
+      leaderboardReplies.push(message);
+    },
+    currentDate: new Date("2026-06-29T12:00:00+08:00"),
+  });
+
+  assert.equal(leaderboardResult.ok, true);
+  assert.equal(leaderboardReplies.length, 1);
+  assert.match(leaderboardReplies[0] ?? "", /今日邀请排行/);
+  assert.match(leaderboardReplies[0] ?? "", /1\. Log7 \(1198046748@qq.com\)：3/);
+  assert.match(leaderboardReplies[0] ?? "", /2\. Alice \(2222222222@qq.com\)：2/);
+  assert.doesNotMatch(leaderboardReplies[0] ?? "", /我的邀请/);
+
+  const helpReplies: string[] = [];
+  const helpResult = await handleQqBotAffiliateActivityCommand({
+    command: "help",
+    connectionId: 1,
+    qqUserId: "999999999",
+    dbClient: db as never,
+    sub2Client: {
+      async getSettings() {
+        return { affiliate_enabled: false };
+      },
+      async listAffiliateInvites() {
+        throw new Error("should not query invites for help");
+      },
+    } as never,
+    sendReply: async (message: string) => {
+      helpReplies.push(message);
+    },
+    currentDate: new Date("2026-06-29T12:00:00+08:00"),
+  });
+
+  assert.equal(helpResult.ok, true);
+  assert.equal(helpReplies.length, 1);
+  assert.match(helpReplies[0] ?? "", /邀请活动状态：未开启/);
+  assert.match(helpReplies[0] ?? "", /@bot 邀请：查看邀请活动状态和可用指令/);
+  assert.match(helpReplies[0] ?? "", /@bot 我的邀请：查看你的今日和历史邀请数据/);
+  assert.match(helpReplies[0] ?? "", /@bot 邀请排行：查看今日邀请排行榜/);
 
   const disabledReplies: string[] = [];
   const disabledResult = await handleQqBotAffiliateActivityCommand({
+    command: "my-invite",
     connectionId: 1,
     qqUserId: "712127095",
     dbClient: db as never,
@@ -241,6 +330,7 @@ void (async () => {
 
   const unboundReplies: string[] = [];
   const unboundResult = await handleQqBotAffiliateActivityCommand({
+    command: "my-invite",
     connectionId: 1,
     qqUserId: "999999999",
     dbClient: db as never,
