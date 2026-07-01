@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
 const appRouterSource = readFileSync("src/server/api/routers/_app.ts", "utf8");
-const panelSource = readFileSync("src/components/app/bot-management-panel.tsx", "utf8");
+const panelSource = [
+  readFileSync("src/components/app/bot-management-panel.tsx", "utf8"),
+  readFileSync("src/components/app/bot-management-panel-parts.tsx", "utf8"),
+].join("\n");
 
 assert.match(appRouterSource, /botSettingsRouter/, "App router should import the bot settings router");
 assert.match(appRouterSource, /botSettings:\s*botSettingsRouter/, "App router should register botSettings");

@@ -41,6 +41,13 @@ const inviteCommandMessage = normalizeQqBotIncomingMessage({
   user_id: 712127095,
   raw_message: "[CQ:at,qq=2431959203] 邀请",
 });
+const otherGroupInviteCommandMessage = normalizeQqBotIncomingMessage({
+  message_type: "group",
+  sub_type: "normal",
+  group_id: 10000,
+  user_id: 712127095,
+  raw_message: "[CQ:at,qq=2431959203] 邀请",
+});
 
 const inviteDecision = resolveQqBotAffiliateActivityCommandDecision({
   settings: { enabled: true, mentionKeywordEnabled: true, targetGroupId: "1035220036" },
@@ -88,6 +95,15 @@ assert.equal(
     message: inviteCommandMessage,
   }).action,
   "skip",
+);
+
+assert.match(
+  resolveQqBotAffiliateActivityCommandDecision({
+    settings: { enabled: true, mentionKeywordEnabled: true, targetGroupId: "1035220036" },
+    botUserId: "2431959203",
+    message: otherGroupInviteCommandMessage,
+  }).reason ?? "",
+  /非目标 QQ 群消息/,
 );
 
 void (async () => {
@@ -192,21 +208,6 @@ void (async () => {
     },
   ];
 
-  const allTimeInvites = [
-    ...dayInvites,
-    {
-      inviter_id: 21,
-      inviter_email: "1198046748@qq.com",
-      inviter_username: "Log7",
-      invitee_id: 65,
-      invitee_email: "daily-bound@example.com",
-      invitee_username: "",
-      aff_code: "A1",
-      total_rebate: 10,
-      created_at: "2026-06-28T09:00:00+08:00",
-    },
-  ];
-
   const replyMessages: string[] = [];
   const result = await handleQqBotAffiliateActivityCommand({
     command: "my-invite",
@@ -215,13 +216,33 @@ void (async () => {
     dbClient: db as never,
     sub2Client: {
       async getSettings() {
-        return { affiliate_enabled: true };
+        return {
+          affiliate_enabled: true,
+          invite_activity_active_reward_amount: 10,
+          invite_activity_inactive_reward_amount: 2,
+        };
       },
       async listAffiliateInvites(input: Record<string, unknown>) {
-        if (input.startAt === "2026-06-29" && input.endAt === "2026-06-30") {
+        if (input.startAt === "2026-06-29" && input.endAt === "2026-07-02") {
           return { items: dayInvites, total: dayInvites.length, page: 1, page_size: 100, pages: 1 };
         }
-        return { items: allTimeInvites, total: allTimeInvites.length, page: 1, page_size: 100, pages: 1 };
+        throw new Error(`unexpected invite period ${input.startAt}-${input.endAt}`);
+      },
+      async searchUsers() {
+        return {
+          items: [
+            { id: 58, email: "1824814636@qq.com", balance: 2, last_used_at: "2026-06-29T12:00:00+08:00" },
+            { id: 59, email: "1824814637@qq.com", balance: 2, last_used_at: "2026-06-28T23:59:59+08:00" },
+            { id: 60, email: "1824814638@qq.com", balance: 2, last_used_at: null },
+            { id: 61, email: "1824814639@qq.com", balance: 3, last_used_at: "2026-07-01T10:00:00+08:00" },
+            { id: 62, email: "1824814640@qq.com", balance: 0, last_used_at: "2026-06-30T10:00:00+08:00" },
+            { id: 63, email: "1824814641@qq.com", balance: 1, last_used_at: "2026-06-30T10:00:00+08:00" },
+          ],
+          total: 6,
+          page: 1,
+          page_size: 100,
+          pages: 1,
+        };
       },
     } as never,
     sendReply: async (message: string) => {
@@ -232,20 +253,29 @@ void (async () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.summary?.date, "2026-06-29");
-  assert.equal(result.summary?.todayBoundInviteeCount, 6);
+  assert.equal(result.summary?.period.endDate, "2026-07-02");
+  assert.equal(result.summary?.periodInviteeCount, 7);
+  assert.equal(result.summary?.activeInviteeCount, 3);
+  assert.equal(result.summary?.inactiveInviteeCount, 4);
+  assert.equal(result.summary?.missingUserCount, 1);
   assert.equal(result.summary?.leaderboard[0]?.inviterId, 21);
   assert.equal(result.summary?.leaderboard[0]?.total, 3);
+  assert.equal(result.summary?.leaderboard[0]?.activeInviteeCount, 1);
+  assert.equal(result.summary?.leaderboard[0]?.inactiveInviteeCount, 2);
+  assert.equal(result.summary?.leaderboard[0]?.rewardAmount, 14);
   assert.equal(result.summary?.leaderboard[1]?.inviterId, 22);
   assert.equal(result.summary?.leaderboard[1]?.total, 2);
   assert.equal(result.summary?.leaderboard[2]?.inviterId, 23);
   assert.equal(result.summary?.leaderboard[2]?.total, 1);
   assert.equal(result.summary?.viewer?.sub2UserId, 21);
-  assert.equal(result.summary?.viewer?.totalBoundInvitees, 3);
-  assert.equal(result.summary?.viewer?.todayBoundInvitees, 3);
+  assert.equal(result.summary?.viewer?.totalInvitees, 3);
+  assert.equal(result.summary?.viewer?.activeInviteeCount, 1);
+  assert.equal(result.summary?.viewer?.inactiveInviteeCount, 2);
+  assert.equal(result.summary?.viewer?.rewardAmount, 14);
   assert.equal(replyMessages.length, 1);
   assert.match(replyMessages[0] ?? "", /我的邀请/);
-  assert.match(replyMessages[0] ?? "", /今日邀请数据：3/);
-  assert.match(replyMessages[0] ?? "", /历史邀请数据：3/);
+  assert.match(replyMessages[0] ?? "", /三日周期：2026-06-29 至 2026-07-02/);
+  assert.match(replyMessages[0] ?? "", /你的本期邀请：总计 3，活跃 1，非活跃 2，奖励 14/);
   assert.doesNotMatch(replyMessages[0] ?? "", /邀请活动排行榜/);
 
   const leaderboardReplies: string[] = [];
@@ -256,13 +286,33 @@ void (async () => {
     dbClient: db as never,
     sub2Client: {
       async getSettings() {
-        return { affiliate_enabled: true };
+        return {
+          affiliate_enabled: true,
+          invite_activity_active_reward_amount: 10,
+          invite_activity_inactive_reward_amount: 2,
+        };
       },
       async listAffiliateInvites(input: Record<string, unknown>) {
-        if (input.startAt === "2026-06-29" && input.endAt === "2026-06-30") {
+        if (input.startAt === "2026-06-29" && input.endAt === "2026-07-02") {
           return { items: dayInvites, total: dayInvites.length, page: 1, page_size: 100, pages: 1 };
         }
-        return { items: allTimeInvites, total: allTimeInvites.length, page: 1, page_size: 100, pages: 1 };
+        throw new Error(`unexpected invite period ${input.startAt}-${input.endAt}`);
+      },
+      async searchUsers() {
+        return {
+          items: [
+            { id: 58, email: "1824814636@qq.com", balance: 2, last_used_at: "2026-06-29T12:00:00+08:00" },
+            { id: 59, email: "1824814637@qq.com", balance: 2, last_used_at: "2026-06-28T23:59:59+08:00" },
+            { id: 60, email: "1824814638@qq.com", balance: 2, last_used_at: null },
+            { id: 61, email: "1824814639@qq.com", balance: 3, last_used_at: "2026-07-01T10:00:00+08:00" },
+            { id: 62, email: "1824814640@qq.com", balance: 0, last_used_at: "2026-06-30T10:00:00+08:00" },
+            { id: 63, email: "1824814641@qq.com", balance: 1, last_used_at: "2026-06-30T10:00:00+08:00" },
+          ],
+          total: 6,
+          page: 1,
+          page_size: 100,
+          pages: 1,
+        };
       },
     } as never,
     sendReply: async (message: string) => {
@@ -273,9 +323,10 @@ void (async () => {
 
   assert.equal(leaderboardResult.ok, true);
   assert.equal(leaderboardReplies.length, 1);
-  assert.match(leaderboardReplies[0] ?? "", /今日邀请排行/);
-  assert.match(leaderboardReplies[0] ?? "", /1\. Log7 \(1198046748@qq.com\)：3/);
-  assert.match(leaderboardReplies[0] ?? "", /2\. Alice \(2222222222@qq.com\)：2/);
+  assert.match(leaderboardReplies[0] ?? "", /邀请活动排行榜/);
+  assert.match(leaderboardReplies[0] ?? "", /三日周期：2026-06-29 至 2026-07-02/);
+  assert.match(leaderboardReplies[0] ?? "", /1\. Log7 \(1198046748@qq.com\)，总计 3，活跃 1，非活跃 2，奖励 14/);
+  assert.match(leaderboardReplies[0] ?? "", /2\. Alice \(2222222222@qq.com\)，总计 2，活跃 1，非活跃 1，奖励 12/);
   assert.doesNotMatch(leaderboardReplies[0] ?? "", /我的邀请/);
 
   const helpReplies: string[] = [];
@@ -302,8 +353,8 @@ void (async () => {
   assert.equal(helpReplies.length, 1);
   assert.match(helpReplies[0] ?? "", /邀请活动状态：未开启/);
   assert.match(helpReplies[0] ?? "", /@bot 邀请：查看邀请活动状态和可用指令/);
-  assert.match(helpReplies[0] ?? "", /@bot 我的邀请：查看你的今日和历史邀请数据/);
-  assert.match(helpReplies[0] ?? "", /@bot 邀请排行：查看今日邀请排行榜/);
+  assert.match(helpReplies[0] ?? "", /@bot 我的邀请：查看你的本期邀请和奖励/);
+  assert.match(helpReplies[0] ?? "", /@bot 邀请排行：查看本期邀请排行榜/);
 
   const disabledReplies: string[] = [];
   const disabledResult = await handleQqBotAffiliateActivityCommand({

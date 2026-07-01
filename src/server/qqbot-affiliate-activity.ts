@@ -1,7 +1,21 @@
 import { db } from "@/server/db";
 import { decrypt } from "@/server/crypto";
-import { Sub2ApiAdminClient, type Sub2ApiAffiliateInvite } from "@/server/clients/sub2api-admin";
+import {
+  Sub2ApiAdminClient,
+  type Sub2ApiAffiliateInvite,
+  type Sub2ApiUser,
+} from "@/server/clients/sub2api-admin";
 import { extractQqBotCommandText } from "@/server/qqbot-command";
+import {
+  ACTIVE_REWARD_SETTING_KEY,
+  INACTIVE_REWARD_SETTING_KEY,
+  calculateInviteActivityRewards,
+  inviteActivityPeriodForDate,
+  rewardConfigFromSettings,
+  type InviteActivityLeaderboardEntry,
+  type InviteActivityPeriod,
+  type InviteActivityRewardConfig,
+} from "@/server/invite-activity-rewards";
 
 type BindingRow = {
   connectionId: number;
@@ -16,51 +30,40 @@ type QqBotAffiliateActivityDb = {
   };
   qqBotUserBinding: {
     findUnique(args: { where: { connectionId_qqUserId: { connectionId: number; qqUserId: string } } }): Promise<BindingRow | null>;
-    findMany(args: { where: { connectionId: number } }): Promise<BindingRow[]>;
   };
 };
 
-type QqBotAffiliateActivitySub2Client = Pick<Sub2ApiAdminClient, "getSettings" | "listAffiliateInvites" | "updateSettings">;
+type QqBotAffiliateActivitySub2Client = Pick<
+  Sub2ApiAdminClient,
+  "getSettings" | "listAffiliateInvites" | "searchUsers" | "updateSettings"
+>;
 
-type InviteLeaderboardEntry = {
-  inviterId: number;
-  inviterEmail: string;
-  inviterUsername: string;
-  total: number;
+type ViewerInviteActivity = {
+  qqUserId: string;
+  sub2UserId: number;
+  totalInvitees: number;
+  activeInviteeCount: number;
+  inactiveInviteeCount: number;
+  rewardAmount: number | null;
 };
 
 export type QqBotAffiliateActivityCommand = "help" | "my-invite" | "leaderboard";
 
 export type QqBotAffiliateActivitySummary = {
   date: string;
+  period: InviteActivityPeriod;
   affiliateEnabled: boolean;
-  todayBoundInviteeCount: number;
-  viewer?: {
-    qqUserId: string;
-    sub2UserId: number;
-    totalBoundInvitees: number;
-    todayBoundInvitees: number;
-  };
-  leaderboard: InviteLeaderboardEntry[];
+  rewardConfig: InviteActivityRewardConfig;
+  periodInviteeCount: number;
+  activeInviteeCount: number;
+  inactiveInviteeCount: number;
+  missingUserCount: number;
+  viewer?: ViewerInviteActivity;
+  leaderboard: InviteActivityLeaderboardEntry[];
 };
 
-const MAX_LEADERBOARD_SIZE = 10;
-const PAGE_SIZE = 20;
-const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
-
-function formatDateInShanghai(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: SHANGHAI_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date).replace(/\//g, "-");
-}
-
-function nextDayInShanghai(date: Date) {
-  const formatted = formatDateInShanghai(date);
-  return new Date(Date.parse(`${formatted}T00:00:00+08:00`) + 24 * 60 * 60 * 1000);
-}
+const INVITES_PAGE_SIZE = 20;
+const USERS_PAGE_SIZE = 100;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -72,64 +75,16 @@ function ensureBinding(dbClient: QqBotAffiliateActivityDb, connectionId: number,
   });
 }
 
-function isBoundInvitee(invite: Sub2ApiAffiliateInvite, bindingsBySub2UserId: Map<number, BindingRow>) {
-  return bindingsBySub2UserId.has(invite.invitee_id);
+function targetGroupSkipReason(message: { messageType: string; groupId: string }, targetGroupId: string) {
+  const target = targetGroupId.trim();
+  if (!target) return "未配置目标 QQ 群";
+  if (message.messageType === "group" && message.groupId === target) return null;
+  return `非目标 QQ 群消息：收到 ${message.groupId || "-"}，目标 ${target}`;
 }
 
-function groupLeaderboard(invites: Sub2ApiAffiliateInvite[], bindingsBySub2UserId: Map<number, BindingRow>) {
-  const grouped = new Map<number, InviteLeaderboardEntry & { inviteeIds: Set<number> }>();
-
-  for (const invite of invites) {
-    if (!isBoundInvitee(invite, bindingsBySub2UserId)) continue;
-    const current = grouped.get(invite.inviter_id) ?? {
-      inviterId: invite.inviter_id,
-      inviterEmail: invite.inviter_email,
-      inviterUsername: invite.inviter_username ?? "",
-      total: 0,
-      inviteeIds: new Set<number>(),
-    };
-    if (current.inviteeIds.has(invite.invitee_id)) continue;
-    current.inviteeIds.add(invite.invitee_id);
-    current.total += 1;
-    grouped.set(invite.inviter_id, current);
-  }
-
-  return [...grouped.values()]
-    .sort((left, right) => right.total - left.total || left.inviterId - right.inviterId)
-    .slice(0, MAX_LEADERBOARD_SIZE)
-    .map((entry) => ({
-      inviterId: entry.inviterId,
-      inviterEmail: entry.inviterEmail,
-      inviterUsername: entry.inviterUsername,
-      total: entry.total,
-    }));
-}
-
-function countViewerInvites(invites: Sub2ApiAffiliateInvite[], bindingsBySub2UserId: Map<number, BindingRow>, sub2UserId: number) {
-  const uniqueInvitees = new Set<number>();
-
-  for (const invite of invites) {
-    if (invite.inviter_id !== sub2UserId) continue;
-    if (!isBoundInvitee(invite, bindingsBySub2UserId)) continue;
-    if (uniqueInvitees.has(invite.invitee_id)) continue;
-    uniqueInvitees.add(invite.invitee_id);
-  }
-
-  return uniqueInvitees.size;
-}
-
-function countUniqueBoundInvitees(invites: Sub2ApiAffiliateInvite[], bindingsBySub2UserId: Map<number, BindingRow>) {
-  const uniqueInvitees = new Set<number>();
-  for (const invite of invites) {
-    if (!isBoundInvitee(invite, bindingsBySub2UserId)) continue;
-    uniqueInvitees.add(invite.invitee_id);
-  }
-  return uniqueInvitees.size;
-}
-
-function formatLeaderboardLines(entries: InviteLeaderboardEntry[]) {
-  if (entries.length === 0) return ["暂无邀请数据"];
-  return entries.map((entry, index) => `${index + 1}. ${entry.inviterUsername || entry.inviterEmail} (${entry.inviterEmail})：${entry.total}`);
+function formatRewardAmount(value: number | null) {
+  if (value === null) return "未配置";
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 function buildInviteHelpReply(affiliateEnabled: boolean) {
@@ -138,21 +93,21 @@ function buildInviteHelpReply(affiliateEnabled: boolean) {
     `邀请活动状态：${affiliateEnabled ? "已开启" : "未开启"}`,
     "邀请相关指令：",
     "@bot 邀请：查看邀请活动状态和可用指令",
-    "@bot 我的邀请：查看你的今日和历史邀请数据",
-    "@bot 邀请排行：查看今日邀请排行榜",
+    "@bot 我的邀请：查看你的本期邀请和奖励",
+    "@bot 邀请排行：查看本期邀请排行榜",
   ].join("\n");
 }
 
 function buildMyInviteReply(summary: QqBotAffiliateActivitySummary) {
   const lines = [
     "我的邀请",
-    `统计日期：${summary.date}`,
+    `三日周期：${summary.period.startDate} 至 ${summary.period.endDate}`,
     `邀请活动状态：${summary.affiliateEnabled ? "已开启" : "未开启"}`,
   ];
 
+  if (!summary.rewardConfig.configured) lines.push("奖励额度：未配置，暂不计算奖励");
   if (summary.viewer) {
-    lines.push(`今日邀请数据：${summary.viewer.todayBoundInvitees}`);
-    lines.push(`历史邀请数据：${summary.viewer.totalBoundInvitees}`);
+    lines.push(`你的本期邀请：总计 ${summary.viewer.totalInvitees}，活跃 ${summary.viewer.activeInviteeCount}，非活跃 ${summary.viewer.inactiveInviteeCount}，奖励 ${formatRewardAmount(summary.viewer.rewardAmount)}`);
   }
 
   return lines.join("\n");
@@ -160,12 +115,19 @@ function buildMyInviteReply(summary: QqBotAffiliateActivitySummary) {
 
 function buildInviteLeaderboardReply(summary: QqBotAffiliateActivitySummary) {
   const lines = [
-    "今日邀请排行",
-    `统计日期：${summary.date}`,
-    `今日已绑定邀请关系：${summary.todayBoundInviteeCount}`,
+    "邀请活动排行榜",
+    `三日周期：${summary.period.startDate} 至 ${summary.period.endDate}`,
+    `周期邀请数：总计 ${summary.periodInviteeCount}，活跃 ${summary.activeInviteeCount}，非活跃 ${summary.inactiveInviteeCount}`,
   ];
 
-  lines.push(...formatLeaderboardLines(summary.leaderboard));
+  if (!summary.rewardConfig.configured) lines.push("奖励额度：未配置，暂不计算奖励");
+  if (summary.leaderboard.length === 0) {
+    lines.push("暂无邀请数据");
+  } else {
+    lines.push(...summary.leaderboard.map((entry, index) =>
+      `${index + 1}. ${entry.inviterUsername || entry.inviterEmail} (${entry.inviterEmail})，总计 ${entry.total}，活跃 ${entry.activeInviteeCount}，非活跃 ${entry.inactiveInviteeCount}，奖励 ${formatRewardAmount(entry.rewardAmount)}`,
+    ));
+  }
   return lines.join("\n");
 }
 
@@ -176,7 +138,8 @@ export function resolveQqBotAffiliateActivityCommandDecision(input: {
 }) {
   if (!input.settings.enabled) return { action: "skip" as const, reason: "QQBot 未启用" };
   if (!input.settings.mentionKeywordEnabled) return { action: "skip" as const, reason: "@ 关键字触发未开启" };
-  if (!input.settings.targetGroupId.trim()) return { action: "skip" as const, reason: "未配置目标 QQ 群" };
+  const groupSkipReason = targetGroupSkipReason(input.message, input.settings.targetGroupId);
+  if (groupSkipReason) return { action: "skip" as const, reason: groupSkipReason };
 
   const botUserId = input.botUserId.trim();
   if (!botUserId) return { action: "skip" as const, reason: "未获取当前 Bot QQ，无法判断 @ 消息" };
@@ -206,45 +169,23 @@ export async function loadQqBotAffiliateActivity(input: {
   const viewerBinding = input.qqUserId ? await ensureBinding(dbClient, input.connectionId, input.qqUserId) : null;
   if (input.qqUserId && input.requireViewerBinding !== false && !viewerBinding) throw new Error("请先绑定 Sub2 用户后再查询邀请活动");
 
-  let sub2Client = input.sub2Client;
-  if (!sub2Client) {
-    const connection = await dbClient.connection?.findUniqueOrThrow({ where: { id: input.connectionId } });
-    if (!connection) throw new Error("未找到连接信息");
-    sub2Client = new Sub2ApiAdminClient(connection.baseUrl, decrypt(connection.adminApiKey));
-  }
-
+  const sub2Client = await resolveSub2Client(dbClient, input.connectionId, input.sub2Client);
   const settings = await sub2Client.getSettings();
-  const affiliateEnabled = Boolean(settings.affiliate_enabled);
-
-  const now = input.currentDate ?? new Date();
-  const startAt = formatDateInShanghai(now);
-  const endAt = formatDateInShanghai(nextDayInShanghai(now));
-  const bindings = await dbClient.qqBotUserBinding.findMany({ where: { connectionId: input.connectionId } }) as BindingRow[];
-  const bindingsBySub2UserId = new Map(bindings.map((binding) => [binding.sub2UserId, binding]));
-  const [allTimeInvites, todayInvites] = await Promise.all([
-    fetchAllAffiliateInvites(sub2Client),
-    fetchAllAffiliateInvites(sub2Client, { startAt, endAt }),
+  const period = inviteActivityPeriodForDate(input.currentDate ?? new Date());
+  const [periodInvites, users] = await Promise.all([
+    fetchAllAffiliateInvites(sub2Client, { startAt: period.startDate, endAt: period.endDate }),
+    fetchAllUsers(sub2Client),
   ]);
-  const todayBoundInviteeCount = countUniqueBoundInvitees(todayInvites, bindingsBySub2UserId);
-  const leaderboard = groupLeaderboard(todayInvites, bindingsBySub2UserId);
-  const viewer = viewerBinding
-    ? {
-      qqUserId: viewerBinding.qqUserId,
-      sub2UserId: viewerBinding.sub2UserId,
-      totalBoundInvitees: countViewerInvites(allTimeInvites, bindingsBySub2UserId, viewerBinding.sub2UserId),
-      todayBoundInvitees: countViewerInvites(todayInvites, bindingsBySub2UserId, viewerBinding.sub2UserId),
-    }
-    : undefined;
+  const rewardSummary = calculateInviteActivityRewards({
+    period,
+    rewardConfig: rewardConfigFromSettings(settings),
+    invites: periodInvites,
+    users,
+  });
 
   return {
     ok: true,
-    summary: {
-      date: startAt,
-      affiliateEnabled,
-      todayBoundInviteeCount,
-      ...(viewer ? { viewer } : {}),
-      leaderboard,
-    } satisfies QqBotAffiliateActivitySummary,
+    summary: toQqBotSummary(Boolean(settings.affiliate_enabled), rewardSummary, viewerBinding),
   };
 }
 
@@ -258,13 +199,7 @@ export async function handleQqBotAffiliateActivityCommand(input: {
   sendReply: (message: string) => Promise<void>;
 }) {
   const dbClient = input.dbClient ?? db;
-  let sub2Client = input.sub2Client;
-  if (!sub2Client) {
-    const connection = await dbClient.connection?.findUniqueOrThrow({ where: { id: input.connectionId } });
-    if (!connection) throw new Error("未找到连接信息");
-    sub2Client = new Sub2ApiAdminClient(connection.baseUrl, decrypt(connection.adminApiKey));
-  }
-
+  const sub2Client = await resolveSub2Client(dbClient, input.connectionId, input.sub2Client);
   const settings = await sub2Client.getSettings();
   const command = input.command ?? "my-invite";
   if (command === "help") {
@@ -307,20 +242,82 @@ export async function setQqBotAffiliateActivityEnabled(input: {
   sub2Client?: QqBotAffiliateActivitySub2Client;
 }) {
   const dbClient = input.dbClient ?? db;
-  let sub2Client = input.sub2Client;
-  if (!sub2Client) {
-    const connection = await dbClient.connection?.findUniqueOrThrow({ where: { id: input.connectionId } });
-    if (!connection) throw new Error("未找到连接信息");
-    sub2Client = new Sub2ApiAdminClient(connection.baseUrl, decrypt(connection.adminApiKey));
-  }
-
+  const sub2Client = await resolveSub2Client(dbClient, input.connectionId, input.sub2Client);
   await sub2Client.updateSettings({ affiliate_enabled: input.enabled });
   return { ok: true, enabled: input.enabled };
 }
 
+export async function setQqBotInviteActivityRewardConfig(input: {
+  connectionId: number;
+  activeRewardAmount: number;
+  inactiveRewardAmount: number;
+  dbClient?: QqBotAffiliateActivityDb;
+  sub2Client?: QqBotAffiliateActivitySub2Client;
+}) {
+  const dbClient = input.dbClient ?? db;
+  const sub2Client = await resolveSub2Client(dbClient, input.connectionId, input.sub2Client);
+  const config = rewardConfigFromSettings({
+    [ACTIVE_REWARD_SETTING_KEY]: input.activeRewardAmount,
+    [INACTIVE_REWARD_SETTING_KEY]: input.inactiveRewardAmount,
+  });
+  await sub2Client.updateSettings({
+    [ACTIVE_REWARD_SETTING_KEY]: input.activeRewardAmount,
+    [INACTIVE_REWARD_SETTING_KEY]: input.inactiveRewardAmount,
+  });
+  return { ok: true, config };
+}
+
+async function resolveSub2Client(
+  dbClient: QqBotAffiliateActivityDb,
+  connectionId: number,
+  sub2Client?: QqBotAffiliateActivitySub2Client,
+) {
+  if (sub2Client) return sub2Client;
+  const connection = await dbClient.connection?.findUniqueOrThrow({ where: { id: connectionId } });
+  if (!connection) throw new Error("未找到连接信息");
+  return new Sub2ApiAdminClient(connection.baseUrl, decrypt(connection.adminApiKey));
+}
+
+async function replyDisabled(sendReply: (message: string) => Promise<void>) {
+  const message = "邀请活动未开启";
+  await sendReply(message);
+  return { ok: false as const, reason: message };
+}
+
+function toQqBotSummary(
+  affiliateEnabled: boolean,
+  rewardSummary: ReturnType<typeof calculateInviteActivityRewards>,
+  viewerBinding: BindingRow | null,
+) {
+  return {
+    date: rewardSummary.period.startDate,
+    period: rewardSummary.period,
+    affiliateEnabled,
+    rewardConfig: rewardSummary.rewardConfig,
+    periodInviteeCount: rewardSummary.totalInviteeCount,
+    activeInviteeCount: rewardSummary.activeInviteeCount,
+    inactiveInviteeCount: rewardSummary.inactiveInviteeCount,
+    missingUserCount: rewardSummary.missingUserCount,
+    ...(viewerBinding ? { viewer: viewerFromLeaderboard(viewerBinding, rewardSummary.entries) } : {}),
+    leaderboard: rewardSummary.leaderboard,
+  } satisfies QqBotAffiliateActivitySummary;
+}
+
+function viewerFromLeaderboard(binding: BindingRow, leaderboard: InviteActivityLeaderboardEntry[]) {
+  const entry = leaderboard.find((item) => item.inviterId === binding.sub2UserId);
+  return {
+    qqUserId: binding.qqUserId,
+    sub2UserId: binding.sub2UserId,
+    totalInvitees: entry?.total ?? 0,
+    activeInviteeCount: entry?.activeInviteeCount ?? 0,
+    inactiveInviteeCount: entry?.inactiveInviteeCount ?? 0,
+    rewardAmount: entry?.rewardAmount ?? null,
+  };
+}
+
 async function fetchAllAffiliateInvites(
   sub2Client: QqBotAffiliateActivitySub2Client,
-  input: { startAt?: string; endAt?: string } = {},
+  input: { startAt: string; endAt: string },
 ) {
   const items: Sub2ApiAffiliateInvite[] = [];
   let page = 1;
@@ -328,12 +325,26 @@ async function fetchAllAffiliateInvites(
   while (true) {
     const result = await sub2Client.listAffiliateInvites({
       page,
-      pageSize: PAGE_SIZE,
-      ...(input.startAt ? { startAt: input.startAt } : {}),
-      ...(input.endAt ? { endAt: input.endAt } : {}),
+      pageSize: INVITES_PAGE_SIZE,
+      startAt: input.startAt,
+      endAt: input.endAt,
     });
     items.push(...result.items);
-    if (page >= result.pages || result.items.length < PAGE_SIZE) break;
+    if (page >= result.pages || result.items.length < INVITES_PAGE_SIZE) break;
+    page += 1;
+  }
+
+  return items;
+}
+
+async function fetchAllUsers(sub2Client: QqBotAffiliateActivitySub2Client) {
+  const items: Sub2ApiUser[] = [];
+  let page = 1;
+
+  while (true) {
+    const result = await sub2Client.searchUsers({ page, pageSize: USERS_PAGE_SIZE, search: "" });
+    items.push(...result.items);
+    if (page >= result.pages || result.items.length < USERS_PAGE_SIZE) break;
     page += 1;
   }
 

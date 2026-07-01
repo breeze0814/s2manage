@@ -14,6 +14,7 @@ import {
 import {
   loadQqBotAffiliateActivity,
   setQqBotAffiliateActivityEnabled,
+  setQqBotInviteActivityRewardConfig,
 } from "@/server/qqbot-affiliate-activity";
 
 const qqBotSettingsInput = z.object({
@@ -26,9 +27,9 @@ const qqBotSettingsInput = z.object({
   sourceChangePrivatePushEnabled: z.boolean(),
   sourceChangePrivatePushQq: z.string().trim().max(100),
   mentionKeywordEnabled: z.boolean(),
-  liveRateTestEnabled: z.boolean(),
+  liveRateTestEnabled: z.boolean().optional(),
   keywordRules: z.string().max(5000),
-  testMessageTemplate: z.string().max(5000),
+  testMessageTemplate: z.string().max(5000).optional(),
   botUserId: z.string().trim().max(100).optional(),
   botNickname: z.string().max(500).optional(),
   botLoginUpdatedAt: z.string().nullable().optional(),
@@ -50,9 +51,9 @@ export const botSettingsRouter = createTRPCRouter({
         sourceChangePrivatePushEnabled: input.sourceChangePrivatePushEnabled,
         sourceChangePrivatePushQq: input.sourceChangePrivatePushQq,
         mentionKeywordEnabled: input.mentionKeywordEnabled,
-        liveRateTestEnabled: input.liveRateTestEnabled,
+        liveRateTestEnabled: input.liveRateTestEnabled ?? false,
         keywordRules: input.keywordRules,
-        testMessageTemplate: input.testMessageTemplate,
+        testMessageTemplate: input.testMessageTemplate ?? "",
         botUserId: input.botUserId ?? "",
         botNickname: input.botNickname ?? "",
         botLoginUpdatedAt: input.botLoginUpdatedAt ?? null,
@@ -102,5 +103,16 @@ export const botSettingsRouter = createTRPCRouter({
     .mutation(({ input }) => setQqBotAffiliateActivityEnabled({
       connectionId: input.connectionId,
       enabled: input.enabled,
+    })),
+  setInviteActivityRewardConfig: protectedProcedure
+    .input(z.object({
+      connectionId: z.number().int().positive(),
+      activeRewardAmount: z.number().nonnegative(),
+      inactiveRewardAmount: z.number().nonnegative(),
+    }))
+    .mutation(({ input }) => setQqBotInviteActivityRewardConfig({
+      connectionId: input.connectionId,
+      activeRewardAmount: input.activeRewardAmount,
+      inactiveRewardAmount: input.inactiveRewardAmount,
     })),
 });

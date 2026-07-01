@@ -88,12 +88,27 @@ function ensureSingleMatch(items: Sub2ApiUser[], email: string) {
   return matched;
 }
 
+function scopedGroupSkipReason(
+  settings: { targetGroupId?: string },
+  message: { messageType: string; groupId: string },
+) {
+  if (settings.targetGroupId === undefined) return null;
+  const target = settings.targetGroupId.trim();
+  if (!target) return "未配置目标 QQ 群";
+  if (message.messageType === "group" && message.groupId === target) return null;
+  return `非目标 QQ 群消息：收到 ${message.groupId || "-"}，目标 ${target}`;
+}
+
 export function resolveQqBotUserBindingCommandDecision(input: {
-  settings: { enabled: boolean };
+  settings: { enabled: boolean; mentionKeywordEnabled?: boolean; targetGroupId?: string };
   botUserId: string;
   message: { messageType: string; subType: string; groupId: string; userId: string; text: string };
 }) {
   if (!input.settings.enabled) return { action: "skip" as const, reason: "QQBot 未启用" };
+  if (input.settings.mentionKeywordEnabled === false) return { action: "skip" as const, reason: "@ 关键字触发未开启" };
+  const groupSkipReason = scopedGroupSkipReason(input.settings, input.message);
+  if (groupSkipReason) return { action: "skip" as const, reason: groupSkipReason };
+
   const botUserId = input.botUserId.trim();
   if (!botUserId) return { action: "skip" as const, reason: "未获取当前 Bot QQ，无法判断 @ 消息" };
 

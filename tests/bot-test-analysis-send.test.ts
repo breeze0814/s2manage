@@ -2,8 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const serviceSource = readFileSync("src/server/bot-settings.ts", "utf8");
+const announcementSource = readFileSync("src/server/announcement-rules.ts", "utf8");
+const logActionsSource = readFileSync("src/shared/log-actions.ts", "utf8");
 const routerSource = readFileSync("src/server/api/routers/bot-settings.ts", "utf8");
-const panelSource = readFileSync("src/components/app/bot-management-panel.tsx", "utf8");
+const panelSource = [
+  readFileSync("src/components/app/bot-management-panel.tsx", "utf8"),
+  readFileSync("src/components/app/bot-management-panel-parts.tsx", "utf8"),
+  readFileSync("src/components/app/bot-management-logs-card.tsx", "utf8"),
+].join("\n");
 const shellSource = readFileSync("src/components/app/shell.tsx", "utf8");
 
 assert.match(serviceSource, /sendQqBotTestAnalysis/, "Bot settings service should implement test analysis sending");
@@ -17,6 +23,9 @@ assert.match(serviceSource, /sendQqBotGroupMessage/, "Bot settings service shoul
 assert.match(serviceSource, /sendQqBotPrivateMessage/, "Bot settings service should wrap private message sending for future business actions");
 assert.match(serviceSource, /sendQqBotManualMessage/, "Bot settings service should implement direct manual message sending");
 assert.match(serviceSource, /buildEnabledGroupRatesMessage/, "Bot settings service should build a live enabled-group rate message");
+assert.match(serviceSource, /export function buildQqBotRateChangePushMessage/, "Bot settings service should build QQBot rate-change push content");
+assert.match(serviceSource, /if \(!settings\.liveRateTestEnabled\)/, "Test analysis should respect the test-analysis feature switch");
+assert.match(serviceSource, /请先启用测试分析/, "Disabled test analysis should return a clear error");
 assert.match(serviceSource, /\.listGroups\(\)/, "Test analysis should read current target groups in real time");
 assert.match(serviceSource, /@naplink\/naplink/, "Test analysis should use the published NapLink package");
 assert.match(serviceSource, /new NapLink/, "Test analysis should create a NapLink client");
@@ -59,6 +68,8 @@ assert.doesNotMatch(serviceSource, /\.on\("message\.private\.friend"/, "Bot sett
 assert.doesNotMatch(serviceSource, /\.on\("message\.private\.group"/, "Bot settings should not attach separate group-temp-private-message listeners");
 assert.doesNotMatch(serviceSource, /from "undici"/, "Bot settings should not hand-roll NapCat WebSocket calls");
 assert.match(serviceSource, /targetGroupId/, "Test analysis should send to the configured QQ group id");
+assert.match(announcementSource, /publishQqBotRateChangePush/, "Rate-change announcements should trigger the QQBot rate-change push path");
+assert.match(logActionsSource, /auto_qqbot_rate_change_push/, "QQBot rate-change push should have a log action label");
 
 assert.match(routerSource, /sendTestAnalysis:\s*protectedProcedure/, "Bot settings router should expose a protected sendTestAnalysis endpoint");
 assert.match(routerSource, /testWsConnection:\s*protectedProcedure/, "Bot settings router should expose a protected testWsConnection endpoint");
@@ -75,7 +86,7 @@ assert.match(routerSource, /getQqBotWsLogs/, "Bot settings router should call th
 assert.match(routerSource, /getQqBotGroups/, "Bot settings router should call the QQ group list service");
 assert.match(routerSource, /sendQqBotManualMessage/, "Bot settings router should call the manual message service");
 
-assert.match(panelSource, /trpc\.botSettings\.sendTestAnalysis\.useMutation/, "Bot panel should call the send test analysis endpoint");
+assert.doesNotMatch(panelSource, /trpc\.botSettings\.sendTestAnalysis\.useMutation/, "Bot panel should not expose test analysis sending");
 assert.match(panelSource, /trpc\.botSettings\.testWsConnection\.useMutation/, "Bot panel should call the WebSocket test endpoint");
 assert.match(panelSource, /trpc\.botSettings\.wsLogs\.useQuery/, "Bot panel should poll persistent WebSocket logs");
 assert.match(panelSource, /refetchInterval:\s*1_500/, "Bot panel should refresh WebSocket logs frequently enough for live feedback");
@@ -90,6 +101,7 @@ assert.match(panelSource, /开始监听/, "Bot panel should expose a compact lis
 assert.match(panelSource, /停止监听/, "Bot panel should expose a compact listener stop button");
 assert.match(panelSource, /wsLogs/, "Bot panel should render operation logs returned by NapLink actions");
 assert.match(panelSource, /result\.ok/, "Bot panel should handle failed WebSocket test results without relying on tRPC 500 errors");
-assert.doesNotMatch(panelSource, /发送测试分析[\s\S]{0,80}disabled>\s*<Send/, "Send test button should not be hard-disabled");
+assert.doesNotMatch(panelSource, /发送测试分析/, "Bot panel should not render a test-analysis send button");
+assert.match(panelSource, /支持的 @Bot 指令/, "Bot panel should present actual supported commands instead of editable unused keyword rules");
 assert.match(shellSource, /BotWsAutoStarter/, "Shell should auto-start bot WS when a connection is selected");
 assert.doesNotMatch(panelSource, /autoStartAttempted/, "Bot panel should not own the auto-start side effect anymore");

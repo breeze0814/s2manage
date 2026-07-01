@@ -69,7 +69,12 @@ export const defaultQqBotSettings: QqBotSettings = {
   sourceChangePrivatePushQq: "",
   mentionKeywordEnabled: false,
   liveRateTestEnabled: true,
-  keywordRules: ["倍率：查询当前开启分组倍率", "最近变动：返回最近分组倍率变动"].join("\n"),
+  keywordRules: [
+    "@Bot 分组 / 倍率：查询当前开启分组倍率",
+    "@Bot 邀请：查询当前三日邀请活动统计",
+    "@Bot 绑定 <邮箱>：绑定当前 QQ 与 Sub2 用户",
+    "@Bot 解绑：解除当前 QQ 绑定",
+  ].join("\n"),
   testMessageTemplate: ["当前分组倍率", "{{connectionName}}", "{{enabledGroupRates}}", "更新时间：{{generatedAt}}"].join("\n"),
   botUserId: "",
   botNickname: "",
@@ -267,6 +272,33 @@ export function buildQqBotSourceSiteChangePrivateMessage(input: {
   }
 
   lines.push(`时间：${generatedAt}`);
+  return lines.join("\n");
+}
+
+function formatNullableRate(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  return formatRate(value);
+}
+
+export function buildQqBotRateChangePushMessage(input: {
+  groupId: number | string;
+  groupName: string;
+  oldRate?: number | null;
+  newRate: number;
+  connectionName?: string | null;
+  sourceLabel?: string | null;
+  changedAt?: Date;
+}) {
+  const changedAt = (input.changedAt ?? new Date()).toLocaleString("zh-CN", { hour12: false });
+  const lines = [
+    "分组倍率变动",
+    `分组：${input.groupName} (#${input.groupId})`,
+    `原倍率：${formatNullableRate(input.oldRate)}`,
+    `新倍率：${formatNullableRate(input.newRate)}`,
+  ];
+  if (input.sourceLabel) lines.push(`来源：${input.sourceLabel}`);
+  if (input.connectionName) lines.push(`连接：${input.connectionName}`);
+  lines.push(`时间：${changedAt}`);
   return lines.join("\n");
 }
 
@@ -849,6 +881,8 @@ async function handleQqBotIncomingMessageCommand(connectionId: number, runtime: 
   const bindingDecision = resolveQqBotUserBindingCommandDecision({
     settings: {
       enabled: settings.enabled,
+      mentionKeywordEnabled: settings.mentionKeywordEnabled,
+      targetGroupId: settings.targetGroupId,
     },
     botUserId: runtime.botUserId,
     message,
@@ -1329,6 +1363,34 @@ export async function sendQqBotSourceSiteChangePrivatePush(input: {
   return { ok: true as const, skipped: false as const, message, logs: sent.logs };
 }
 
+export async function publishQqBotRateChangePush(input: {
+  connectionId: number;
+  connectionName?: string | null;
+  groupId: number;
+  groupName: string;
+  oldRate?: number | null;
+  newRate: number;
+  sourceLabel?: string | null;
+  changedAt?: Date;
+}) {
+  const settings = await getQqBotSettings(input.connectionId);
+  if (!settings.enabled) return { ok: true as const, sent: false as const, reason: "QQBot 未启用" };
+  if (!settings.rateChangePushEnabled) return { ok: true as const, sent: false as const, reason: "分组倍率变动推送未开启" };
+  if (!settings.targetGroupId.trim()) throw new Error("请先填写目标 QQ 群号");
+
+  const message = buildQqBotRateChangePushMessage({
+    groupId: input.groupId,
+    groupName: input.groupName,
+    oldRate: input.oldRate,
+    newRate: input.newRate,
+    connectionName: input.connectionName,
+    sourceLabel: input.sourceLabel,
+    changedAt: input.changedAt,
+  });
+  const sent = await sendQqBotGroupMessage(input.connectionId, settings.targetGroupId, message);
+  return { ok: true as const, sent: true as const, message, logs: sent.logs };
+}
+
 export async function sendQqBotTestAnalysis(connectionId: number) {
   const [settings, connection] = await Promise.all([
     getQqBotSettings(connectionId),
@@ -1336,6 +1398,7 @@ export async function sendQqBotTestAnalysis(connectionId: number) {
   ]);
 
   if (!settings.enabled) throw new Error("请先启用 QQBot");
+  if (!settings.liveRateTestEnabled) throw new Error("请先启用测试分析");
   if (!settings.targetGroupId.trim()) throw new Error("请先填写目标 QQ 群号");
   if (!settings.wsUrl.trim()) throw new Error("请先填写 NapCat WebSocket 地址");
 

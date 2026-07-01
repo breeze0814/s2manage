@@ -10,6 +10,8 @@ export const actionLabels: Record<string, string> = {
   auto_bl_bound_group_rule: "自动应用分组倍率规则",
   auto_bl_sync_connection: "自动同步连接",
   auto_bl_sync_group_rate: "自动同步分组倍率",
+  auto_invite_activity_settlement: "自动邀请活动结算",
+  auto_qqbot_rate_change_push: "自动 QQBot 倍率变动推送",
   apply_bl_account_rate_rule: "应用账号倍率规则",
   apply_bl_group_rate_rule: "应用分组倍率规则",
   bl_sync_group_rate: "手动同步采集倍率",

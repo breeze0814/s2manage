@@ -49,10 +49,11 @@ const mentionedBindMessage = normalizeQqBotIncomingMessage({
   user_id: 712127095,
   raw_message: "[CQ:at,qq=2431959203] 绑定 xhc0812320@gmail.com",
 });
+const scopedSettings = { enabled: true, mentionKeywordEnabled: true, targetGroupId: "1035220036" };
 
 assert.equal(
   resolveQqBotUserBindingCommandDecision({
-    settings: { enabled: true },
+    settings: scopedSettings,
     botUserId: "2431959203",
     message: mentionedBindMessage,
   }).action,
@@ -61,7 +62,7 @@ assert.equal(
 
 assert.equal(
   resolveQqBotUserBindingCommandDecision({
-    settings: { enabled: true },
+    settings: scopedSettings,
     botUserId: "2431959203",
     message: mentionedBindMessage,
   }).email,
@@ -70,7 +71,7 @@ assert.equal(
 
 assert.equal(
   resolveQqBotUserBindingCommandDecision({
-    settings: { enabled: true },
+    settings: scopedSettings,
     botUserId: "2431959203",
     message: normalizeQqBotIncomingMessage({
       message_type: "group",
@@ -93,7 +94,7 @@ const targetGroupUnbindMessage = normalizeQqBotIncomingMessage({
 
 assert.equal(
   resolveQqBotUserBindingCommandDecision({
-    settings: { enabled: true },
+    settings: scopedSettings,
     botUserId: "2431959203",
     message: targetGroupUnbindMessage,
   }).action,
@@ -102,7 +103,7 @@ assert.equal(
 
 assert.equal(
   resolveQqBotUserBindingCommandDecision({
-    settings: { enabled: true },
+    settings: scopedSettings,
     botUserId: "2431959203",
     message: normalizeQqBotIncomingMessage({
       message_type: "group",
@@ -112,7 +113,16 @@ assert.equal(
       raw_message: "[CQ:at,qq=2431959203] 解绑",
     }),
   }).action,
-  "unbind-user",
+  "skip",
+);
+
+assert.match(
+  resolveQqBotUserBindingCommandDecision({
+    settings: { ...scopedSettings, mentionKeywordEnabled: false },
+    botUserId: "2431959203",
+    message: targetGroupUnbindMessage,
+  }).reason ?? "",
+  /@ 关键字触发未开启/,
 );
 
 assert.equal(

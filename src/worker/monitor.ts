@@ -15,6 +15,8 @@ import { normalizeWorkerIntervalSeconds, workerRuntimeSettingsFromRows } from "@
 import { normalizeRateMultiplier, ratesEqual } from "@/server/rates";
 import { cleanupOldLogs, writeSyncLog } from "@/server/sync-logs";
 import { checkAccountBalanceAlerts } from "@/server/account-balance-alert";
+import { runDueInviteActivitySettlements } from "@/server/invite-activity-settlement";
+import { loadQqBotAffiliateActivity } from "@/server/qqbot-affiliate-activity";
 
 const db = new PrismaClient();
 const runOnce = process.env.S2A_WORKER_ONCE === "1";
@@ -229,6 +231,28 @@ async function runDueBalanceAlertsFromDb() {
   return runDueBalanceAlerts(settingMap, runtimeSettings.accountBalanceAlertIntervalSeconds);
 }
 
+async function runDueInviteActivitySettlementsFromDb() {
+  const conns = await db.connection.findMany({ where: { enabled: true } });
+  const result = await runDueInviteActivitySettlements({
+    db,
+    connectionIds: conns.map((conn) => conn.id),
+    now: new Date(),
+    loadActivity: ({ connectionId, currentDate }) => loadQqBotAffiliateActivity({
+      connectionId,
+      currentDate,
+      dbClient: db,
+    }),
+  });
+  if (result.initialized > 0 || result.settled > 0) {
+    console.log(`[worker] Invite activity settlements initialized=${result.initialized}, settled=${result.settled}`);
+  }
+  for (const item of result.connections) {
+    if (item.initialized === 0 && item.settled === 0) continue;
+    await logSync(item.connectionId, "auto_invite_activity_settlement", `connection:${item.connectionId}`, item, "success");
+  }
+  return result;
+}
+
 async function runCycle() {
   const cycleStartedAt = new Date();
   const settings = await db.setting.findMany();
@@ -429,6 +453,13 @@ async function runCycle() {
   }
 
   await runDueBalanceAlertsFromDb();
+
+  try {
+    await runDueInviteActivitySettlementsFromDb();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[worker] Invite activity settlement error: ${message}`);
+  }
 
   try {
     const checked = await runDueUpstreamMonitors(db, new Date(), {
