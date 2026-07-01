@@ -527,6 +527,25 @@ function wsRequestPath(url: URL) {
   return `${url.pathname || "/"}${url.search}`;
 }
 
+function safeWsRequestPath(url: URL) {
+  const pathname = url.pathname || "/";
+  if (!url.search) return pathname;
+  return `${pathname}?${Array.from(url.searchParams.keys()).join("&") || "query"}`;
+}
+
+function summarizeHandshakeResponse(response: string) {
+  const normalized = response.replace(/[^\x20-\x7E\r\n]/g, "");
+  const [headerText = "", bodyText = ""] = normalized.split(/\r\n\r\n/, 2);
+  const headers = headerText
+    .split("\r\n")
+    .slice(1)
+    .filter(Boolean)
+    .slice(0, 6)
+    .join("; ");
+  const body = bodyText.trim().slice(0, 160);
+  return [headers ? `headers=${headers}` : "", body ? `body=${body}` : ""].filter(Boolean).join(" | ") || "无响应内容";
+}
+
 function socketErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return String(error);
   const code = "code" in error ? String((error as { code?: unknown }).code) : "";
@@ -585,7 +604,7 @@ async function probeWebSocketHandshake(url: URL, timeoutMs = 3_000) {
         done({ ok: true, message: `WebSocket 握手成功：${statusLine}` });
         return;
       }
-      done({ ok: false, message: `WebSocket 握手失败：${statusLine || "无 HTTP 状态行"}` });
+      done({ ok: false, message: `WebSocket 握手失败：${statusLine || "无 HTTP 状态行"}；响应摘要：${summarizeHandshakeResponse(response)}` });
     });
     socket.once("timeout", () => done({ ok: false, message: "WebSocket 握手超时" }));
     socket.once("error", (error) => done({ ok: false, message: `WebSocket 握手错误：${socketErrorMessage(error)}` }));
@@ -611,13 +630,17 @@ async function diagnoseQqBotWsEndpoint(settings: Pick<QqBotSettings, "wsUrl" | "
   }
 
   pushLog("diagnostic", `WebSocket 地址：${parsed.protocol}//${parsed.host}${parsed.pathname || "/"}`);
+  pushLog("diagnostic", `WebSocket 请求路径：${safeWsRequestPath(parsed)}；Token 已配置：${settings.token.trim() ? "是" : "否"}`);
   const tcp = await probeTcpPort(parsed);
   pushLog("diagnostic", tcp.message);
   if (!tcp.ok) return tcp;
 
   const handshake = await probeWebSocketHandshake(parsed);
   pushLog("diagnostic", handshake.message);
-  return handshake;
+  if (!handshake.ok) {
+    pushLog("diagnostic", "WebSocket 握手预检未通过，继续交由 NapLink 实际连接验证");
+  }
+  return { ok: true, message: handshake.message };
 }
 
 async function loadNapLink() {

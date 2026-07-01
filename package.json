@@ -7,6 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start -p 15074",
     "lint": "eslint src --ext .ts,.tsx --no-eslintrc --config .eslintrc.json --resolve-plugins-relative-to .",
+    "pm2:start": "npm run build && pm2 start ecosystem.config.js",
+    "pm2:restart": "npm run build && pm2 restart ecosystem.config.js --update-env",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev",

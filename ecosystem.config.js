@@ -1,6 +1,6 @@
 // PM2 进程编排：Web 与 worker 是两个独立进程，分别托管。
 // 用法见 部署指南.md「用 PM2 托管」一节：
-//   pm2 start ecosystem.config.js
+//   npm run pm2:start
 //   pm2 logs / pm2 restart all / pm2 stop all
 // 端口、worker 间隔等环境变量在下面 env 里改；数据库 Setting 优先于环境变量。
 module.exports = {

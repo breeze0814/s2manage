@@ -35,6 +35,11 @@ assert.match(serviceSource, /\.isConnected\(\)/, "Persistent listener should exp
 assert.match(serviceSource, /diagnoseQqBotWsEndpoint/, "WebSocket testing should run endpoint diagnostics before NapLink connect");
 assert.match(serviceSource, /TCP 端口/, "WebSocket diagnostics should report TCP port reachability");
 assert.match(serviceSource, /WebSocket 握手/, "WebSocket diagnostics should report WebSocket handshake results");
+assert.match(serviceSource, /WebSocket 请求路径/, "WebSocket diagnostics should report the request path without leaking secrets");
+assert.match(serviceSource, /Token 已配置/, "WebSocket diagnostics should reveal whether a NapCat token is configured");
+assert.match(serviceSource, /响应摘要/, "WebSocket diagnostics should include a safe response summary for handshake failures");
+assert.match(serviceSource, /WebSocket 握手预检未通过，继续交由 NapLink 实际连接验证/, "WebSocket handshake precheck should not block the real NapLink connection");
+assert.doesNotMatch(serviceSource, /if \(!handshake\.ok\)[\s\S]{0,120}return handshake/, "WebSocket handshake diagnostics should not return early before NapLink tries to connect");
 assert.match(serviceSource, /catch \(error\)/, "WebSocket testing should catch expected NapLink connection errors");
 assert.match(serviceSource, /ok: false/, "WebSocket testing should return a failed result instead of surfacing expected connection failures as tRPC 500 errors");
 assert.match(serviceSource, /\.on\("connect"/, "NapLink client should listen for connect events");
