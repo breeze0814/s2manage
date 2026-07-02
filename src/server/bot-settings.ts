@@ -701,7 +701,13 @@ async function createQqBotNapLinkClient(
       pingInterval: 0,
     },
     reconnect: {
-      enabled: false,
+      enabled: true,
+      maxAttempts: Number.MAX_SAFE_INTEGER,
+      backoff: {
+        initial: 60_000,
+        max: 60_000,
+        multiplier: 1,
+      },
     },
     logging: {
       level: "off",
@@ -777,7 +783,7 @@ function runtimeResult(connectionId: number, runtime: QqBotRuntime) {
     status: runtime.status,
     napLinkState,
     connected,
-    running: runtime.status === "connecting" || runtime.status === "connected" || connected,
+    running: true,
     startedAt: runtime.startedAt,
     groups: runtime.groups.slice(),
     groupsUpdatedAt: runtime.groupsUpdatedAt,

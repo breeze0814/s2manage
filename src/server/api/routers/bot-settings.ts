@@ -8,7 +8,6 @@ import {
   sendQqBotManualMessage,
   sendQqBotTestAnalysis,
   startQqBotWsListener,
-  stopQqBotWsListener,
   testQqBotWsConnection,
 } from "@/server/bot-settings";
 import {
@@ -82,9 +81,6 @@ export const botSettingsRouter = createTRPCRouter({
   startWsListener: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive() }))
     .mutation(({ input }) => startQqBotWsListener(input.connectionId)),
-  stopWsListener: protectedProcedure
-    .input(z.object({ connectionId: z.number().int().positive() }))
-    .mutation(({ input }) => stopQqBotWsListener(input.connectionId)),
   wsLogs: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive() }))
     .query(({ input }) => getQqBotWsLogs(input.connectionId)),

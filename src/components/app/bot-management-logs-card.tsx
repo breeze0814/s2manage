@@ -1,10 +1,9 @@
 "use client";
 
 import type { RefObject } from "react";
-import { PauseCircle, Play, Radio } from "lucide-react";
+import { Radio } from "lucide-react";
 import { EmptyState } from "@/components/app/feedback-state";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { QqBotWsLog } from "@/components/app/bot-management-panel-parts";
 
@@ -18,12 +17,6 @@ export function WsLogsCard({
   logContainerRef,
   logs,
   napLinkState,
-  onStart,
-  onStop,
-  running,
-  startDisabled,
-  startPending,
-  stopPending,
   wsUrl,
 }: {
   botLabel: string;
@@ -35,12 +28,6 @@ export function WsLogsCard({
   logContainerRef: RefObject<HTMLDivElement>;
   logs: QqBotWsLog[];
   napLinkState: string;
-  onStart: () => void;
-  onStop: () => void;
-  running: boolean;
-  startDisabled: boolean;
-  startPending: boolean;
-  stopPending: boolean;
   wsUrl: string;
 }) {
   return (
@@ -54,16 +41,6 @@ export function WsLogsCard({
             </CardTitle>
             <Badge variant={listenerBadgeVariant}>{listenerBadgeText}</Badge>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onStart} disabled={startDisabled} title="开始监听 NapCat WebSocket 事件">
-              <Play className="size-4" />
-              {startPending ? "启动中..." : "开始监听"}
-            </Button>
-            <Button variant="outline" size="sm" onClick={onStop} disabled={stopPending || !running} title="停止监听 NapCat WebSocket 事件">
-              <PauseCircle className="size-4" />
-              {stopPending ? "停止中..." : "停止监听"}
-            </Button>
-          </div>
         </div>
       </CardHeader>
       <CardContent className="px-3 pb-3">
@@ -76,7 +53,7 @@ export function WsLogsCard({
         </div>
         <div ref={logContainerRef} className="max-h-[60dvh] min-h-[320px] overflow-auto rounded-md border border-border/70 bg-slate-950 px-3 py-2 font-mono text-xs leading-6 text-slate-100 dark:bg-black/40 sm:min-h-[420px]">
           {logs.length === 0 ? (
-            <EmptyState title="暂无 WS 日志" description="开始监听后，NapCat WebSocket 事件会实时显示在这里。" className="border-white/10 bg-white/5 py-12 text-slate-300 [&_div]:text-slate-100" />
+            <EmptyState title="暂无 WS 日志" description="NapCat WebSocket 事件会实时显示在这里。" className="border-white/10 bg-white/5 py-12 text-slate-300 [&_div]:text-slate-100" />
           ) : (
             logs.map((log, index) => (
               <div key={`${log.time}-${log.type}-${index}`} className="grid gap-2 border-b border-white/10 py-1 last:border-b-0 lg:grid-cols-[72px_132px_minmax(0,1fr)]">

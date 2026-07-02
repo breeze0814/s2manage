@@ -22,7 +22,7 @@ export function BotWsAutoStarter({ connectionId }: { connectionId: number | null
   useEffect(() => {
     if (!connectionId || !savedSettings) return;
     if (startedForConnection.current === connectionId) return;
-    if (!savedSettings.enabled || !savedSettings.wsUrl.trim()) return;
+    if (!savedSettings.wsUrl.trim()) return;
     if (wsLogs?.running || wsLogs?.connected) {
       startedForConnection.current = connectionId;
       return;

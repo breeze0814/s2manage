@@ -11,6 +11,7 @@ const panelSource = [
   readFileSync("src/components/app/bot-management-logs-card.tsx", "utf8"),
 ].join("\n");
 const shellSource = readFileSync("src/components/app/shell.tsx", "utf8");
+const autoStarterSource = readFileSync("src/components/app/bot-ws-auto-starter.tsx", "utf8");
 
 assert.match(serviceSource, /sendQqBotTestAnalysis/, "Bot settings service should implement test analysis sending");
 assert.match(serviceSource, /testQqBotWsConnection/, "Bot settings service should implement WebSocket connection testing");
@@ -54,6 +55,9 @@ assert.match(serviceSource, /ok: false/, "WebSocket testing should return a fail
 assert.match(serviceSource, /\.on\("connect"/, "NapLink client should listen for connect events");
 assert.match(serviceSource, /\.on\("disconnect"/, "NapLink client should listen for disconnect events");
 assert.match(serviceSource, /\.on\("reconnecting"/, "NapLink client should listen for reconnecting events");
+assert.match(serviceSource, /reconnect:\s*\{[\s\S]*enabled:\s*true[\s\S]*backoff:\s*\{[\s\S]*initial:\s*60_000[\s\S]*max:\s*60_000[\s\S]*multiplier:\s*1/s, "NapLink listener should retry reconnects once per minute");
+assert.match(serviceSource, /maxAttempts:\s*Number\.MAX_SAFE_INTEGER/, "NapLink listener should keep retrying automatically after disconnects");
+assert.match(serviceSource, /running:\s*true/, "Persistent listener should remain marked running while NapLink is retrying");
 assert.match(serviceSource, /\.on\("message"/, "NapLink client should listen for all message events");
 assert.match(serviceSource, /formatQqBotMessageLog/, "Message logs should be normalized by a shared formatter");
 assert.match(serviceSource, /普通群消息/, "Message logs should include the normal group-message category");
@@ -74,14 +78,14 @@ assert.match(logActionsSource, /auto_qqbot_rate_change_push/, "QQBot rate-change
 assert.match(routerSource, /sendTestAnalysis:\s*protectedProcedure/, "Bot settings router should expose a protected sendTestAnalysis endpoint");
 assert.match(routerSource, /testWsConnection:\s*protectedProcedure/, "Bot settings router should expose a protected testWsConnection endpoint");
 assert.match(routerSource, /startWsListener:\s*protectedProcedure/, "Bot settings router should expose a protected persistent listener start endpoint");
-assert.match(routerSource, /stopWsListener:\s*protectedProcedure/, "Bot settings router should expose a protected persistent listener stop endpoint");
+assert.doesNotMatch(routerSource, /stopWsListener:\s*protectedProcedure/, "Bot settings router should not expose manual listener stop anymore");
 assert.match(routerSource, /wsLogs:\s*protectedProcedure/, "Bot settings router should expose a protected WebSocket logs query endpoint");
 assert.match(routerSource, /groups:\s*protectedProcedure/, "Bot settings router should expose QQ group list endpoint");
 assert.match(routerSource, /sendManualMessage:\s*protectedProcedure/, "Bot settings router should expose manual message sending endpoint");
 assert.match(routerSource, /sendQqBotTestAnalysis/, "Bot settings router should call the send service");
 assert.match(routerSource, /testQqBotWsConnection/, "Bot settings router should call the WebSocket test service");
 assert.match(routerSource, /startQqBotWsListener/, "Bot settings router should call the persistent listener start service");
-assert.match(routerSource, /stopQqBotWsListener/, "Bot settings router should call the persistent listener stop service");
+assert.doesNotMatch(routerSource, /stopQqBotWsListener/, "Bot settings router should not call the manual listener stop service");
 assert.match(routerSource, /getQqBotWsLogs/, "Bot settings router should call the persistent log service");
 assert.match(routerSource, /getQqBotGroups/, "Bot settings router should call the QQ group list service");
 assert.match(routerSource, /sendQqBotManualMessage/, "Bot settings router should call the manual message service");
@@ -90,18 +94,19 @@ assert.doesNotMatch(panelSource, /trpc\.botSettings\.sendTestAnalysis\.useMutati
 assert.match(panelSource, /trpc\.botSettings\.testWsConnection\.useMutation/, "Bot panel should call the WebSocket test endpoint");
 assert.match(panelSource, /trpc\.botSettings\.wsLogs\.useQuery/, "Bot panel should poll persistent WebSocket logs");
 assert.match(panelSource, /refetchInterval:\s*1_500/, "Bot panel should refresh WebSocket logs frequently enough for live feedback");
-assert.match(panelSource, /trpc\.botSettings\.startWsListener\.useMutation/, "Bot panel should start the persistent WebSocket listener");
-assert.match(panelSource, /trpc\.botSettings\.stopWsListener\.useMutation/, "Bot panel should stop the persistent WebSocket listener");
+assert.doesNotMatch(panelSource, /trpc\.botSettings\.startWsListener\.useMutation/, "Bot panel should not expose manual listener start");
+assert.doesNotMatch(panelSource, /trpc\.botSettings\.stopWsListener\.useMutation/, "Bot panel should not expose manual listener stop");
 assert.match(panelSource, /trpc\.botSettings\.groups\.useQuery/, "Bot panel should load QQ groups from NapLink");
 assert.doesNotMatch(panelSource, /trpc\.botSettings\.groups\.useQuery[\s\S]{0,180}refetchInterval:\s*15_000/, "Bot panel should not poll QQ groups repeatedly and flood logs");
 assert.match(panelSource, /trpc\.botSettings\.sendManualMessage\.useMutation/, "Bot panel should send direct messages through NapLink");
 assert.match(panelSource, /Bot QQ/, "Bot panel should show the current bot QQ number for later mention detection");
 assert.match(panelSource, /测试 WS/, "Bot panel should expose a WebSocket test button");
-assert.match(panelSource, /开始监听/, "Bot panel should expose a compact listener start button");
-assert.match(panelSource, /停止监听/, "Bot panel should expose a compact listener stop button");
+assert.doesNotMatch(panelSource, /开始监听/, "Bot panel should not render a manual listener start button");
+assert.doesNotMatch(panelSource, /停止监听/, "Bot panel should not render a manual listener stop button");
 assert.match(panelSource, /wsLogs/, "Bot panel should render operation logs returned by NapLink actions");
 assert.match(panelSource, /result\.ok/, "Bot panel should handle failed WebSocket test results without relying on tRPC 500 errors");
 assert.doesNotMatch(panelSource, /发送测试分析/, "Bot panel should not render a test-analysis send button");
 assert.match(panelSource, /支持的 @Bot 指令/, "Bot panel should present actual supported commands instead of editable unused keyword rules");
 assert.match(shellSource, /BotWsAutoStarter/, "Shell should auto-start bot WS when a connection is selected");
+assert.doesNotMatch(autoStarterSource, /!savedSettings\.enabled/, "Bot WS auto-starter should default to starting when a WebSocket URL is configured");
 assert.doesNotMatch(panelSource, /autoStartAttempted/, "Bot panel should not own the auto-start side effect anymore");

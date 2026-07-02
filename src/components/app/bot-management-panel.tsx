@@ -117,32 +117,6 @@ export function BotManagementPanel({ connectionId }: { connectionId: number }) {
       showToast({ title: "测试 WS 失败", description: error.message, variant: "error" });
     },
   });
-  const startWsListener = trpc.botSettings.startWsListener.useMutation({
-    onSuccess: async (result) => {
-      setWsLogs(result.logs);
-      await Promise.all([
-        utils.botSettings.wsLogs.invalidate({ connectionId }),
-        utils.botSettings.groups.invalidate({ connectionId }),
-      ]);
-      showToast({ title: result.ok ? "WS 监听已开始" : "WS 监听启动失败", description: result.message, variant: result.ok ? "success" : "error" });
-    },
-    onError: (error) => {
-      showToast({ title: "WS 监听启动失败", description: error.message, variant: "error" });
-    },
-  });
-  const stopWsListener = trpc.botSettings.stopWsListener.useMutation({
-    onSuccess: async (result) => {
-      setWsLogs(result.logs);
-      await Promise.all([
-        utils.botSettings.wsLogs.invalidate({ connectionId }),
-        utils.botSettings.groups.invalidate({ connectionId }),
-      ]);
-      showToast({ title: "WS 监听已停止", description: result.message, variant: "success" });
-    },
-    onError: (error) => {
-      showToast({ title: "WS 监听停止失败", description: error.message, variant: "error" });
-    },
-  });
 
   useEffect(() => {
     if (savedSettings) setDraft(savedSettings);
@@ -168,9 +142,7 @@ export function BotManagementPanel({ connectionId }: { connectionId: number }) {
   const actionPending = isLoading
     || saveSettings.isPending
     || sendManualMessage.isPending
-    || testWsConnection.isPending
-    || startWsListener.isPending
-    || stopWsListener.isPending;
+    || testWsConnection.isPending;
   const status = wsLogsQuery.data?.status ?? "idle";
   const running = Boolean(wsLogsQuery.data?.running);
   const badge = listenerBadge(status, running);
@@ -226,12 +198,6 @@ export function BotManagementPanel({ connectionId }: { connectionId: number }) {
           logContainerRef={wsLogContainerRef}
           logs={wsLogs}
           napLinkState={wsLogsQuery.data?.napLinkState ?? status}
-          onStart={() => saveAndRun(() => startWsListener.mutateAsync({ connectionId })).catch(() => undefined)}
-          onStop={() => stopWsListener.mutateAsync({ connectionId }).catch(() => undefined)}
-          running={running}
-          startDisabled={actionPending}
-          startPending={startWsListener.isPending}
-          stopPending={stopWsListener.isPending}
           wsUrl={draft.wsUrl}
         />
       </div>
