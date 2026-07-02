@@ -8,10 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { ErrorState, LoadingState } from "@/components/app/feedback-state";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
 
 type FieldKind = "text" | "secret" | "textarea" | "number" | "boolean" | "select" | "stringList" | "numberList" | "json";
 type FormValue = string | boolean;
@@ -525,14 +528,21 @@ export function SiteSettingsPanel({ connectionId }: { connectionId: number }) {
               ))}
             </SelectContent>
           </Select>
+        ) : field.kind === "secret" ? (
+          <PasswordInput
+            id={`setting-${field.key}`}
+            value={String(value)}
+            placeholder="留空不更新"
+            autoComplete="new-password"
+            onChange={(event) => setField(field.key, event.target.value)}
+          />
         ) : (
           <Input
             id={`setting-${field.key}`}
-            type={field.kind === "number" ? "number" : field.kind === "secret" ? "password" : "text"}
+            type={field.kind === "number" ? "number" : "text"}
             step={field.kind === "number" ? "any" : undefined}
             value={String(value)}
-            placeholder={field.kind === "secret" ? "留空不更新" : field.placeholder}
-            autoComplete={field.kind === "secret" ? "new-password" : undefined}
+            placeholder={field.placeholder}
             onChange={(event) => setField(field.key, event.target.value)}
           />
         )}
@@ -542,14 +552,16 @@ export function SiteSettingsPanel({ connectionId }: { connectionId: number }) {
   };
 
   if (isLoading) {
-    return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中...</div>;
+    return <LoadingState label="加载站点设置..." />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">站点设置</h2>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:items-center sm:justify-end [&>button]:flex-1 sm:[&>button]:flex-none">
+      <PanelHeader
+        title="站点设置"
+        description="配置目标站点的基础内容、展示选项和同步相关参数。"
+        actions={
+          <PanelActions>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching || save.isPending}>
             {isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
             刷新
@@ -558,19 +570,22 @@ export function SiteSettingsPanel({ connectionId }: { connectionId: number }) {
             {save.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
             {save.isPending ? "保存中..." : "保存"}
           </Button>
-        </div>
-      </div>
+          </PanelActions>
+        }
+      />
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <ErrorState title="保存站点设置失败" description={error} /> : null}
 
-      <div className="overflow-x-auto rounded-md border border-border/70 bg-background/70 p-1">
-        <div className="flex min-w-max gap-1">
+      <div className="rounded-md border border-border/70 bg-background/70 p-1 min-[1400px]:overflow-x-auto">
+        <div className="grid grid-cols-2 gap-1 min-[420px]:grid-cols-3 min-[1400px]:flex min-[1400px]:overflow-x-auto">
           {settingSections.map((section) => (
             <Button
               key={section.key}
               type="button"
               variant={activeTab === section.key ? "secondary" : "ghost"}
               size="sm"
+              className="h-11 w-full justify-center min-[1400px]:h-8 min-[1400px]:w-auto"
+              aria-current={activeTab === section.key ? "page" : undefined}
               onClick={() => setActiveTab(section.key)}
             >
               {section.label}

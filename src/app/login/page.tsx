@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BrandMark } from "@/components/app/brand-mark";
-import { ProjectPromoLinks } from "@/components/app/project-promo-links";
-import { ThemeToggle } from "@/components/app/theme-toggle";
+import { Loader2 } from "lucide-react";
+import { AuthLayout } from "@/components/app/auth-layout";
+import { InlineError } from "@/components/app/feedback-state";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,43 +27,29 @@ export default function LoginPage() {
   });
 
   return (
-    <div className="auth-screen flex min-h-screen items-center justify-center px-4 py-6 sm:px-6" data-motion="section">
-      <div className="w-full max-w-sm" data-motion="panel">
-        <div className="mb-4 flex justify-end" data-motion="control">
-          <ThemeToggle />
+    <AuthLayout title="S2A Manager" description="登录后管理 Sub2API 连接、倍率和同步任务。">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError("");
+          login.mutate({ email, password });
+        }}
+        className="space-y-4"
+      >
+        <div className="space-y-2">
+          <Label htmlFor="email">邮箱</Label>
+          <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="admin@example.com" autoComplete="email" />
         </div>
-        <Card className="w-full">
-          <CardHeader>
-            <BrandMark className="mb-3 size-12 text-slate-900 dark:text-white" />
-            <CardTitle className="text-2xl">S2A Manager</CardTitle>
-            <CardDescription>登录后管理 Sub2API 连接、倍率和同步任务。项目仓库 langrenjh-alt/S2A-Manager，SUB2API 中转站推荐 z30.top。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setError("");
-                login.mutate({ email, password });
-              }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label htmlFor="email">邮箱</Label>
-                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="admin@example.com" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">密码</Label>
-                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••" />
-              </div>
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
-              <Button type="submit" className="w-full" disabled={login.isPending}>
-                {login.isPending ? "登录中..." : "登录"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-        <ProjectPromoLinks stacked className="mt-3" />
-      </div>
-    </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">密码</Label>
+          <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••" autoComplete="current-password" />
+        </div>
+        {error ? <InlineError>{error}</InlineError> : null}
+        <Button type="submit" className="w-full" disabled={login.isPending}>
+          {login.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+          {login.isPending ? "登录中..." : "登录"}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }

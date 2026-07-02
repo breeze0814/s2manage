@@ -13,6 +13,7 @@ import {
   Layers3,
   Link2,
   ListFilter,
+  Loader2,
   LogOut,
   Plus,
   RadioTower,
@@ -24,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { BrandMark } from "@/components/app/brand-mark";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { AccountsPanel } from "@/components/app/accounts-panel";
 import { AnnouncementsPanel } from "@/components/app/announcements-panel";
@@ -31,6 +33,7 @@ import { AppSettingsPage } from "@/components/app/app-settings-page";
 import { BlSyncPanel } from "@/components/app/bl-sync-panel";
 import { BotManagementPanel } from "@/components/app/bot-management-panel";
 import { BotWsAutoStarter } from "@/components/app/bot-ws-auto-starter";
+import { EmptyState, InlineError, LoadingState } from "@/components/app/feedback-state";
 import { GroupsPanel } from "@/components/app/groups-panel";
 import { LogsPanel } from "@/components/app/logs-panel";
 import { ProjectPromoLinks } from "@/components/app/project-promo-links";
@@ -38,9 +41,10 @@ import { ServiceStatusPanel } from "@/components/app/service-status-panel";
 import { SiteSettingsPanel } from "@/components/app/settings-panel";
 import { UpstreamMonitorPanel } from "@/components/app/upstream-monitor-panel";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { trpc } from "@/lib/trpc";
@@ -144,33 +148,35 @@ function ConnectionForm({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{edit ? "编辑连接" : "添加连接"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <DialogContent className="flex max-h-[min(92dvh,720px)] flex-col gap-0 overflow-hidden p-0">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
+            <DialogTitle>{edit ? "编辑连接" : "添加连接"}</DialogTitle>
+          </DialogHeader>
+          <DialogBody className="flex-1 space-y-4 py-5">
           <div className="space-y-2">
-            <Label>名称</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="生产站点" />
+            <Label htmlFor="connection-name">名称</Label>
+            <Input id="connection-name" value={name} onChange={(e) => setName(e.target.value)} required placeholder="生产站点" autoComplete="organization" />
           </div>
           <div className="space-y-2">
-            <Label>Sub2API 站点 URL</Label>
-            <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://example.com" />
+            <Label htmlFor="connection-base-url">Sub2API 站点 URL</Label>
+            <Input id="connection-base-url" type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://example.com" autoComplete="url" autoCapitalize="none" />
           </div>
           <div className="space-y-2">
-            <Label>Admin API Key {edit ? "(留空保持不变)" : ""}</Label>
-            <Input
-              type="password"
+            <Label htmlFor="connection-admin-key">Admin API Key {edit ? "(留空保持不变)" : ""}</Label>
+            <PasswordInput
+              id="connection-admin-key"
               value={adminApiKey}
               onChange={(e) => setAdminApiKey(e.target.value)}
               required={!edit}
               placeholder="sk-..."
+              autoComplete="off"
             />
           </div>
           <div className="space-y-2">
-            <Label>同步策略</Label>
+            <Label htmlFor="connection-sync-mode">同步策略</Label>
             <Select value={syncMode} onValueChange={(value) => setSyncMode(value as "manual" | "auto")}>
-              <SelectTrigger>
+              <SelectTrigger id="connection-sync-mode">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -179,14 +185,14 @@ function ConnectionForm({
               </SelectContent>
             </Select>
           </div>
-          {error ? (
-            <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
-          ) : null}
-          <DialogFooter>
+          {error ? <InlineError>{error}</InlineError> : null}
+          </DialogBody>
+          <DialogFooter className="shrink-0 border-t border-border/70 px-4 py-4 sm:px-6">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               取消
             </Button>
             <Button type="submit" disabled={isPending}>
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
               {isPending ? "保存中..." : edit ? "保存连接" : "添加连接"}
             </Button>
           </DialogFooter>
@@ -220,10 +226,8 @@ function ConnectionCard({
 }) {
   return (
     <div
-      role="button"
-      tabIndex={0}
       className={cn(
-        "group cursor-pointer rounded-lg border text-left shadow-[inset_0_1px_0_hsl(0_0%_100%/0.2),0_10px_30px_hsl(217_34%_35%/0.08)] backdrop-blur-xl transition-colors focus:outline-none focus:ring-2 focus:ring-ring/25 focus:ring-offset-2 focus:ring-offset-background dark:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.08),0_12px_34px_hsl(0_0%_0%/0.22)]",
+        "group rounded-lg border text-left shadow-[inset_0_1px_0_hsl(0_0%_100%/0.2),0_10px_30px_hsl(217_34%_35%/0.08)] backdrop-blur-xl transition-colors dark:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.08),0_12px_34px_hsl(0_0%_0%/0.22)]",
         compact ? "w-[min(78vw,280px)] shrink-0 p-2.5" : "w-full p-3",
         active
           ? "border-primary/40 bg-primary/[0.92] text-primary-foreground"
@@ -231,14 +235,14 @@ function ConnectionCard({
       )}
       data-motion="card"
       data-motion-hover="lift"
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        onSelect();
-      }}
     >
-      <div className="flex items-start gap-3">
+      <button
+        type="button"
+        className="flex w-full items-start gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        aria-label={`选择连接 ${connection.name}`}
+        aria-pressed={active}
+        onClick={onSelect}
+      >
         <div
           className={cn(
             "mt-0.5 rounded-md border p-2",
@@ -272,16 +276,15 @@ function ConnectionCard({
             )}
           </span>
         ) : null}
-      </div>
-      <div className={cn("mt-3 flex items-center gap-1", compact ? "opacity-100 [&>button]:flex-1 [&>button]:px-1.5" : "opacity-100 md:opacity-0 md:transition-opacity md:group-hover:opacity-100")}>
+      </button>
+      <div className={cn("mt-3 flex flex-wrap gap-2", compact ? "[&>button]:flex-1 [&>button]:px-1.5" : "")}>
         <Button
           type="button"
           variant={active ? "secondary" : "ghost"}
           size="sm"
-          className={cn("h-7 px-2", active && "border-white/20 bg-white/[0.12] text-primary-foreground hover:bg-white/[0.18] hover:text-primary-foreground")}
+          className={cn("px-2", active && "border-white/20 bg-white/[0.12] text-primary-foreground hover:bg-white/[0.18] hover:text-primary-foreground")}
           disabled={testPending}
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             onTest();
           }}
         >
@@ -292,9 +295,8 @@ function ConnectionCard({
           type="button"
           variant={active ? "secondary" : "ghost"}
           size="sm"
-          className={cn("h-7 px-2", active && "border-white/20 bg-white/[0.12] text-primary-foreground hover:bg-white/[0.18] hover:text-primary-foreground")}
-          onClick={(e) => {
-            e.stopPropagation();
+          className={cn("px-2", active && "border-white/20 bg-white/[0.12] text-primary-foreground hover:bg-white/[0.18] hover:text-primary-foreground")}
+          onClick={() => {
             onEdit();
           }}
         >
@@ -305,10 +307,9 @@ function ConnectionCard({
           type="button"
           variant="ghost"
           size="sm"
-          className={cn("h-7 px-2 text-destructive hover:text-destructive", active && "text-primary-foreground hover:bg-white/[0.18] hover:text-primary-foreground")}
+          className={cn("px-2 text-destructive hover:text-destructive", active && "text-primary-foreground hover:bg-white/[0.18] hover:text-primary-foreground")}
           disabled={deletePending}
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             onDelete();
           }}
         >
@@ -330,6 +331,7 @@ export function Shell() {
   const [activeTab, setActiveTab] = useState<Tab>("groups");
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
   const [editConnection, setEditConnection] = useState<ConnectionEdit | undefined>();
+  const [deleteTarget, setDeleteTarget] = useState<ConnectionItem | null>(null);
   const [showAppSettings, setShowAppSettings] = useState(false);
   const [testResult, setTestResult] = useState<Record<number, { ok: boolean; message: string }>>({});
 
@@ -379,11 +381,13 @@ export function Shell() {
     setShowAppSettings(false);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("确定删除此连接？该操作无法撤销。")) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const targetId = deleteTarget.id;
     try {
-      await deleteConnection.mutateAsync({ id });
-      if (selectedId === id) setSelectedId(null);
+      await deleteConnection.mutateAsync({ id: targetId });
+      if (selectedId === targetId) setSelectedId(null);
+      setDeleteTarget(null);
     } catch {
       // Mutation onError already displays the failure.
     }
@@ -424,13 +428,13 @@ export function Shell() {
           syncMode: connection.syncMode,
         })
       }
-      onDelete={() => handleDelete(connection.id)}
+      onDelete={() => setDeleteTarget(connection)}
     />
   );
 
   return (
-    <div className="app-shell flex h-dvh min-h-0 flex-col overflow-hidden text-foreground md:flex-row" data-motion="shell">
-      <aside className="hidden w-[312px] shrink-0 flex-col border-r border-white/[0.35] bg-white/[0.36] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.06] md:flex" data-motion="sidebar">
+    <div className="app-shell flex h-dvh min-h-0 flex-col overflow-hidden text-foreground lg:flex-row" data-motion="shell">
+      <aside className="hidden w-[312px] shrink-0 flex-col border-r border-white/[0.35] bg-white/[0.36] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.06] lg:flex" data-motion="sidebar">
         <div className="border-b border-white/[0.35] px-5 py-4 dark:border-white/10">
           <div className="mac-window-controls mb-4" aria-hidden="true">
             <span className="bg-[#ff5f57]" />
@@ -440,7 +444,7 @@ export function Shell() {
           <div className="flex items-center gap-3">
             <BrandMark className="size-11 text-slate-900 dark:text-white" />
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold tracking-tight">S2A Manager</h1>
+              <h1 className="truncate text-base font-semibold">S2A Manager</h1>
               <p className="truncate font-mono text-xs text-muted-foreground">Sub2API control plane</p>
             </div>
           </div>
@@ -456,18 +460,16 @@ export function Shell() {
             <p className="text-xs font-medium uppercase text-muted-foreground">Connections</p>
             <p className="text-xs text-muted-foreground/80">{connections?.length ?? 0} 个站点</p>
           </div>
-          <Button size="icon" variant="outline" onClick={openCreateConnection} title="添加连接">
+          <Button size="icon" variant="outline" onClick={openCreateConnection} title="添加连接" aria-label="添加连接">
             <Plus className="size-4" />
           </Button>
         </div>
 
         <div className="flex-1 overflow-auto px-3 pb-3">
           {connectionsLoading ? (
-            <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-4 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">连接加载中...</div>
+            <LoadingState label="连接加载中..." className="min-h-24 border-white/[0.45] bg-white/[0.28] dark:border-white/10 dark:bg-white/[0.06]" />
           ) : connections?.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-4 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">
-              还没有连接。添加一个 Sub2API 站点后即可开始管理倍率和同步。
-            </div>
+            <EmptyState title="还没有连接" description="添加一个 Sub2API 站点后即可开始管理倍率和同步。" className="border-white/[0.45] bg-white/[0.28] py-6 text-left dark:border-white/10 dark:bg-white/[0.06]" />
           ) : (
             <div className="space-y-2">{connections?.map((connection) => renderConnectionCard(connection))}</div>
           )}
@@ -475,7 +477,7 @@ export function Shell() {
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="hidden shrink-0 border-b border-white/[0.35] bg-white/[0.34] px-4 py-3 backdrop-blur-2xl sm:px-5 md:block md:px-6 dark:border-white/10 dark:bg-white/[0.06]" data-motion="header">
+        <header className="hidden shrink-0 border-b border-white/[0.35] bg-white/[0.34] px-4 py-3 backdrop-blur-2xl sm:px-5 lg:block lg:px-6 dark:border-white/10 dark:bg-white/[0.06]" data-motion="header">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -504,79 +506,84 @@ export function Shell() {
                 {session?.email}
               </span>
               <ThemeToggle />
-              <Button variant={showAppSettings ? "secondary" : "ghost"} size="icon" onClick={() => setShowAppSettings((value) => !value)} title="应用设置">
+              <Button variant={showAppSettings ? "secondary" : "ghost"} size="icon" onClick={() => setShowAppSettings((value) => !value)} title="应用设置" aria-label={showAppSettings ? "返回站点管理" : "打开应用设置"}>
                 {showAppSettings ? <ChevronLeft className="size-4" /> : <Settings className="size-4" />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => logout.mutate()} disabled={logout.isPending} title="退出登录">
+              <Button variant="ghost" size="icon" onClick={() => logout.mutate()} disabled={logout.isPending} title="退出登录" aria-label="退出登录">
                 <LogOut className="size-4" />
               </Button>
             </div>
           </div>
         </header>
 
-        {!selected || showAppSettings ? (
-          <div className="shrink-0 border-b border-white/[0.35] bg-white/[0.34] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.06] md:hidden" data-motion="header">
-            <div className="flex items-center justify-between gap-2 px-3 py-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <BrandMark className="size-9 text-slate-900 dark:text-white" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">S2A Manager</p>
-                    <p className="truncate text-xs text-muted-foreground">{connections?.length ?? 0} 个站点</p>
-                  </div>
+        <div className="shrink-0 border-b border-white/[0.35] bg-white/[0.34] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.06] lg:hidden" data-motion="header">
+          <div className="flex items-center justify-between gap-2 px-3 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <BrandMark className="size-9 text-slate-900 dark:text-white" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">S2A Manager</p>
+                  <p className="truncate text-xs text-muted-foreground">{connections?.length ?? 0} 个站点</p>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <ThemeToggle className="size-8" />
-                <Button variant={showAppSettings ? "secondary" : "ghost"} size="icon" className="size-8" onClick={() => setShowAppSettings((value) => !value)} title="应用设置">
-                  {showAppSettings ? <ChevronLeft className="size-4" /> : <Settings className="size-4" />}
-                </Button>
-                <Button variant="ghost" size="icon" className="size-8" onClick={() => logout.mutate()} disabled={logout.isPending} title="退出登录">
-                  <LogOut className="size-4" />
-                </Button>
-                <Button size="icon" variant="outline" className="size-8" onClick={openCreateConnection} title="添加连接">
-                  <Plus className="size-4" />
-                </Button>
-              </div>
             </div>
-            <div className="px-3 pb-2">
-              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/40 bg-white/[0.26] px-3 py-2 text-xs text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.07]">
-                {showAppSettings ? (
-                  <>
-                    <Settings className="size-3.5 shrink-0 text-foreground" />
-                    <span className="truncate text-foreground">应用设置</span>
-                    <span className="truncate">管理 Worker 与管理员账号</span>
-                  </>
-                ) : (
-                  <span>等待连接</span>
-                )}
-              </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <ThemeToggle />
+              <Button variant={showAppSettings ? "secondary" : "ghost"} size="icon" onClick={() => setShowAppSettings((value) => !value)} title="应用设置" aria-label={showAppSettings ? "返回站点管理" : "打开应用设置"}>
+                {showAppSettings ? <ChevronLeft className="size-4" /> : <Settings className="size-4" />}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => logout.mutate()} disabled={logout.isPending} title="退出登录" aria-label="退出登录">
+                <LogOut className="size-4" />
+              </Button>
+              <Button size="icon" variant="outline" onClick={openCreateConnection} title="添加连接" aria-label="添加连接">
+                <Plus className="size-4" />
+              </Button>
             </div>
-            {!showAppSettings ? <ProjectPromoLinks className="hidden px-3 pb-2 min-[420px]:flex" /> : null}
-            {!showAppSettings ? (
-              <div className="overflow-x-auto px-3 pb-3 [-webkit-overflow-scrolling:touch]">
-                {connectionsLoading ? (
-                  <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-3 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">连接加载中...</div>
-                ) : connections?.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-white/[0.45] bg-white/[0.28] p-3 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]" data-motion="panel">
-                    添加一个 Sub2API 站点后即可开始管理。
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
           </div>
-        ) : null}
+          <div className="px-3 pb-2">
+            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/40 bg-white/[0.26] px-3 py-2 text-xs text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.07]">
+              {showAppSettings ? (
+                <>
+                  <Settings className="size-3.5 shrink-0 text-foreground" />
+                  <span className="truncate text-foreground">应用设置</span>
+                  <span className="truncate">管理 Worker 与管理员账号</span>
+                </>
+              ) : selected ? (
+                <>
+                  <ActiveIcon className="size-3.5 shrink-0 text-foreground" />
+                  <span className="truncate text-foreground">{selected.name}</span>
+                  <span className="text-muted-foreground/60">/</span>
+                  <span className="truncate">{activeTabMeta.label}</span>
+                </>
+              ) : (
+                <span>等待连接</span>
+              )}
+            </div>
+          </div>
+          {!showAppSettings && !selected ? <ProjectPromoLinks className="hidden px-3 pb-2 min-[420px]:flex" /> : null}
+          {!showAppSettings ? (
+            <div className="overflow-x-auto px-3 pb-3 [-webkit-overflow-scrolling:touch]">
+              {connectionsLoading ? (
+                <LoadingState label="连接加载中..." className="min-h-20 min-w-[min(78vw,280px)] border-white/[0.45] bg-white/[0.28] py-4 dark:border-white/10 dark:bg-white/[0.06]" />
+              ) : connections?.length === 0 ? (
+                <EmptyState title="暂无连接" description="添加一个 Sub2API 站点后即可开始管理。" className="min-w-[min(78vw,280px)] border-white/[0.45] bg-white/[0.28] py-4 dark:border-white/10 dark:bg-white/[0.06]" />
+              ) : (
+                <div className="flex gap-2">{connections?.map((connection) => renderConnectionCard(connection, true))}</div>
+              )}
+            </div>
+          ) : null}
+        </div>
 
         {selected ? <BotWsAutoStarter connectionId={selected.id} /> : null}
 
         {showAppSettings ? (
-          <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-5 md:p-6" data-motion="section">
+          <div id="main-content" tabIndex={-1} className="min-h-0 flex-1 overflow-auto p-3 outline-none sm:p-5 md:p-6" data-motion="section">
             <AppSettingsPage />
           </div>
         ) : selected ? (
           <>
             <nav className="shrink-0 border-b border-white/30 bg-white/[0.24] px-3 backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.05] sm:px-5" data-motion="nav">
-              <div className="flex gap-1 overflow-x-auto py-2">
+              <div className="grid grid-cols-3 gap-1 py-2 min-[420px]:grid-cols-4 min-[560px]:grid-cols-5 min-[1400px]:flex min-[1400px]:overflow-x-auto">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
@@ -584,13 +591,15 @@ export function Shell() {
                       key={tab.id}
                       type="button"
                       className={cn(
-                        "flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium shadow-[inset_0_1px_0_hsl(0_0%_100%/0.18)] backdrop-blur-xl transition-colors sm:h-10 sm:gap-2 sm:px-3 sm:text-sm",
+                        "flex h-11 shrink-0 items-center justify-center min-[1400px]:justify-start gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-xs font-medium shadow-[inset_0_1px_0_hsl(0_0%_100%/0.18)] backdrop-blur-xl transition-colors min-[1400px]:h-10 min-[1400px]:gap-2 min-[1400px]:px-3 min-[1400px]:text-sm",
                         activeTab === tab.id
                           ? "border-primary/45 bg-primary/90 text-primary-foreground"
                           : "border-transparent text-muted-foreground hover:border-primary/25 hover:bg-primary/[0.1] hover:text-foreground dark:hover:border-primary/25 dark:hover:bg-primary/[0.08]",
                       )}
                       data-motion="control"
                       data-motion-hover="lift"
+                      data-active={activeTab === tab.id ? "true" : "false"}
+                      aria-current={activeTab === tab.id ? "page" : undefined}
                       onClick={() => setActiveTab(tab.id)}
                     >
                       <Icon className="size-4" />
@@ -600,7 +609,7 @@ export function Shell() {
                 })}
               </div>
             </nav>
-            <section className="min-h-0 flex-1 overflow-auto p-3 sm:p-5 md:p-6" data-motion="section">
+            <section id="main-content" tabIndex={-1} className="min-h-0 flex-1 overflow-auto p-3 outline-none sm:p-5 md:p-6" data-motion="section">
               {activeTab === "groups" ? <GroupsPanel connectionId={selected.id} /> : null}
               {activeTab === "service-status" ? <ServiceStatusPanel connectionId={selected.id} /> : null}
               {activeTab === "bl-sync" ? <BlSyncPanel connectionId={selected.id} /> : null}
@@ -613,8 +622,8 @@ export function Shell() {
             </section>
           </>
         ) : (
-          <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6" data-motion="section">
-            <div className="codex-panel max-w-md rounded-xl p-6 text-center sm:p-8" data-motion="card" data-motion-hover="lift">
+          <div id="main-content" tabIndex={-1} className="flex min-h-0 flex-1 items-center justify-center p-4 outline-none sm:p-6" data-motion="section">
+            <EmptyState className="codex-panel max-w-md rounded-xl border-solid p-6 sm:p-8">
               <BrandMark className="mx-auto size-14 text-slate-900 dark:text-white" />
               <h2 className="mt-4 text-lg font-semibold">添加第一个 Sub2API 连接</h2>
               <p className="mt-2 text-sm text-muted-foreground">连接后即可管理分组倍率、账号调度、公告和站点设置。可参考官方仓库，也可访问 z30.top 体验 SUB2API 中转服务。</p>
@@ -623,7 +632,7 @@ export function Shell() {
                 <Plus className="size-4" />
                 添加连接
               </Button>
-            </div>
+            </EmptyState>
           </div>
         )}
       </main>
@@ -635,6 +644,21 @@ export function Shell() {
           if (!value) setEditConnection(undefined);
         }}
         edit={editConnection}
+      />
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="删除连接"
+        description={
+          deleteTarget
+            ? `确定删除「${deleteTarget.name}」？该操作无法撤销，相关管理面板会停止使用此站点。`
+            : "确定删除此连接？该操作无法撤销。"
+        }
+        confirmLabel="删除连接"
+        pending={deleteConnection.isPending}
+        onConfirm={handleDelete}
       />
     </div>
   );

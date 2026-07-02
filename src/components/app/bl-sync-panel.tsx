@@ -1,17 +1,33 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, CheckCircle2, Loader2, Play, Plus, RefreshCw, Save, Search, Trash2, XCircle } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, Loader2, Play, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
+import { EmptyState, InlineError, LoadingState } from "@/components/app/feedback-state";
+import { MetricCard } from "@/components/app/metric-card";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
+import { FilterField, FilterSearchField, FilterSummary, FilterToolbar } from "@/components/app/filter-toolbar";
+import {
+  MobileRecord,
+  MobileRecordActions,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordHeader,
+  MobileRecordList,
+  MobileRecordMeta,
+  MobileRecordTitle,
+} from "@/components/app/mobile-record";
 
 type CollectionSite = {
   id: number;
@@ -293,6 +309,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const [changePage, setChangePage] = useState(1);
   const [changePageSize, setChangePageSize] = useState(DEFAULT_PAGE_SIZE);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CollectionSite | null>(null);
   const [syncError, setSyncError] = useState("");
 
   const siteId = selectedSiteId === "__all__" ? undefined : Number(selectedSiteId);
@@ -355,6 +372,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const deleteSite = trpc.bl.deleteCollectionSite.useMutation({
     onSuccess: async () => {
       setSelectedSiteId("__all__");
+      setDeleteTarget(null);
       await invalidateCollection();
       showToast({ title: "采集源已删除", variant: "success" });
     },
@@ -434,6 +452,25 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const enabledSites = sitesList.filter((site) => site.enabled).length;
   const onlineSites = sitesList.filter((site) => site.lastStatus === "online").length;
   const selectedSourceSite = selectedSiteId === "__all__" ? undefined : sitesList.find((site) => site.id === siteId);
+  const renderSiteBalance = (site: CollectionSite) => {
+    const balance = balanceBySiteId.get(site.id);
+    if (!balance) {
+      return balancesLoading || balancesFetching ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+      ) : (
+        <span className="text-muted-foreground">-</span>
+      );
+    }
+    if (balance.status === "ok") {
+      return <span className="font-mono">{formatRate(balance.balance)}</span>;
+    }
+    const label = balance.status === "unsupported" ? "不支持" : "失败";
+    return (
+      <span className="text-xs text-muted-foreground" title={balance.message ?? undefined}>
+        {label}
+      </span>
+    );
+  };
   const filteredRatesList = useMemo(
     () =>
       ratesList.filter((rate) => {
@@ -459,6 +496,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
   const selectedRate = ratesWithKeys.find((item) => item.key === selectedRateKey)?.rate;
   const selectedTarget = groupsList.find((group) => group.id === Number.parseInt(selectedGroupId, 10));
   const nextRate = getRateValue(selectedRate);
+  const hasRateFilters = Boolean(rateQuery) || selectedPlatform !== "__all__" || selectedSiteId !== "__all__";
 
   useEffect(() => {
     if (selectedRateKey && !ratesWithKeys.some((item) => item.key === selectedRateKey)) {
@@ -575,6 +613,11 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
     });
   };
 
+  const handleConfirmDeleteSite = () => {
+    if (!deleteTarget) return;
+    deleteSite.mutate({ connectionId, id: deleteTarget.id });
+  };
+
   const handleRefreshRates = async () => {
     const result = await refetchRates();
     if (result.error) {
@@ -588,12 +631,11 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">倍率采集</h2>
-          <p className="text-sm text-muted-foreground">采集源站分组倍率，供规则绑定、自动同步和手动写入使用。</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PanelHeader
+        title="倍率采集"
+        description="采集源站分组倍率，供规则绑定、自动同步和手动写入使用。"
+        actions={
+          <PanelActions>
           <Button variant="outline" size="sm" onClick={() => collectAll.mutate({ connectionId })} disabled={collecting || sitesList.length === 0}>
             {collectAll.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             全部采集
@@ -602,136 +644,171 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
             <Plus className="h-4 w-4" />
             添加采集源
           </Button>
-        </div>
-      </div>
+          </PanelActions>
+        }
+      />
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <Card className="h-full">
-          <CardContent className="flex min-h-20 flex-col justify-center p-4">
-            <div className="text-sm text-muted-foreground">采集源</div>
-            <div className="mt-1 text-2xl font-semibold">{sitesList.length}</div>
-          </CardContent>
-        </Card>
-        <Card className="h-full">
-          <CardContent className="flex min-h-20 flex-col justify-center p-4">
-            <div className="text-sm text-muted-foreground">启用</div>
-            <div className="mt-1 text-2xl font-semibold">{enabledSites}</div>
-          </CardContent>
-        </Card>
-        <Card className="h-full">
-          <CardContent className="flex min-h-20 flex-col justify-center p-4">
-            <div className="text-sm text-muted-foreground">在线</div>
-            <div className="mt-1 text-2xl font-semibold">{onlineSites}</div>
-          </CardContent>
-        </Card>
-        <Card className="h-full">
-          <CardContent className="flex min-h-20 flex-col justify-center p-4">
-            <div className="text-sm text-muted-foreground">当前倍率</div>
-            <div className="mt-1 text-2xl font-semibold">{ratesList.length}</div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard title="采集源" value={sitesList.length} tone="info" />
+        <MetricCard title="启用" value={enabledSites} tone={enabledSites > 0 ? "success" : "neutral"} />
+        <MetricCard title="在线" value={onlineSites} tone={onlineSites > 0 ? "success" : "warning"} />
+        <MetricCard title="当前倍率" value={ratesList.length} tone="neutral" />
       </div>
 
       <Card>
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <CardTitle className="text-base">采集源站</CardTitle>
           {sitesLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
         </CardHeader>
         <CardContent className="p-0">
           {sitesList.length === 0 ? (
-            <div className="p-5 text-sm text-muted-foreground">暂无采集源。添加源站后即可把倍率数据采集到 S2A Manager 本地。</div>
+            <EmptyState title="暂无采集源" description="添加源站后即可把倍率数据采集到 S2A Manager 本地。" className="m-3" />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>间隔</TableHead>
-                  <TableHead>充值倍率</TableHead>
-                  <TableHead className="text-right">余额</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>最近成功</TableHead>
-                  <TableHead className="w-56 text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <MobileRecordList className="p-3">
                 {sitesList.map((site) => (
-                  <TableRow key={site.id}>
-                    <TableCell>
-                      <button type="button" className="max-w-[260px] text-left" onClick={() => setSelectedSiteId(String(site.id))}>
-                        <span className="block truncate font-medium">{site.name}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{site.baseUrl}</span>
-                      </button>
-                    </TableCell>
-                    <TableCell>{siteTypeLabel(site.siteType)}</TableCell>
-                    <TableCell className="font-mono">{site.intervalMin}m</TableCell>
-                    <TableCell className="font-mono">{formatRate(site.rechargeRatio)}</TableCell>
-                    <TableCell className="text-right">
-                      {(() => {
-                        const balance = balanceBySiteId.get(site.id);
-                        if (!balance) {
-                          return balancesLoading || balancesFetching ? (
-                            <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          );
-                        }
-                        if (balance.status === "ok") {
-                          return <span className="font-mono">{formatRate(balance.balance)}</span>;
-                        }
-                        const label = balance.status === "unsupported" ? "不支持" : "失败";
-                        return (
-                          <span className="text-xs text-muted-foreground" title={balance.message ?? undefined}>
-                            {label}
-                          </span>
-                        );
-                      })()}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={
-                          site.lastStatus === "online"
-                            ? "text-teal-700 dark:text-teal-300"
-                            : site.lastStatus === "offline"
-                              ? "text-destructive"
-                              : "text-muted-foreground"
-                        }
-                      >
-                        {statusText(site.lastStatus)}
-                      </span>
-                      {site.lastError ? <div className="max-w-[220px] truncate text-xs text-muted-foreground" title={site.lastError}>{site.lastError}</div> : null}
-                    </TableCell>
-                    <TableCell>{formatDateTime(site.lastSuccessAt)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => testSite.mutate({ connectionId, id: site.id })} disabled={testSite.isPending}>
-                          {testSite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                          测试
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => collectSite.mutate({ connectionId, id: site.id })} disabled={collecting || !site.enabled}>
-                          {collectSite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                          采集
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(site)}>
-                          编辑
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => {
-                            if (confirm(`确定删除采集源「${site.name}」？`)) deleteSite.mutate({ connectionId, id: site.id });
-                          }}
-                          disabled={deleteSite.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                  <MobileRecord key={site.id} className={selectedSiteId === String(site.id) ? "border-primary/55 bg-primary/10" : ""}>
+                    <MobileRecordHeader>
+                      <div className="min-w-0">
+                        <MobileRecordTitle>{site.name}</MobileRecordTitle>
+                        <MobileRecordMeta>{site.baseUrl}</MobileRecordMeta>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </MobileRecordHeader>
+                    <MobileRecordFields>
+                      <MobileRecordField label="类型" value={siteTypeLabel(site.siteType)} />
+                      <MobileRecordField label="间隔" value={<span className="font-mono">{site.intervalMin}m</span>} />
+                      <MobileRecordField label="充值倍率" value={<span className="font-mono">{formatRate(site.rechargeRatio)}</span>} />
+                      <MobileRecordField label="余额" value={renderSiteBalance(site)} />
+                      <MobileRecordField
+                        label="状态"
+                        value={
+                          <span
+                            className={
+                              site.lastStatus === "online"
+                                ? "text-teal-700 dark:text-teal-300"
+                                : site.lastStatus === "offline"
+                                  ? "text-destructive"
+                                  : "text-muted-foreground"
+                            }
+                          >
+                            {statusText(site.lastStatus)}
+                          </span>
+                        }
+                      />
+                      <MobileRecordField label="最近成功" value={formatDateTime(site.lastSuccessAt)} />
+                    </MobileRecordFields>
+                    {site.lastError ? (
+                      <p className="mt-3 rounded-md border border-border/60 bg-white/[0.42] px-2.5 py-2 text-xs text-muted-foreground dark:bg-white/[0.04]">
+                        {site.lastError}
+                      </p>
+                    ) : null}
+                    <MobileRecordActions>
+                      <Button variant={selectedSiteId === String(site.id) ? "default" : "outline"} size="sm" onClick={() => setSelectedSiteId(String(site.id))}>
+                        筛选
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => testSite.mutate({ connectionId, id: site.id })} disabled={testSite.isPending}>
+                        {testSite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        测试
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => collectSite.mutate({ connectionId, id: site.id })} disabled={collecting || !site.enabled}>
+                        {collectSite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        采集
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => openEdit(site)}>
+                        编辑
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(site)}
+                        disabled={deleteSite.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        删除
+                      </Button>
+                    </MobileRecordActions>
+                  </MobileRecord>
                 ))}
-              </TableBody>
-            </Table>
+              </MobileRecordList>
+              <div className="hidden lg:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>名称</TableHead>
+                      <TableHead>类型</TableHead>
+                      <TableHead>间隔</TableHead>
+                      <TableHead>充值倍率</TableHead>
+                      <TableHead className="text-right">余额</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>最近成功</TableHead>
+                      <TableActionHead className="w-56">操作</TableActionHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sitesList.map((site) => (
+                      <TableRow key={site.id}>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-auto min-h-11 max-w-[260px] justify-start px-2 py-1 text-left lg:min-h-10"
+                            aria-label={`选择采集源 ${site.name}`}
+                            onClick={() => setSelectedSiteId(String(site.id))}
+                          >
+                            <span className="block truncate font-medium">{site.name}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{site.baseUrl}</span>
+                          </Button>
+                        </TableCell>
+                        <TableCell>{siteTypeLabel(site.siteType)}</TableCell>
+                        <TableCell className="font-mono">{site.intervalMin}m</TableCell>
+                        <TableCell className="font-mono">{formatRate(site.rechargeRatio)}</TableCell>
+                        <TableCell className="text-right">{renderSiteBalance(site)}</TableCell>
+                        <TableCell>
+                          <span
+                            className={
+                              site.lastStatus === "online"
+                                ? "text-teal-700 dark:text-teal-300"
+                                : site.lastStatus === "offline"
+                                  ? "text-destructive"
+                                  : "text-muted-foreground"
+                            }
+                          >
+                            {statusText(site.lastStatus)}
+                          </span>
+                          {site.lastError ? <div className="max-w-[280px] whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]" title={site.lastError}>{site.lastError}</div> : null}
+                        </TableCell>
+                        <TableCell>{formatDateTime(site.lastSuccessAt)}</TableCell>
+                        <TableActionCell>
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => testSite.mutate({ connectionId, id: site.id })} disabled={testSite.isPending}>
+                              {testSite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                              测试
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => collectSite.mutate({ connectionId, id: site.id })} disabled={collecting || !site.enabled}>
+                              {collectSite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                              采集
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(site)}>
+                              编辑
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setDeleteTarget(site)}
+                              disabled={deleteSite.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableActionCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -744,162 +821,228 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
               显示 {ratesWithKeys.length}/{ratesList.length} 条
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full sm:w-auto">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
+          <FilterToolbar columns={4} className="lg:grid-cols-[minmax(0,1.3fr)_minmax(160px,0.8fr)_minmax(180px,0.9fr)_minmax(180px,0.9fr)]">
+            <FilterField label="查找倍率" htmlFor="bl-rate-search">
+              <FilterSearchField
+                id="bl-rate-search"
+                type="search"
                 value={rateSearch}
                 onChange={(event) => {
                   setRateSearch(event.target.value);
                   setSelectedRateKey("");
                 }}
                 placeholder="搜索分组、站点、平台、倍率"
-                className="w-full pl-9 sm:w-[260px]"
               />
-            </div>
-            <Select
-              value={selectedPlatform}
-              onValueChange={(value) => {
-                setSelectedPlatform(value);
-                setSelectedRateKey("");
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-[170px]">
-                <SelectValue placeholder="全部平台" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部平台</SelectItem>
-                <SelectItem value="__empty__">未标记平台</SelectItem>
-                {platformOptions.map((platform) => (
-                  <SelectItem key={platform} value={platform}>
-                    {platform}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedSiteId}
-              onValueChange={(value) => {
-                setSelectedSiteId(value);
-                setSelectedRateKey("");
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-[220px]">
-                <SelectValue placeholder="筛选采集源" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部采集源</SelectItem>
-                {sitesList.map((site) => (
-                  <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedGroupId} onValueChange={setSelectedGroupId} disabled={groupsLoading}>
-              <SelectTrigger className="w-full sm:w-[220px]">
-                <SelectValue placeholder="目标分组" />
-              </SelectTrigger>
-              <SelectContent>
-                {groupsList.map((group) => (
-                  <SelectItem key={group.id} value={String(group.id)}>
-                    {group.name} ({formatRate(group.rate_multiplier ?? 1)})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={handleRefreshRates} disabled={ratesLoading}>
-              {ratesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              刷新
-            </Button>
-            <Button size="sm" onClick={openConfirm} disabled={!selectedRateKey || !selectedGroupId || sync.isPending}>
-              <ArrowRightLeft className="h-4 w-4" />
-              同步选中倍率
-            </Button>
-            {(rateQuery || selectedPlatform !== "__all__") ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setRateSearch("");
-                  setSelectedPlatform("__all__");
+            </FilterField>
+            <FilterField label="平台" htmlFor="bl-rate-platform-filter">
+              <Select
+                value={selectedPlatform}
+                onValueChange={(value) => {
+                  setSelectedPlatform(value);
                   setSelectedRateKey("");
                 }}
               >
-                清空
-              </Button>
-            ) : null}
-          </div>
+                <SelectTrigger id="bl-rate-platform-filter">
+                  <SelectValue placeholder="全部平台" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">全部平台</SelectItem>
+                  <SelectItem value="__empty__">未标记平台</SelectItem>
+                  {platformOptions.map((platform) => (
+                    <SelectItem key={platform} value={platform}>
+                      {platform}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="采集源" htmlFor="bl-rate-site-filter">
+              <Select
+                value={selectedSiteId}
+                onValueChange={(value) => {
+                  setSelectedSiteId(value);
+                  setSelectedRateKey("");
+                }}
+              >
+                <SelectTrigger id="bl-rate-site-filter">
+                  <SelectValue placeholder="筛选采集源" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">全部采集源</SelectItem>
+                  {sitesList.map((site) => (
+                    <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="目标分组" htmlFor="bl-rate-target-group">
+              <Select value={selectedGroupId} onValueChange={setSelectedGroupId} disabled={groupsLoading}>
+                <SelectTrigger id="bl-rate-target-group">
+                  <SelectValue placeholder="目标分组" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groupsList.map((group) => (
+                    <SelectItem key={group.id} value={String(group.id)}>
+                      {group.name} ({formatRate(group.rate_multiplier ?? 1)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
+          </FilterToolbar>
+          <FilterSummary
+            actions={
+              <>
+                <Button variant="outline" size="sm" onClick={handleRefreshRates} disabled={ratesLoading}>
+                  {ratesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  刷新
+                </Button>
+                <Button size="sm" onClick={openConfirm} disabled={!selectedRateKey || !selectedGroupId || sync.isPending}>
+                  <ArrowRightLeft className="h-4 w-4" />
+                  同步选中倍率
+                </Button>
+                {hasRateFilters ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setRateSearch("");
+                      setSelectedPlatform("__all__");
+                      setSelectedSiteId("__all__");
+                      setSelectedRateKey("");
+                    }}
+                  >
+                    清空筛选
+                  </Button>
+                ) : null}
+              </>
+            }
+          >
+            已筛选 {ratesWithKeys.length} / 共 {ratesList.length} 条
+            {selectedRate ? `，已选 ${selectedRate.name || selectedRate.group_id}` : "，尚未选择倍率"}
+            {selectedTarget ? `，目标 ${selectedTarget.name}` : "，尚未选择目标分组"}
+          </FilterSummary>
         </CardHeader>
         <CardContent className="p-0">
           {ratesLoading ? (
-            <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              加载倍率...
-            </div>
+            <LoadingState label="加载倍率..." className="m-3 min-h-28" />
           ) : ratesList.length === 0 ? (
-            <div className="p-5 text-sm text-muted-foreground">暂无倍率数据。先执行一次采集。</div>
+            <EmptyState
+              title="暂无倍率数据"
+              description="先执行一次采集，采集源站分组倍率后即可选择并同步。"
+              className="m-3"
+            />
           ) : ratesWithKeys.length === 0 ? (
-            <div className="flex flex-col gap-3 p-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>没有找到匹配的倍率记录，请调整查找条件。</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setRateSearch("");
-                  setSelectedPlatform("__all__");
-                  setSelectedRateKey("");
-                }}
-              >
-                清空筛选
-              </Button>
-            </div>
+            <EmptyState
+              title="没有匹配的倍率记录"
+              description="调整搜索关键词、平台或采集源后再试。"
+              className="m-3"
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setRateSearch("");
+                    setSelectedPlatform("__all__");
+                    setSelectedSiteId("__all__");
+                    setSelectedRateKey("");
+                  }}
+                >
+                  清空筛选
+                </Button>
+              }
+            />
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12" />
-                    <TableHead>采集源 / 分组</TableHead>
-                    <TableHead>平台</TableHead>
-                    <TableHead className="text-right">写入倍率</TableHead>
-                    <TableHead className="text-right">原始倍率</TableHead>
-                    <TableHead className="text-right">生效倍率</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagedRatesWithKeys.map(({ key, rate }) => {
-                    const canSync = getRateValue(rate) !== null;
-                    return (
-                      <TableRow
-                        key={key}
-                        className={selectedRateKey === key ? "bg-primary/5" : ""}
-                        onClick={() => {
-                          if (!canSync) return;
-                          setSelectedRateKey(key);
-                          setSyncError("");
-                        }}
-                      >
-                        <TableCell>
-                          <input
-                            type="radio"
-                            checked={selectedRateKey === key}
-                            disabled={!canSync}
-                            onChange={() => setSelectedRateKey(key)}
-                            aria-label="选择采集倍率"
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <span className="block">{rate.name || rate.group_id}</span>
-                          <span className="block text-xs text-muted-foreground">{rate.site_name} / #{rate.group_id}</span>
-                        </TableCell>
-                        <TableCell>{rate.platform || "-"}</TableCell>
-                        <TableCell className="text-right font-mono">{formatRate(getRateValue(rate))}</TableCell>
-                        <TableCell className="text-right font-mono">{formatRate(rate.rate_multiplier)}</TableCell>
-                        <TableCell className="text-right font-mono">{formatRate(getEffectiveRateValue(rate))}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <MobileRecordList className="p-3 lg:hidden">
+                {pagedRatesWithKeys.map(({ key, rate }) => {
+                  const canSync = getRateValue(rate) !== null;
+                  const isSelected = selectedRateKey === key;
+                  return (
+                    <MobileRecord
+                      key={key}
+                      className={isSelected ? "border-primary/55 bg-primary/10" : !canSync ? "opacity-70" : ""}
+                    >
+                      <MobileRecordHeader>
+                        <div className="min-w-0">
+                          <MobileRecordTitle>{rate.name || rate.group_id}</MobileRecordTitle>
+                          <MobileRecordMeta>
+                            {rate.site_name} / #{rate.group_id}
+                          </MobileRecordMeta>
+                        </div>
+                      </MobileRecordHeader>
+                      <MobileRecordFields>
+                        <MobileRecordField label="平台" value={rate.platform || "-"} />
+                        <MobileRecordField label="写入倍率" value={<span className="font-mono">{formatRate(getRateValue(rate))}</span>} />
+                        <MobileRecordField label="原始倍率" value={<span className="font-mono">{formatRate(rate.rate_multiplier)}</span>} />
+                        <MobileRecordField label="生效倍率" value={<span className="font-mono">{formatRate(getEffectiveRateValue(rate))}</span>} />
+                      </MobileRecordFields>
+                      <MobileRecordActions className="justify-end">
+                        <Button
+                          variant={isSelected ? "default" : "outline"}
+                          size="sm"
+                          disabled={!canSync}
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            setSelectedRateKey(key);
+                            setSyncError("");
+                          }}
+                        >
+                          {canSync ? (isSelected ? "已选择" : "选择倍率") : "不可选择"}
+                        </Button>
+                      </MobileRecordActions>
+                    </MobileRecord>
+                  );
+                })}
+              </MobileRecordList>
+              <div className="hidden lg:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12" />
+                      <TableHead>采集源 / 分组</TableHead>
+                      <TableHead>平台</TableHead>
+                      <TableHead className="text-right">写入倍率</TableHead>
+                      <TableHead className="text-right">原始倍率</TableHead>
+                      <TableHead className="text-right">生效倍率</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedRatesWithKeys.map(({ key, rate }) => {
+                      const canSync = getRateValue(rate) !== null;
+                      return (
+                        <TableRow
+                          key={key}
+                          className={selectedRateKey === key ? "bg-primary/5" : ""}
+                          onClick={() => {
+                            if (!canSync) return;
+                            setSelectedRateKey(key);
+                            setSyncError("");
+                          }}
+                        >
+                          <TableCell>
+                            <input
+                              type="radio"
+                              checked={selectedRateKey === key}
+                              disabled={!canSync}
+                              onChange={() => setSelectedRateKey(key)}
+                              aria-label="选择采集倍率"
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <span className="block">{rate.name || rate.group_id}</span>
+                            <span className="block text-xs text-muted-foreground">{rate.site_name} / #{rate.group_id}</span>
+                          </TableCell>
+                          <TableCell>{rate.platform || "-"}</TableCell>
+                          <TableCell className="text-right font-mono">{formatRate(getRateValue(rate))}</TableCell>
+                          <TableCell className="text-right font-mono">{formatRate(rate.rate_multiplier)}</TableCell>
+                          <TableCell className="text-right font-mono">{formatRate(getEffectiveRateValue(rate))}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
               <PaginationControls
                 page={ratePage}
                 pageSize={ratePageSize}
@@ -914,7 +1057,7 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <CardTitle className="text-base">倍率变更</CardTitle>
           <div className="text-sm text-muted-foreground">
             共 {changesTotal} 条
@@ -922,12 +1065,9 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
         </CardHeader>
         <CardContent className="p-0">
           {changesLoading ? (
-            <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              加载变更...
-            </div>
+            <LoadingState label="加载变更..." className="m-3 min-h-28" />
           ) : changesList.length === 0 ? (
-            <div className="p-5 text-sm text-muted-foreground">暂无倍率变更记录。</div>
+            <EmptyState title="暂无倍率变更记录" description="倍率采集或同步产生变更后会显示在这里。" className="m-3" />
           ) : (
             <>
               <Table>
@@ -968,95 +1108,95 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
         </CardContent>
       </Card>
 
-      {syncError ? <p className="text-sm text-destructive">{syncError}</p> : null}
-
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
             <DialogTitle>{editingSite ? "编辑采集源" : "添加采集源"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>名称</Label>
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>源站地址</Label>
-              <Input value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://example.com" />
-            </div>
-            <div className="space-y-2">
-              <Label>源站类型</Label>
-              <Select value={form.siteType} onValueChange={(value) => setForm((current) => ({ ...current, siteType: value as SiteForm["siteType"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sub2api">Sub2API</SelectItem>
-                  <SelectItem value="new_api">New API</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>认证方式</Label>
-              <Select value={form.authMode} onValueChange={(value) => setForm((current) => ({ ...current, authMode: value as SiteForm["authMode"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="password">自动登录</SelectItem>
-                  <SelectItem value="manual_token">手动 Token</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>{form.siteType === "new_api" ? "用户名" : "邮箱"}</Label>
-              <Input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
-            </div>
-            {form.siteType === "new_api" ? (
+          <DialogBody className="flex-1 space-y-4 py-5">
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <Label>New-Api-User</Label>
-                <Input value={form.newApiUserId} onChange={(event) => setForm((current) => ({ ...current, newApiUserId: event.target.value }))} placeholder="4465" />
+                <Label htmlFor="bl-source-name">名称</Label>
+                <Input id="bl-source-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
               </div>
-            ) : null}
-            <div className="space-y-2">
-              <Label>密码{editingSite ? "（留空不修改）" : ""}</Label>
-              <Input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>采集间隔（分钟）</Label>
-              <Input type="number" min="1" step="1" value={form.intervalMin} onChange={(event) => setForm((current) => ({ ...current, intervalMin: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>充值倍率</Label>
-              <Input type="number" min="0.0001" step="any" value={form.rechargeRatio} onChange={(event) => setForm((current) => ({ ...current, rechargeRatio: event.target.value }))} />
-            </div>
-            <div className="md:col-span-2 space-y-2">
-              <Label>代理（可选）</Label>
-              <Input value={form.proxyUrl} onChange={(event) => setForm((current) => ({ ...current, proxyUrl: event.target.value }))} placeholder="http://user:pass@host:port，留空直连" />
-              <p className="text-xs text-muted-foreground">填写后，该采集源的登录、采集、测试等所有请求都通过此 HTTP/HTTPS 代理发出。</p>
-            </div>
-            <div className="flex flex-col gap-3 rounded-md border border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
-              <div className="min-w-0">
-                <Label>启用采集</Label>
-                <p className="text-xs text-muted-foreground">关闭后 worker 不会自动采集该源站。</p>
+              <div className="space-y-2">
+                <Label htmlFor="bl-source-base-url">源站地址</Label>
+                <Input id="bl-source-base-url" value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://example.com" />
               </div>
-              <Switch checked={form.enabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, enabled: checked }))} />
+              <div className="space-y-2">
+                <Label htmlFor="bl-source-site-type">源站类型</Label>
+                <Select value={form.siteType} onValueChange={(value) => setForm((current) => ({ ...current, siteType: value as SiteForm["siteType"] }))}>
+                  <SelectTrigger id="bl-source-site-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sub2api">Sub2API</SelectItem>
+                    <SelectItem value="new_api">New API</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bl-source-auth-mode">认证方式</Label>
+                <Select value={form.authMode} onValueChange={(value) => setForm((current) => ({ ...current, authMode: value as SiteForm["authMode"] }))}>
+                  <SelectTrigger id="bl-source-auth-mode"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="password">自动登录</SelectItem>
+                    <SelectItem value="manual_token">手动 Token</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bl-source-email">{form.siteType === "new_api" ? "用户名" : "邮箱"}</Label>
+                <Input id="bl-source-email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+              </div>
+              {form.siteType === "new_api" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="bl-source-new-api-user-id">New-Api-User</Label>
+                  <Input id="bl-source-new-api-user-id" value={form.newApiUserId} onChange={(event) => setForm((current) => ({ ...current, newApiUserId: event.target.value }))} placeholder="4465" />
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="bl-source-password">密码{editingSite ? "（留空不修改）" : ""}</Label>
+                <PasswordInput id="bl-source-password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bl-source-interval-min">采集间隔（分钟）</Label>
+                <Input id="bl-source-interval-min" type="number" min="1" step="1" value={form.intervalMin} onChange={(event) => setForm((current) => ({ ...current, intervalMin: event.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bl-source-recharge-ratio">充值倍率</Label>
+                <Input id="bl-source-recharge-ratio" type="number" min="0.0001" step="any" value={form.rechargeRatio} onChange={(event) => setForm((current) => ({ ...current, rechargeRatio: event.target.value }))} />
+              </div>
+              <div className="lg:col-span-2 space-y-2">
+                <Label htmlFor="bl-source-proxy-url">代理（可选）</Label>
+                <Input id="bl-source-proxy-url" value={form.proxyUrl} onChange={(event) => setForm((current) => ({ ...current, proxyUrl: event.target.value }))} placeholder="http://user:pass@host:port，留空直连" />
+                <p className="text-xs text-muted-foreground">填写后，该采集源的登录、采集、测试等所有请求都通过此 HTTP/HTTPS 代理发出。</p>
+              </div>
+              <div className="flex flex-col gap-3 rounded-md border border-border/70 p-3 lg:col-span-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <Label htmlFor="bl-source-enabled">启用采集</Label>
+                  <p className="text-xs text-muted-foreground">关闭后 worker 不会自动采集该源站。</p>
+                </div>
+                <Switch id="bl-source-enabled" checked={form.enabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, enabled: checked }))} />
+              </div>
+              {form.authMode === "manual_token" ? (
+                <>
+                  <div className="lg:col-span-2 space-y-2">
+                    <Label htmlFor="bl-source-access-token">{form.siteType === "new_api" ? "Session / Cookie / Access Token" : "Access Token"}</Label>
+                    <Input id="bl-source-access-token" value={form.accessToken} onChange={(event) => setForm((current) => ({ ...current, accessToken: event.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bl-source-refresh-token">Refresh Token</Label>
+                    <Input id="bl-source-refresh-token" value={form.refreshToken} onChange={(event) => setForm((current) => ({ ...current, refreshToken: event.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bl-source-token-expire">过期时间</Label>
+                    <Input id="bl-source-token-expire" value={form.tokenExpire} onChange={(event) => setForm((current) => ({ ...current, tokenExpire: event.target.value }))} placeholder="毫秒 / 秒级时间戳或日期时间" />
+                  </div>
+                </>
+              ) : null}
             </div>
-            {form.authMode === "manual_token" ? (
-              <>
-                <div className="md:col-span-2 space-y-2">
-                  <Label>{form.siteType === "new_api" ? "Session / Cookie / Access Token" : "Access Token"}</Label>
-                  <Input value={form.accessToken} onChange={(event) => setForm((current) => ({ ...current, accessToken: event.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Refresh Token</Label>
-                  <Input value={form.refreshToken} onChange={(event) => setForm((current) => ({ ...current, refreshToken: event.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>过期时间</Label>
-                  <Input value={form.tokenExpire} onChange={(event) => setForm((current) => ({ ...current, tokenExpire: event.target.value }))} placeholder="毫秒 / 秒级时间戳或日期时间" />
-                </div>
-              </>
-            ) : null}
-          </div>
-          {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
-          <DialogFooter>
+            {formError ? <InlineError>{formError}</InlineError> : null}
+          </DialogBody>
+          <DialogFooter className="shrink-0 border-t border-border/70 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setFormOpen(false)} disabled={saveSite.isPending}>取消</Button>
             <Button onClick={handleSaveSite} disabled={saveSite.isPending}>
               {saveSite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1065,28 +1205,34 @@ export function BlSyncPanel({ connectionId }: { connectionId: number }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>确认同步倍率</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <p>采集源：{selectedSourceSite?.name ?? selectedRate?.site_name ?? "-"}</p>
-            <p>源分组：{selectedRate?.name || selectedRate?.group_id}</p>
-            <p>目标分组：{selectedTarget?.name}</p>
-            <p>写入倍率：{formatRate(nextRate)}</p>
-            <p className="text-destructive">该操作会直接更新目标 Sub2API 分组倍率。</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={sync.isPending}>取消</Button>
-            <Button onClick={handleSync} disabled={sync.isPending}>
-              {sync.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : selectedRate ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-              确认同步
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="删除采集源"
+        description={`确定删除采集源「${deleteTarget?.name ?? ""}」？该操作会移除该源站的采集配置，无法撤销。`}
+        confirmLabel="删除采集源"
+        pending={deleteSite.isPending}
+        onConfirm={handleConfirmDeleteSite}
+      />
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) setSyncError("");
+        }}
+        title="确认同步倍率"
+        description={`采集源：${selectedSourceSite?.name ?? selectedRate?.site_name ?? "-"}
+源分组：${selectedRate?.name || selectedRate?.group_id || "-"}
+目标分组：${selectedTarget?.name ?? "-"}
+写入倍率：${formatRate(nextRate)}
+该操作会直接更新目标 Sub2API 分组倍率。`}
+        confirmLabel="确认同步"
+        pending={sync.isPending}
+        error={syncError}
+        onConfirm={handleSync}
+      />
     </div>
   );
 }

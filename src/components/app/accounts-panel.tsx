@@ -1,16 +1,17 @@
 ﻿"use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CirclePlay, ExternalLink, Loader2, Pencil, Play, Plus, Power, RefreshCw, RotateCcw, Save, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, CirclePlay, ExternalLink, Loader2, Pencil, Play, Plus, Power, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +19,6 @@ import { useToast } from "@/components/ui/toast";
 import {
   MobileRecord,
   MobileRecordActions,
-  MobileRecordEmpty,
   MobileRecordField,
   MobileRecordFields,
   MobileRecordHeader,
@@ -37,6 +37,10 @@ import {
   type BlRateOption,
 } from "@/components/app/bl-source-bindings";
 import { PlatformIcon } from "@/components/app/platform-icon";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
+import { FilterField, FilterSearchField, FilterSummary, FilterToolbar } from "@/components/app/filter-toolbar";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
+import { EmptyState, ErrorState, InlineError, LoadingState } from "@/components/app/feedback-state";
 
 type GroupRow = {
   id: number;
@@ -176,6 +180,11 @@ type DirtyState = {
   sourceBindings: boolean;
   rateRule: boolean;
 };
+
+type AccountConfirmTarget =
+  | { type: "toggleSchedulable"; account: AccountRow; nextSchedulable: boolean }
+  | { type: "clearError"; account: AccountRow }
+  | { type: "refreshCredentials"; account: AccountRow };
 
 type AccountTableRowProps = {
   row: AccountRow;
@@ -629,7 +638,7 @@ const AccountTableRow = memo(function AccountTableRow({
 
   const thresholdDisabled = balanceThresholdSaving;
   const thresholdControl = (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-2">
       <Input
         type="number"
         min="0"
@@ -638,7 +647,7 @@ const AccountTableRow = memo(function AccountTableRow({
         placeholder="未设"
         disabled={thresholdDisabled}
         title="余额低于该值时提示充值"
-        className="h-7 w-20 px-2 font-mono text-xs"
+        className="min-h-11 min-w-[7rem] px-2 font-mono text-sm lg:min-h-8 lg:text-xs"
         onChange={(event) => onBalanceThresholdInputChange(row.id, event.target.value)}
         onBlur={() => onBalanceThresholdCommit(row.id)}
         onKeyDown={(event) => {
@@ -672,7 +681,7 @@ const AccountTableRow = memo(function AccountTableRow({
       <div title={title} className="min-w-[120px] space-y-1">
         <div className={`font-mono text-sm ${balanceLow ? "font-semibold text-destructive" : ""}`}>{formatBalanceNumber(balance.remaining)} {unit}</div>
         {[balance.planName, used, total].filter(Boolean).length > 0 ? (
-          <div className="max-w-[160px] truncate text-xs text-muted-foreground">
+          <div className="max-w-[220px] whitespace-normal break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
             {[balance.planName, used, total].filter(Boolean).join(" / ")}
           </div>
         ) : null}
@@ -694,36 +703,36 @@ const AccountTableRow = memo(function AccountTableRow({
       </TableCell>
       <TableCell className="font-mono">{formatRate(row.rate_multiplier ?? 1)}</TableCell>
       <TableCell className="font-mono">{row.priority ?? "-"}</TableCell>
-      <TableCell className="max-w-[220px] truncate text-sm">{ruleSummary(rule)}</TableCell>
+      <TableCell className="max-w-[260px] whitespace-normal break-words text-sm leading-5 [overflow-wrap:anywhere]">{ruleSummary(rule)}</TableCell>
       <TableCell>{renderBalance()}</TableCell>
       <TableCell>{thresholdControl}</TableCell>
       <TableCell>{schedulable ? <Badge variant="success">已启用</Badge> : <Badge variant="secondary">已禁用</Badge>}</TableCell>
-      <TableCell className="max-w-[150px] truncate text-sm text-destructive">{row.error ?? row.last_error ?? row.error_message ?? "-"}</TableCell>
-      <TableCell>
+      <TableCell className="max-w-[240px] whitespace-pre-wrap break-words text-sm leading-5 text-destructive [overflow-wrap:anywhere]">{row.error ?? row.last_error ?? row.error_message ?? "-"}</TableCell>
+      <TableActionCell>
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="编辑账号" disabled={isSaving} onClick={() => onEdit(row)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="编辑账号" aria-label={`编辑账号 ${getAccountLabel(row)}`} disabled={isSaving} onClick={() => onEdit(row)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="应用账号倍率规则" disabled={isApplyRulePending || !rule?.enabled || bindings.length === 0} onClick={() => onApplyRule(row)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="应用账号倍率规则" aria-label={`应用 ${getAccountLabel(row)} 的倍率规则`} disabled={isApplyRulePending || !rule?.enabled || bindings.length === 0} onClick={() => onApplyRule(row)}>
             <Play className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="测试账号" disabled={rowTesting} onClick={() => onTest(row)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="测试账号" aria-label={`测试账号 ${getAccountLabel(row)}`} disabled={rowTesting} onClick={() => onTest(row)}>
             {rowTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CirclePlay className="h-4 w-4 text-blue-500" />}
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title={schedulable ? "禁用调度" : "启用调度"} disabled={isSchedulablePending} onClick={() => onToggleSchedulable(row)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title={schedulable ? "禁用调度" : "启用调度"} aria-label={`${schedulable ? "禁用" : "启用"} ${getAccountLabel(row)} 的调度`} disabled={isSchedulablePending} onClick={() => onToggleSchedulable(row)}>
             <Power className={`h-4 w-4 ${schedulable ? "text-green-500" : "text-muted-foreground"}`} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="清除错误" disabled={isClearErrorPending} onClick={() => onClearError(row)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="清除错误" aria-label={`清除 ${getAccountLabel(row)} 的错误`} disabled={isClearErrorPending} onClick={() => onClearError(row)}>
             <AlertTriangle className="h-4 w-4 text-orange-500" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="刷新凭证" disabled={isRefreshPending} onClick={() => onRefreshCredentials(row)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="刷新凭证" aria-label={`刷新 ${getAccountLabel(row)} 的凭证`} disabled={isRefreshPending} onClick={() => onRefreshCredentials(row)}>
             <RotateCcw className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="删除账号" disabled={isDeletePending} onClick={() => onDelete(row)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="删除账号" aria-label={`删除账号 ${getAccountLabel(row)}`} disabled={isDeletePending} onClick={() => onDelete(row)}>
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
-      </TableCell>
+      </TableActionCell>
     </TableRow>
   );
 });
@@ -763,7 +772,7 @@ const AccountMobileRecord = memo(function AccountMobileRecord({
   const errorText = row.error ?? row.last_error ?? row.error_message ?? "";
   const thresholdDisabled = balanceThresholdSaving;
   const thresholdControl = (
-    <div className="mt-2 flex items-center gap-1.5">
+    <div className="mt-2 flex flex-wrap items-center gap-2">
       <span className="shrink-0 text-xs text-muted-foreground">预警</span>
       <Input
         type="number"
@@ -773,7 +782,7 @@ const AccountMobileRecord = memo(function AccountMobileRecord({
         placeholder="未设"
         disabled={thresholdDisabled}
         title="余额低于该值时提示充值"
-        className="h-8 w-24 px-2 font-mono text-xs"
+        className="min-h-11 min-w-[7rem] px-2 font-mono text-sm lg:min-h-8 lg:text-xs"
         onChange={(event) => onBalanceThresholdInputChange(row.id, event.target.value)}
         onBlur={() => onBalanceThresholdCommit(row.id)}
         onKeyDown={(event) => {
@@ -809,7 +818,7 @@ const AccountMobileRecord = memo(function AccountMobileRecord({
       <MobileRecordFields>
         <MobileRecordField label="账号倍率" value={<span className="font-mono">{formatRate(row.rate_multiplier ?? 1)}</span>} />
         <MobileRecordField label="优先级" value={<span className="font-mono">{row.priority ?? "-"}</span>} />
-        <MobileRecordField className="col-span-2" label="规则" value={<span className="line-clamp-2">{ruleSummary(rule)}</span>} />
+        <MobileRecordField className="col-span-2" label="规则" value={<span className="whitespace-normal break-words [overflow-wrap:anywhere]">{ruleSummary(rule)}</span>} />
       </MobileRecordFields>
       <MobileRecordSection>
         <div className="mb-2 text-[11px] text-muted-foreground">分组</div>
@@ -839,37 +848,44 @@ const AccountMobileRecord = memo(function AccountMobileRecord({
           <div>
             <div className="text-[11px] text-muted-foreground">账号余额</div>
             <div className="mt-1 text-sm">{balanceValue}</div>
-            {balance?.status === "ok" && balance.planName ? <div className="mt-0.5 max-w-[220px] truncate text-xs text-muted-foreground">{balance.planName}</div> : null}
+            {balance?.status === "ok" && balance.planName ? <div className="mt-0.5 max-w-full whitespace-normal break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">{balance.planName}</div> : null}
           </div>
           {thresholdControl}
         </div>
       </MobileRecordSection>
       {errorText ? (
         <MobileRecordSection className="text-sm text-destructive">
-          <div className="line-clamp-3">{errorText}</div>
+          <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{errorText}</div>
         </MobileRecordSection>
       ) : null}
       <MobileRecordActions>
-        <Button variant="outline" size="icon" className="h-8 w-8" title="编辑账号" disabled={isSaving} onClick={() => onEdit(row)}>
+        <Button variant="outline" size="sm" title="编辑账号" aria-label={`编辑账号 ${getAccountLabel(row)}`} disabled={isSaving} onClick={() => onEdit(row)}>
           <Pencil className="h-4 w-4" />
+          编辑账号
         </Button>
-        <Button variant="outline" size="icon" className="h-8 w-8" title="应用账号倍率规则" disabled={isApplyRulePending || !rule?.enabled || bindings.length === 0} onClick={() => onApplyRule(row)}>
+        <Button variant="outline" size="sm" title="应用账号倍率规则" aria-label={`应用 ${getAccountLabel(row)} 的倍率规则`} disabled={isApplyRulePending || !rule?.enabled || bindings.length === 0} onClick={() => onApplyRule(row)}>
           <Play className="h-4 w-4" />
+          应用规则
         </Button>
-        <Button variant="outline" size="icon" className="h-8 w-8" title="测试账号" disabled={isTesting} onClick={() => onTest(row)}>
+        <Button variant="outline" size="sm" title="测试账号" aria-label={`测试账号 ${getAccountLabel(row)}`} disabled={isTesting} onClick={() => onTest(row)}>
           {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CirclePlay className="h-4 w-4 text-blue-500" />}
+          测试账号
         </Button>
-        <Button variant="outline" size="icon" className="h-8 w-8" title={schedulable ? "禁用调度" : "启用调度"} disabled={isSchedulablePending} onClick={() => onToggleSchedulable(row)}>
+        <Button variant="outline" size="sm" title={schedulable ? "禁用调度" : "启用调度"} aria-label={`${schedulable ? "禁用" : "启用"} ${getAccountLabel(row)} 的调度`} disabled={isSchedulablePending} onClick={() => onToggleSchedulable(row)}>
           <Power className={`h-4 w-4 ${schedulable ? "text-green-500" : "text-muted-foreground"}`} />
+          {schedulable ? "禁用调度" : "启用调度"}
         </Button>
-        <Button variant="outline" size="icon" className="h-8 w-8" title="清除错误" disabled={isClearErrorPending} onClick={() => onClearError(row)}>
+        <Button variant="outline" size="sm" title="清除错误" aria-label={`清除 ${getAccountLabel(row)} 的错误`} disabled={isClearErrorPending} onClick={() => onClearError(row)}>
           <AlertTriangle className="h-4 w-4 text-orange-500" />
+          清除错误
         </Button>
-        <Button variant="outline" size="icon" className="h-8 w-8" title="刷新凭证" disabled={isRefreshPending} onClick={() => onRefreshCredentials(row)}>
+        <Button variant="outline" size="sm" title="刷新凭证" aria-label={`刷新 ${getAccountLabel(row)} 的凭证`} disabled={isRefreshPending} onClick={() => onRefreshCredentials(row)}>
           <RotateCcw className="h-4 w-4" />
+          刷新凭证
         </Button>
-        <Button variant="outline" size="icon" className="h-8 w-8" title="删除账号" disabled={isDeletePending} onClick={() => onDelete(row)}>
-          <Trash2 className="h-4 w-4 text-destructive" />
+        <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" title="删除账号" aria-label={`删除账号 ${getAccountLabel(row)}`} disabled={isDeletePending} onClick={() => onDelete(row)}>
+          <Trash2 className="h-4 w-4" />
+          删除账号
         </Button>
       </MobileRecordActions>
     </MobileRecord>
@@ -894,6 +910,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const [formMode, setFormMode] = useState<FormMode | null>(null);
   const [editingAccount, setEditingAccount] = useState<AccountRow | null>(null);
   const [deleteAccount, setDeleteAccount] = useState<AccountRow | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<AccountConfirmTarget | null>(null);
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
   const [sourceBindings, setSourceBindings] = useState<BlBindingValue[]>([]);
   const [form, setForm] = useState<AccountForm>(() => initialForm(null, "create"));
@@ -1135,6 +1152,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const setSchedulable = trpc.accounts.setSchedulable.useMutation({
     onSuccess: async (_data, variables) => {
       await refetch();
+      setConfirmTarget(null);
       showToast({ title: variables.schedulable ? "账号调度已启用" : "账号调度已禁用", variant: "success" });
     },
     onError: (e) => showToast({ title: "更新账号调度失败", description: e.message, variant: "error" }),
@@ -1142,6 +1160,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const clearError = trpc.accounts.clearError.useMutation({
     onSuccess: async () => {
       await refetch();
+      setConfirmTarget(null);
       showToast({ title: "账号错误已清除", variant: "success" });
     },
     onError: (e) => showToast({ title: "清除账号错误失败", description: e.message, variant: "error" }),
@@ -1149,6 +1168,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   const refresh = trpc.accounts.refresh.useMutation({
     onSuccess: async () => {
       await refetch();
+      setConfirmTarget(null);
       showToast({ title: "账号凭证已刷新", variant: "success" });
     },
     onError: (e) => showToast({ title: "刷新账号凭证失败", description: e.message, variant: "error" }),
@@ -1587,19 +1607,29 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
   }, []);
 
   const handleToggleSchedulable = useCallback((row: AccountRow) => {
-    if (!confirm(`确定${row.schedulable === false ? "启用" : "禁用"}该账号调度？`)) return;
-    setSchedulable.mutate({ connectionId, accountId: row.id, schedulable: row.schedulable === false });
-  }, [connectionId, setSchedulable]);
+    setConfirmTarget({ type: "toggleSchedulable", account: row, nextSchedulable: row.schedulable === false });
+  }, []);
 
   const handleClearErrorRow = useCallback((row: AccountRow) => {
-    if (!confirm("确定清除该账号错误？")) return;
-    clearError.mutate({ connectionId, accountId: row.id });
-  }, [clearError, connectionId]);
+    setConfirmTarget({ type: "clearError", account: row });
+  }, []);
 
   const handleRefreshCredentials = useCallback((row: AccountRow) => {
-    if (!confirm("确定刷新该账号凭证？")) return;
-    refresh.mutate({ connectionId, accountId: row.id });
-  }, [connectionId, refresh]);
+    setConfirmTarget({ type: "refreshCredentials", account: row });
+  }, []);
+
+  const handleConfirmAccountAction = useCallback(() => {
+    if (!confirmTarget) return;
+    if (confirmTarget.type === "toggleSchedulable") {
+      setSchedulable.mutate({ connectionId, accountId: confirmTarget.account.id, schedulable: confirmTarget.nextSchedulable });
+      return;
+    }
+    if (confirmTarget.type === "clearError") {
+      clearError.mutate({ connectionId, accountId: confirmTarget.account.id });
+      return;
+    }
+    refresh.mutate({ connectionId, accountId: confirmTarget.account.id });
+  }, [clearError, confirmTarget, connectionId, refresh, setSchedulable]);
 
   const handleDeleteRequest = useCallback((row: AccountRow) => {
     setDeleteAccount(row);
@@ -1645,17 +1675,36 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
 
   const dialogAccountTesting = testDialog ? testingAccountIdSet.has(testDialog.account.id) : false;
   const dialogSupportsImageTest = testDialog ? supportsImageTest(testDialog.account, testDialog.modelId) : false;
+  const confirmAccountLabel = confirmTarget ? getAccountLabel(confirmTarget.account) : "";
+  const confirmTitle = confirmTarget?.type === "toggleSchedulable"
+    ? `${confirmTarget.nextSchedulable ? "启用" : "禁用"}账号调度`
+    : confirmTarget?.type === "clearError"
+      ? "清除账号错误"
+      : "刷新账号凭证";
+  const confirmDescription = confirmTarget?.type === "toggleSchedulable"
+    ? `确定${confirmTarget.nextSchedulable ? "启用" : "禁用"}账号「${confirmAccountLabel}」的调度？该操作会影响后续自动任务。`
+    : confirmTarget?.type === "clearError"
+      ? `确定清除账号「${confirmAccountLabel}」的错误状态？清除后列表将不再显示当前错误信息。`
+      : `确定刷新账号「${confirmAccountLabel}」的凭证？刷新后系统会使用新的凭证状态。`;
+  const confirmPending = setSchedulable.isPending || clearError.isPending || refresh.isPending;
+  const confirmLabel = confirmTarget?.type === "toggleSchedulable"
+    ? (confirmTarget.nextSchedulable ? "启用调度" : "禁用调度")
+    : confirmTarget?.type === "clearError"
+      ? "清除错误"
+      : "刷新凭证";
   const dialogIsOpenAI = testDialog ? isOpenAITestAccount(testDialog.account) : false;
 
   if (isLoading) {
-    return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中...</div>;
+    return <LoadingState label="加载账号..." />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">账号调度管理</h2>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:items-center sm:justify-end [&>button]:flex-1 sm:[&>button]:flex-none">
+      <PanelHeader
+        title="账号调度管理"
+        description="集中维护账号倍率、启停状态、余额预警和调度优先级，降低异常账号对服务的影响。"
+        actions={
+          <PanelActions>
           <Button size="sm" onClick={openCreate} disabled={isSaving}>
             <Plus className="mr-1 h-4 w-4" />
             新增账号
@@ -1690,46 +1739,47 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
             {isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
             刷新
           </Button>
-        </div>
-      </div>
+          </PanelActions>
+        }
+      />
 
-      {error ? <p className="text-sm text-destructive">加载账号失败：{error.message}</p> : null}
-      {bindingData?.rateError ? <p className="text-sm text-destructive">加载采集生效倍率失败：{bindingData.rateError}</p> : null}
-      {balanceThresholdsQuery.error ? <p className="text-sm text-destructive">加载余额预警配置失败：{balanceThresholdsQuery.error.message}</p> : null}
-      {balanceWebhookQuery.error ? <p className="text-sm text-destructive">加载余额 Webhook 配置失败：{balanceWebhookQuery.error.message}</p> : null}
+      {error ? <ErrorState title="加载账号失败" description={error.message} /> : null}
+      {bindingData?.rateError ? <ErrorState title="加载采集生效倍率失败" description={bindingData.rateError} /> : null}
+      {balanceThresholdsQuery.error ? <ErrorState title="加载余额预警配置失败" description={balanceThresholdsQuery.error.message} /> : null}
+      {balanceWebhookQuery.error ? <ErrorState title="加载余额 Webhook 配置失败" description={balanceWebhookQuery.error.message} /> : null}
 
       {lowBalanceAccounts.length > 0 ? (
-        <div className="flex flex-col gap-2 rounded-md border border-destructive/20 bg-destructive/8 px-3 py-2 text-sm text-destructive lg:flex-row lg:items-center lg:justify-between">
+        <InlineError className="lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
             <span className="font-medium">有 {lowBalanceAccounts.length} 个账号余额低于预警阈值，请及时充值</span>
           </div>
           <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs">
             {lowBalanceAccounts.slice(0, 4).map(({ account, balance, threshold }) => {
               const unit = balance.unit || "USD";
               return (
-                <span key={account.id} className="max-w-[240px] truncate">
+                <span key={account.id} className="max-w-full whitespace-normal break-words leading-5 [overflow-wrap:anywhere]">
                   {getAccountLabel(account)}：{formatBalanceNumber(balance.remaining)} {unit} / {formatBalanceNumber(threshold)} {unit}
                 </span>
               );
             })}
             {lowBalanceAccounts.length > 4 ? <span>另有 {lowBalanceAccounts.length - 4} 个</span> : null}
           </div>
-        </div>
+        </InlineError>
       ) : null}
 
       <Dialog open={webhookDialogOpen} onOpenChange={setWebhookDialogOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
             <DialogTitle>余额 Webhook 预警</DialogTitle>
             <DialogDescription>账号余额低于表格中设置的预警阈值时，向自定义 Webhook 发送提醒。</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <DialogBody className="flex-1 space-y-4 py-5">
             <div className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2">
-              <span className="text-sm font-medium">启用预警</span>
+              <Label htmlFor="account-balance-webhook-enabled" className="text-sm font-medium">启用预警</Label>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">{balanceWebhookEnabled ? "已启用" : "已停用"}</span>
                 <Switch
+                  id="account-balance-webhook-enabled"
                   checked={balanceWebhookEnabled}
                   onCheckedChange={(checked) => {
                     setBalanceWebhookDirty(true);
@@ -1743,8 +1793,11 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
               <div className="space-y-3">
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">
                   <div className="space-y-2">
-                    <Label>Webhook URL</Label>
+                    <Label htmlFor="account-balance-webhook-url">Webhook URL</Label>
                     <Input
+                      id="account-balance-webhook-url"
+                      type="url"
+                      autoComplete="url"
                       value={balanceWebhookUrl}
                       onChange={(event) => {
                         setBalanceWebhookDirty(true);
@@ -1755,8 +1808,9 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>冷却分钟</Label>
+                    <Label htmlFor="account-balance-webhook-cooldown">冷却分钟</Label>
                     <Input
+                      id="account-balance-webhook-cooldown"
                       type="number"
                       min="0"
                       step="1"
@@ -1770,8 +1824,9 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>消息模板</Label>
+                  <Label htmlFor="account-balance-webhook-template">消息模板</Label>
                   <Textarea
+                    id="account-balance-webhook-template"
                     className="min-h-36 font-mono text-xs"
                     value={balanceWebhookTemplate}
                     onChange={(event) => {
@@ -1783,7 +1838,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 </div>
               </div>
               <div className="space-y-3 rounded-md border border-border/70 p-4">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 lg:grid-cols-2">
                   <div>
                     <div className="text-xs text-muted-foreground">预警阈值</div>
                     <div className="mt-1 text-2xl font-semibold">{Object.keys(balanceThresholdsQuery.data ?? {}).length}</div>
@@ -1799,8 +1854,8 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 {balanceWebhookDirty ? <p className="text-xs text-amber-600 dark:text-amber-300">配置有未保存修改。</p> : null}
               </div>
             </div>
-          </div>
-          <DialogFooter className="gap-2">
+          </DialogBody>
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" size="sm" onClick={handleTestBalanceWebhook} disabled={isBalanceWebhookSaving || !balanceWebhookUrl.trim()}>
               {testBalanceWebhook.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               测试发送
@@ -1818,17 +1873,18 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
       </Dialog>
 
       <Dialog open={priorityDialogOpen} onOpenChange={setPriorityDialogOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
             <DialogTitle>调度优先级规则</DialogTitle>
             <DialogDescription>按所选分组内账号倍率从低到高写入 Sub2API 账号优先级；相同倍率使用相同优先级。</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <DialogBody className="flex-1 space-y-4 py-5">
             <div className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2">
-              <span className="text-sm font-medium">启用规则</span>
+              <Label htmlFor="account-priority-rule-enabled" className="text-sm font-medium">启用规则</Label>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">{priorityRuleEnabled ? "已启用" : "已停用"}</span>
                 <Switch
+                  id="account-priority-rule-enabled"
                   checked={priorityRuleEnabled}
                   onCheckedChange={(checked) => {
                     setPriorityRuleDirty(true);
@@ -1841,10 +1897,12 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>目标 Sub2API 分组</Label>
+                  <Label htmlFor="account-priority-rule-search">目标 Sub2API 分组</Label>
                   <span className="text-xs text-muted-foreground">{groupsLoading ? "加载中" : `${priorityRuleGroupIds.length} / ${groupList.length}`}</span>
                 </div>
                 <Input
+                  id="account-priority-rule-search"
+                  type="search"
                   value={priorityRuleSearch}
                   onChange={(event) => setPriorityRuleSearch(event.target.value)}
                   placeholder="搜索分组名称、ID、平台或类型"
@@ -1852,9 +1910,17 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 />
                 <div className="max-h-52 overflow-y-auto rounded-md border border-border/70">
                   {groupList.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">暂无可选分组</div>
+                    <EmptyState
+                      title="暂无可选分组"
+                      description="先同步或创建 Sub2API 分组后再配置优先级规则。"
+                      className="m-2 py-6"
+                    />
                   ) : visiblePriorityRuleGroupList.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">没有匹配的分组</div>
+                    <EmptyState
+                      title="没有匹配的分组"
+                      description="调整分组名称、ID、平台或类型关键词后再试。"
+                      className="m-2 py-6"
+                    />
                   ) : (
                     <div className="divide-y divide-border/60">
                       {visiblePriorityRuleGroupList.map((group) => {
@@ -1869,8 +1935,8 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                               disabled={isPriorityRuleSaving}
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium">{getGroupLabel(group)}</span>
-                              <span className="block truncate text-xs text-muted-foreground">#{group.id}{group.platform ? ` / ${group.platform}` : ""}</span>
+                              <span className="block whitespace-normal break-words font-medium leading-5 [overflow-wrap:anywhere]">{getGroupLabel(group)}</span>
+                              <span className="block whitespace-normal break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">#{group.id}{group.platform ? ` / ${group.platform}` : ""}</span>
                             </span>
                             <span className="font-mono text-xs text-muted-foreground">{formatRate(group.rate_multiplier ?? 1)}</span>
                           </Label>
@@ -1884,7 +1950,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 </div>
               </div>
               <div className="space-y-3 rounded-md border border-border/70 p-4">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 lg:grid-cols-2">
                   <div>
                     <div className="text-xs text-muted-foreground">命中账号</div>
                     <div className="mt-1 text-2xl font-semibold">{priorityRuleAccountCount}</div>
@@ -1900,8 +1966,8 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 {priorityRuleDirty ? <p className="text-xs text-amber-600 dark:text-amber-300">规则有未保存修改。</p> : null}
               </div>
             </div>
-          </div>
-          <DialogFooter className="gap-2">
+          </DialogBody>
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" size="sm" onClick={handleSavePriorityRule} disabled={isPriorityRuleSaving || priorityRuleQuery.isLoading}>
               {savePriorityRule.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               保存规则
@@ -1916,24 +1982,19 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
 
       <Card>
         <CardContent className="space-y-4 p-3 md:p-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-            <div className="space-y-2">
-              <Label htmlFor="account-search">查找账号</Label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  id="account-search"
-                  value={accountSearch}
-                  onChange={(event) => setAccountSearch(event.target.value)}
-                  placeholder="搜索账号 ID、名称、备注、分组"
-                  className="pl-9"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>平台筛选</Label>
+          <FilterToolbar columns={4} className="lg:grid-cols-[minmax(0,1fr)_220px]">
+            <FilterField label="查找账号" htmlFor="account-search">
+              <FilterSearchField
+                id="account-search"
+                type="search"
+                value={accountSearch}
+                onChange={(event) => setAccountSearch(event.target.value)}
+                placeholder="搜索账号 ID、名称、备注、分组"
+              />
+            </FilterField>
+            <FilterField label="平台筛选" htmlFor="account-platform-filter">
               <Select value={accountPlatformFilter} onValueChange={(value) => setAccountPlatformFilter(value as AccountPlatformFilter)}>
-                <SelectTrigger>
+                <SelectTrigger id="account-platform-filter">
                   <SelectValue placeholder="全部平台" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1944,18 +2005,14 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
+            </FilterField>
+          </FilterToolbar>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            <span>
-              {filteredAccountList.length} / {accountList.length} 个账号
-            </span>
-            {accountFilterActive ? (
+          <FilterSummary
+            actions={accountFilterActive ? (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs"
                 onClick={() => {
                   setAccountSearch("");
                   setAccountPlatformFilter("all");
@@ -1965,10 +2022,18 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 清除筛选
               </Button>
             ) : null}
-          </div>
+          >
+            <span>
+              {filteredAccountList.length} / {accountList.length} 个账号
+            </span>
+          </FilterSummary>
 
           {filteredAccountList.length === 0 ? (
-            <MobileRecordEmpty>{accountEmptyMessage}</MobileRecordEmpty>
+            accountList.length === 0 ? (
+              <EmptyState title="暂无账号" description="同步或新增账号后，即可在这里管理调度、分组、倍率来源和余额阈值。" className="lg:hidden" />
+            ) : (
+              <EmptyState title="没有匹配的账号" description="调整账号名称、ID、分组或平台筛选条件后再试。" className="lg:hidden" />
+            )
           ) : (
             <MobileRecordList>
               {filteredAccountList.map((row, idx) => {
@@ -2009,7 +2074,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
               })}
             </MobileRecordList>
           )}
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -2025,16 +2090,12 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                   <TableHead className="w-28">预警阈值</TableHead>
                   <TableHead>调度状态</TableHead>
                   <TableHead>错误</TableHead>
-                  <TableHead className="w-64">操作</TableHead>
+                  <TableActionHead className="w-64">操作</TableActionHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredAccountList.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={13} className="text-center text-muted-foreground">
-                      {accountEmptyMessage}
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyRow colSpan={13}>{accountEmptyMessage}</TableEmptyRow>
                 ) : (
                   filteredAccountList.map((row, idx) => {
                     const balance = balancesByAccount.get(row.id);
@@ -2080,38 +2141,39 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
       </Card>
 
       <Dialog open={formMode !== null} onOpenChange={(open) => { if (!open) closeEditor(); }}>
-        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 pt-4 pb-3 sm:px-6 sm:pt-6">
             <DialogTitle>{formMode === "create" ? "新增账号" : "编辑账号"}</DialogTitle>
             <DialogDescription>
               {formMode === "edit" && editingAccount ? getAccountLabel(editingAccount) : "按 Sub2API 账号字段创建"}
             </DialogDescription>
           </DialogHeader>
 
+          <DialogBody className="flex-1 space-y-4 py-5">
           <div className="grid gap-5 lg:grid-cols-[1fr_1fr_1fr]">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>账号名称</Label>
-                <Input value={form.name} onChange={(e) => setFormValue("name", e.target.value)} />
+                <Label htmlFor="account-name">账号名称</Label>
+                <Input id="account-name" value={form.name} onChange={(e) => setFormValue("name", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>平台</Label>
-                <Input value={form.platform} onChange={(e) => setFormValue("platform", e.target.value)} disabled={formMode === "edit"} placeholder="anthropic / openai / gemini / antigravity" />
+                <Label htmlFor="account-platform">平台</Label>
+                <Input id="account-platform" value={form.platform} onChange={(e) => setFormValue("platform", e.target.value)} disabled={formMode === "edit"} placeholder="anthropic / openai / gemini / antigravity" />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>类型</Label>
+                  <Label htmlFor="account-type">类型</Label>
                   <Select value={form.type} onValueChange={(value) => setFormValue("type", value as AccountType)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="account-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {accountTypes.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>状态</Label>
+                  <Label htmlFor="account-status">状态</Label>
                   <Select value={form.status} onValueChange={(value) => setFormValue("status", value as AccountStatus)} disabled={formMode === "create"}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="account-status"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {statuses.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                     </SelectContent>
@@ -2119,36 +2181,36 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>备注</Label>
-                <Textarea value={form.notes} onChange={(e) => setFormValue("notes", e.target.value)} rows={3} />
+                <Label htmlFor="account-notes">备注</Label>
+                <Textarea id="account-notes" value={form.notes} onChange={(e) => setFormValue("notes", e.target.value)} rows={3} />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>账号倍率</Label>
-                  <Input type="number" min="0" step="any" value={form.rateMultiplier} onChange={(e) => setFormValue("rateMultiplier", e.target.value)} />
+                  <Label htmlFor="account-rate-multiplier">账号倍率</Label>
+                  <Input id="account-rate-multiplier" type="number" min="0" step="any" value={form.rateMultiplier} onChange={(e) => setFormValue("rateMultiplier", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>代理 ID</Label>
-                  <Input type="number" min="1" step="1" value={form.proxyId} onChange={(e) => setFormValue("proxyId", e.target.value)} placeholder="无" />
+                  <Label htmlFor="account-proxy-id">代理 ID</Label>
+                  <Input id="account-proxy-id" type="number" min="1" step="1" value={form.proxyId} onChange={(e) => setFormValue("proxyId", e.target.value)} placeholder="无" />
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 lg:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>并发数</Label>
-                  <Input type="number" min="0" step="1" value={form.concurrency} onChange={(e) => setFormValue("concurrency", e.target.value)} />
+                  <Label htmlFor="account-concurrency">并发数</Label>
+                  <Input id="account-concurrency" type="number" min="0" step="1" value={form.concurrency} onChange={(e) => setFormValue("concurrency", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>优先级</Label>
-                  <Input type="number" min="0" step="1" value={form.priority} onChange={(e) => setFormValue("priority", e.target.value)} />
+                  <Label htmlFor="account-priority">优先级</Label>
+                  <Input id="account-priority" type="number" min="0" step="1" value={form.priority} onChange={(e) => setFormValue("priority", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>负载权重</Label>
-                  <Input type="number" min="0" step="1" value={form.loadFactor} onChange={(e) => setFormValue("loadFactor", e.target.value)} placeholder="默认" />
+                  <Label htmlFor="account-load-factor">负载权重</Label>
+                  <Input id="account-load-factor" type="number" min="0" step="1" value={form.loadFactor} onChange={(e) => setFormValue("loadFactor", e.target.value)} placeholder="默认" />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>过期时间</Label>
-                <Input type="datetime-local" value={form.expiresAt} onChange={(e) => setFormValue("expiresAt", e.target.value)} />
+                <Label htmlFor="account-expires-at">过期时间</Label>
+                <Input id="account-expires-at" type="datetime-local" value={form.expiresAt} onChange={(e) => setFormValue("expiresAt", e.target.value)} />
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
                 <Label htmlFor="account-schedulable">参与调度</Label>
@@ -2172,11 +2234,11 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
             </div>
 
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>API Key</Label>
-                  <Input
-                    type="password"
+                  <Label htmlFor="account-api-key">API Key</Label>
+                  <PasswordInput
+                    id="account-api-key"
                     value={form.apiKey}
                     onChange={(e) => { setFormValue("apiKey", e.target.value); setDirty((current) => ({ ...current, apiKey: true })); }}
                     placeholder={formMode === "edit" ? "留空不更新" : "sk-..."}
@@ -2184,8 +2246,11 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Base URL</Label>
+                  <Label htmlFor="account-base-url">Base URL</Label>
                   <Input
+                    id="account-base-url"
+                    type="url"
+                    autoComplete="url"
                     value={form.baseUrl}
                     onChange={(e) => { setFormValue("baseUrl", e.target.value); setDirty((current) => ({ ...current, baseUrl: true })); }}
                     placeholder="https://api.example.com"
@@ -2193,8 +2258,9 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Credentials JSON</Label>
+                <Label htmlFor="account-credentials-json">Credentials JSON</Label>
                 <Textarea
+                  id="account-credentials-json"
                   className="min-h-52 font-mono"
                   value={form.credentialsJson}
                   onChange={(e) => { setFormValue("credentialsJson", e.target.value); setDirty((current) => ({ ...current, credentialsJson: true })); }}
@@ -2202,25 +2268,33 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Extra JSON</Label>
-                <Textarea className="min-h-52 font-mono" value={form.extraJson} onChange={(e) => setFormValue("extraJson", e.target.value)} spellCheck={false} />
+                <Label htmlFor="account-extra-json">Extra JSON</Label>
+                <Textarea id="account-extra-json" className="min-h-52 font-mono" value={form.extraJson} onChange={(e) => setFormValue("extraJson", e.target.value)} spellCheck={false} />
               </div>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Sub2API 分组</Label>
+                  <Label htmlFor="account-group-search">Sub2API 分组</Label>
                   <span className="text-xs text-muted-foreground">{groupsLoading ? "加载中" : `${selectedGroupIds.length} / ${groupList.length}`}</span>
                 </div>
                 <div className="relative">
-                  <Input value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} placeholder="搜索分组名称、ID、平台或类型" />
+                  <Input id="account-group-search" type="search" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} placeholder="搜索分组名称、ID、平台或类型" />
                 </div>
                 <div className="max-h-64 overflow-y-auto rounded-md border border-border/70">
                   {groupList.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">暂无可选分组</div>
+                    <EmptyState
+                      title="暂无可选分组"
+                      description="先同步或创建 Sub2API 分组后再为账号分配分组。"
+                      className="m-2 py-6"
+                    />
                   ) : filteredGroupList.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">没有匹配的分组</div>
+                    <EmptyState
+                      title="没有匹配的分组"
+                      description="调整分组名称、ID、平台或类型关键词后再试。"
+                      className="m-2 py-6"
+                    />
                   ) : (
                     <div className="divide-y divide-border/60">
                       {visibleGroupList.map((group) => {
@@ -2235,8 +2309,8 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                               disabled={isSaving}
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium">{getGroupLabel(group)}</span>
-                              <span className="block truncate text-xs text-muted-foreground">#{group.id}{group.platform ? ` / ${group.platform}` : ""}</span>
+                              <span className="block whitespace-normal break-words font-medium leading-5 [overflow-wrap:anywhere]">{getGroupLabel(group)}</span>
+                              <span className="block whitespace-normal break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">#{group.id}{group.platform ? ` / ${group.platform}` : ""}</span>
                             </span>
                             <span className="font-mono text-xs text-muted-foreground">{formatRate(group.rate_multiplier ?? 1)}</span>
                           </Label>
@@ -2251,7 +2325,7 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
               </div>
 
               <div className="space-y-2">
-                <Label>绑定采集源分组</Label>
+                <div className="text-sm font-medium leading-none text-foreground">绑定采集源分组</div>
                 <BlSourceBindingSelector
                   rates={blRates}
                   value={sourceBindings}
@@ -2275,9 +2349,9 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>倍率规则</Label>
+                  <Label htmlFor="account-rate-rule-mode">倍率规则</Label>
                   <Select value={form.ruleMode} onValueChange={(value) => setRateRuleFormValue("ruleMode", value as RuleMode)} disabled={!form.useRateRule || isSaving}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="account-rate-rule-mode"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="first">首个源倍率</SelectItem>
                       <SelectItem value="average">平均源倍率</SelectItem>
@@ -2289,8 +2363,9 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                 </div>
                 {form.ruleMode === "custom" ? (
                   <div className="space-y-2">
-                    <Label>自定义公式</Label>
+                    <Label htmlFor="account-rate-rule-expression">自定义公式</Label>
                     <Textarea
+                      id="account-rate-rule-expression"
                       value={form.ruleExpression}
                       onChange={(e) => setRateRuleFormValue("ruleExpression", e.target.value)}
                       placeholder="avg + 0.1"
@@ -2300,8 +2375,9 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
                   </div>
                 ) : null}
                 <div className="space-y-2">
-                  <Label>偏移</Label>
+                  <Label htmlFor="account-rate-rule-offset">偏移</Label>
                   <Input
+                    id="account-rate-rule-offset"
                     type="number"
                     step="any"
                     value={form.ruleOffset}
@@ -2315,9 +2391,10 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
             </div>
           </div>
 
-          {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
+          {formError ? <InlineError>{formError}</InlineError> : null}
+          </DialogBody>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={closeEditor} disabled={isSaving}>
               取消
             </Button>
@@ -2334,89 +2411,93 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
       </Dialog>
 
       <Dialog open={!!testDialog} onOpenChange={(open) => { if (!open) setTestDialog(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[min(92dvh,640px)] max-w-lg flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
             <DialogTitle>测试账号</DialogTitle>
             <DialogDescription>{testDialog ? getAccountLabel(testDialog.account) : ""}</DialogDescription>
           </DialogHeader>
 
-          {testDialog ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm">
-                <span className="min-w-0 truncate font-medium">{testDialog.account.name ?? testDialog.account.username ?? `#${testDialog.account.id}`}</span>
-                <Badge variant="secondary">{[testDialog.account.platform, testDialog.account.type ?? testDialog.account.channel_type].filter(Boolean).join(" / ") || "account"}</Badge>
-              </div>
+          <DialogBody className="flex-1 space-y-4 py-5">
+            {testDialog ? (
+              <>
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm">
+                  <span className="min-w-0 truncate font-medium">{testDialog.account.name ?? testDialog.account.username ?? `#${testDialog.account.id}`}</span>
+                  <Badge variant="secondary">{[testDialog.account.platform, testDialog.account.type ?? testDialog.account.channel_type].filter(Boolean).join(" / ") || "account"}</Badge>
+                </div>
 
-              <div className="space-y-2">
-                <Label>测试模型</Label>
-                {dialogAvailableModels.length > 0 ? (
-                  <Select
-                    value={testDialog.modelId}
-                    onValueChange={(value) => {
-                      const nextPrompt = supportsImageTest(testDialog.account, value) && !testDialog.prompt.trim()
-                        ? "Generate a simple test image of a blue circle on a white background."
-                        : testDialog.prompt;
-                      setTestDialog((current) => current ? { ...current, modelId: value, prompt: nextPrompt } : current);
-                    }}
-                    disabled={testAccountModels.isLoading || dialogAccountTesting}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={testAccountModels.isLoading ? "加载中..." : "选择模型"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {dialogAvailableModels.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          {getModelLabel(model)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={testDialog.modelId}
-                    onChange={(event) => setTestDialog((current) => current ? { ...current, modelId: event.target.value } : current)}
-                    placeholder={testAccountModels.isLoading ? "正在加载模型" : "输入模型 ID"}
-                    disabled={testAccountModels.isLoading || dialogAccountTesting}
-                  />
-                )}
-                {testAccountModels.error ? <p className="text-sm text-destructive">加载模型失败：{testAccountModels.error.message}</p> : null}
-                {!testAccountModels.isLoading && !testAccountModels.error && dialogAvailableModels.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">未获取到模型，请输入模型 ID。</p>
+                <div className="space-y-2">
+                  <Label htmlFor="account-test-model">测试模型</Label>
+                  {dialogAvailableModels.length > 0 ? (
+                    <Select
+                      value={testDialog.modelId}
+                      onValueChange={(value) => {
+                        const nextPrompt = supportsImageTest(testDialog.account, value) && !testDialog.prompt.trim()
+                          ? "Generate a simple test image of a blue circle on a white background."
+                          : testDialog.prompt;
+                        setTestDialog((current) => current ? { ...current, modelId: value, prompt: nextPrompt } : current);
+                      }}
+                      disabled={testAccountModels.isLoading || dialogAccountTesting}
+                    >
+                      <SelectTrigger id="account-test-model">
+                        <SelectValue placeholder={testAccountModels.isLoading ? "加载中..." : "选择模型"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {dialogAvailableModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {getModelLabel(model)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="account-test-model"
+                      value={testDialog.modelId}
+                      onChange={(event) => setTestDialog((current) => current ? { ...current, modelId: event.target.value } : current)}
+                      placeholder={testAccountModels.isLoading ? "正在加载模型" : "输入模型 ID"}
+                      disabled={testAccountModels.isLoading || dialogAccountTesting}
+                    />
+                  )}
+                  {testAccountModels.error ? <InlineError>加载模型失败：{testAccountModels.error.message}</InlineError> : null}
+                  {!testAccountModels.isLoading && !testAccountModels.error && dialogAvailableModels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">未获取到模型，请输入模型 ID。</p>
+                  ) : null}
+                </div>
+
+                {dialogIsOpenAI ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="account-test-mode">测试模式</Label>
+                    <Select
+                      value={testDialog.mode}
+                      onValueChange={(value) => setTestDialog((current) => current ? { ...current, mode: value as TestMode } : current)}
+                      disabled={dialogAccountTesting}
+                    >
+                      <SelectTrigger id="account-test-mode"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">默认</SelectItem>
+                        <SelectItem value="compact">紧凑</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 ) : null}
-              </div>
 
-              {dialogIsOpenAI ? (
-                <div className="space-y-2">
-                  <Label>测试模式</Label>
-                  <Select
-                    value={testDialog.mode}
-                    onValueChange={(value) => setTestDialog((current) => current ? { ...current, mode: value as TestMode } : current)}
-                    disabled={dialogAccountTesting}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="default">默认</SelectItem>
-                      <SelectItem value="compact">紧凑</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
+                {dialogSupportsImageTest ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="account-test-image-prompt">图片 Prompt</Label>
+                    <Textarea
+                      id="account-test-image-prompt"
+                      value={testDialog.prompt}
+                      onChange={(event) => setTestDialog((current) => current ? { ...current, prompt: event.target.value } : current)}
+                      rows={3}
+                      disabled={dialogAccountTesting}
+                    />
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </DialogBody>
 
-              {dialogSupportsImageTest ? (
-                <div className="space-y-2">
-                  <Label>图片 Prompt</Label>
-                  <Textarea
-                    value={testDialog.prompt}
-                    onChange={(event) => setTestDialog((current) => current ? { ...current, prompt: event.target.value } : current)}
-                    rows={3}
-                    disabled={dialogAccountTesting}
-                  />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-border/70 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setTestDialog(null)}>
               关闭
             </Button>
@@ -2434,27 +2515,33 @@ export function AccountsPanel({ connectionId }: { connectionId: number }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!deleteAccount} onOpenChange={(open) => { if (!open) setDeleteAccount(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>删除账号</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <p>确认删除账号「{deleteAccount ? getAccountLabel(deleteAccount) : ""}」？</p>
-            <p className="text-destructive">删除会移除该账号及本地保存的采集源绑定。</p>
-          </div>
-          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteAccount(null)}>
-              取消
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={removeAccount.isPending}>
-              {removeAccount.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}
-              删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={Boolean(confirmTarget)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmTarget(null);
+        }}
+        title={confirmTitle}
+        description={confirmDescription}
+        confirmLabel={confirmLabel}
+        pending={confirmPending}
+        onConfirm={handleConfirmAccountAction}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteAccount)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteAccount(null);
+            setDeleteError("");
+          }
+        }}
+        title="删除账号"
+        description={`确认删除账号「${deleteAccount ? getAccountLabel(deleteAccount) : ""}」？删除会移除该账号及本地保存的采集源绑定。`}
+        confirmLabel="删除"
+        pending={removeAccount.isPending}
+        error={deleteError}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

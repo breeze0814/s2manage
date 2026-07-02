@@ -1,18 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
+import { EmptyState, ErrorState, LoadingState } from "@/components/app/feedback-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useToast } from "@/components/ui/toast";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
 
 export function AppSettingsPage() {
   const utils = trpc.useUtils();
   const { showToast } = useToast();
-  const { data: settings, isLoading } = trpc.appSettings.get.useQuery();
+  const { data: settings, isFetching, isLoading, refetch } = trpc.appSettings.get.useQuery();
 
   const [workerIntervalMinutes, setWorkerIntervalMinutes] = useState("10");
   const [upstreamMonitorTimeoutSeconds, setUpstreamMonitorTimeoutSeconds] = useState("45");
@@ -42,12 +46,7 @@ export function AppSettingsPage() {
   }, [settings]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        加载中...
-      </div>
-    );
+    return <LoadingState label="加载应用设置..." />;
   }
 
   const parsedWorkerIntervalMinutes = Number(workerIntervalMinutes);
@@ -80,12 +79,29 @@ export function AppSettingsPage() {
     });
   };
 
+  const handleRefreshSettings = async () => {
+    const result = await refetch();
+    if (result.error) {
+      showToast({ title: "刷新应用设置失败", description: result.error.message, variant: "error" });
+      return;
+    }
+    showToast({ title: "应用设置已刷新", variant: "success" });
+  };
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 sm:space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">应用设置</h2>
-        <p className="mt-1 text-sm text-muted-foreground">管理后台 Worker 与可登录管理员账号。</p>
-      </div>
+      <PanelHeader
+        title="应用设置"
+        description="管理后台 Worker 运行参数与可登录管理员账号。"
+        actions={(
+          <PanelActions className="grid-cols-1">
+            <Button variant="outline" size="sm" onClick={handleRefreshSettings} disabled={isFetching || saveWorker.isPending}>
+              {isFetching ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              刷新
+            </Button>
+          </PanelActions>
+        )}
+      />
 
       <Card>
         <CardHeader>
@@ -93,10 +109,11 @@ export function AppSettingsPage() {
           <CardDescription>控制后台 worker 多久扫描一次倍率采集、自动同步和上游检测任务。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-3">
             <div className="space-y-2">
-              <Label>Worker 运行间隔（分钟）</Label>
+              <Label htmlFor="worker-interval-minutes">Worker 运行间隔（分钟）</Label>
               <Input
+                id="worker-interval-minutes"
                 type="number"
                 min="1"
                 max={24 * 60}
@@ -107,8 +124,9 @@ export function AppSettingsPage() {
               <p className="text-xs text-muted-foreground">最小 1 分钟；倍率采集源站仍按各自采集间隔判断是否到期。</p>
             </div>
             <div className="space-y-2">
-              <Label>上游检测超时（秒）</Label>
+              <Label htmlFor="upstream-monitor-timeout-seconds">上游检测超时（秒）</Label>
               <Input
+                id="upstream-monitor-timeout-seconds"
                 type="number"
                 min="10"
                 max="300"
@@ -119,8 +137,9 @@ export function AppSettingsPage() {
               <p className="text-xs text-muted-foreground">源站超时会记为失败，不会阻塞 worker 退出。</p>
             </div>
             <div className="space-y-2">
-              <Label>上游检测并发数</Label>
+              <Label htmlFor="upstream-monitor-concurrency">上游检测并发数</Label>
               <Input
+                id="upstream-monitor-concurrency"
                 type="number"
                 min="1"
                 max="20"
@@ -137,9 +156,10 @@ export function AppSettingsPage() {
               当前检测超时不小于 worker 间隔。若源站持续超时，实际检测频率可能低于设定间隔。
             </div>
           ) : null}
-          {workerError ? <p className="text-sm text-destructive">{workerError}</p> : null}
+          {workerError ? <ErrorState title="保存 Worker 配置失败" description={workerError} className="py-3" /> : null}
 
-          <Button onClick={handleSaveWorker} disabled={saveWorker.isPending}>
+          <Button className="w-full lg:w-auto" onClick={handleSaveWorker} disabled={saveWorker.isPending}>
+            {saveWorker.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             {saveWorker.isPending ? "保存中..." : "保存 Worker 配置"}
           </Button>
         </CardContent>
@@ -165,6 +185,7 @@ function AdminUsersList() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; email: string } | null>(null);
 
   const addUser = trpc.auth.addUser.useMutation({
     onSuccess: async () => {
@@ -182,51 +203,76 @@ function AdminUsersList() {
   const deleteUser = trpc.auth.deleteUser.useMutation({
     onSuccess: async () => {
       await utils.auth.listUsers.invalidate();
+      setDeleteTarget(null);
       showToast({ title: "管理员已删除", variant: "success" });
     },
     onError: (mutationError) => showToast({ title: "删除管理员失败", description: mutationError.message, variant: "error" }),
   });
 
-  if (isLoading) return <Loader2 className="size-4 animate-spin" />;
+  if (isLoading) return <LoadingState label="加载管理员..." className="min-h-20 py-4" />;
 
   return (
-    <div className="space-y-4">
-      <div className="divide-y divide-border/70 rounded-md border border-border/80 bg-card">
-        {(users ?? []).length === 0 ? (
-          <div className="p-3 text-sm text-muted-foreground">暂无管理员</div>
-        ) : (
-          (users ?? []).map((user) => (
-            <div key={user.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{user.email}</p>
-                <p className="text-xs text-muted-foreground">{new Date(user.createdAt).toLocaleDateString("zh-CN")}</p>
+    <>
+      <div className="space-y-4">
+        <div className="divide-y divide-border/70 rounded-md border border-border/80 bg-card">
+          {(users ?? []).length === 0 ? (
+            <EmptyState title="暂无管理员" description="添加第一个管理员后，即可使用该账号登录 S2A Manager。" className="m-3 py-6" />
+          ) : (
+            (users ?? []).map((user) => (
+              <div key={user.id} className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="whitespace-normal break-all text-sm font-medium leading-5 [overflow-wrap:anywhere]">{user.email}</p>
+                  <p className="text-xs text-muted-foreground">{new Date(user.createdAt).toLocaleDateString("zh-CN")}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-destructive hover:text-destructive lg:w-auto"
+                  disabled={deleteUser.isPending}
+                  onClick={() => setDeleteTarget({ id: user.id, email: user.email })}
+                >
+                  <Trash2 className="size-4" />
+                  删除
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-destructive hover:text-destructive sm:w-auto"
-                disabled={deleteUser.isPending}
-                onClick={() => {
-                  if (confirm("确定删除此管理员？")) deleteUser.mutate({ id: user.id });
-                }}
-              >
-                <Trash2 className="size-4" />
-                删除
-              </Button>
-            </div>
-          ))
-        )}
-      </div>
+            ))
+          )}
+        </div>
 
-      <div className="grid gap-2 border-t pt-4 sm:grid-cols-[1fr_1fr_auto]">
-        <Input placeholder="邮箱" value={email} onChange={(event) => setEmail(event.target.value)} />
-        <Input type="password" placeholder="密码，至少 6 位" value={password} onChange={(event) => setPassword(event.target.value)} />
-        <Button onClick={() => addUser.mutate({ email, password })} disabled={addUser.isPending}>
-          <Plus className="size-4" />
-          {addUser.isPending ? "添加中..." : "添加"}
-        </Button>
+        <div className="grid gap-2 border-t pt-4 lg:grid-cols-[1fr_1fr_auto]">
+          <div className="space-y-2">
+            <Label htmlFor="admin-email">管理员邮箱</Label>
+            <Input id="admin-email" autoComplete="email" placeholder="邮箱" value={email} onChange={(event) => setEmail(event.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="admin-password">管理员密码</Label>
+            <PasswordInput id="admin-password" autoComplete="new-password" placeholder="密码，至少 6 位" value={password} onChange={(event) => setPassword(event.target.value)} />
+          </div>
+          <Button className="w-full lg:w-auto lg:self-end" onClick={() => addUser.mutate({ email, password })} disabled={addUser.isPending}>
+            <Plus className="size-4" />
+            {addUser.isPending ? "添加中..." : "添加"}
+          </Button>
+        </div>
+        {error ? <ErrorState title="更新管理员失败" description={error} className="py-3" /> : null}
       </div>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="删除管理员"
+        description={
+          deleteTarget
+            ? `确定删除管理员「${deleteTarget.email}」？该账号将无法继续登录 S2A Manager。`
+            : "确定删除此管理员？该账号将无法继续登录 S2A Manager。"
+        }
+        confirmLabel="删除管理员"
+        pending={deleteUser.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteUser.mutate({ id: deleteTarget.id });
+        }}
+      />
+    </>
   );
 }

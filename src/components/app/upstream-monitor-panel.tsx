@@ -5,19 +5,17 @@ import { Activity, Clock3, Loader2, PauseCircle, Play, RefreshCw, RotateCcw, Set
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import {
   MobileRecord,
   MobileRecordActions,
-  MobileRecordEmpty,
   MobileRecordField,
   MobileRecordFields,
   MobileRecordHeader,
@@ -27,6 +25,10 @@ import {
   MobileRecordTitle,
 } from "@/components/app/mobile-record";
 import { PlatformIcon } from "@/components/app/platform-icon";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
+import { EmptyState, ErrorState, InlineError, LoadingState } from "@/components/app/feedback-state";
+import { MetricCard } from "@/components/app/metric-card";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
 
 type MonitorResult = {
   status: string;
@@ -274,6 +276,7 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
     prompt: "",
   }));
   const [formError, setFormError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<MonitorRow | null>(null);
   const [activeActionKeys, setActiveActionKeys] = useState<string[]>([]);
   const accountModels = trpc.accounts.models.useQuery(
     { connectionId, accountId: editingRow?.accountId ?? 0 },
@@ -286,6 +289,7 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
   const failingCount = monitoredRows.filter((row) => row.rule?.lastStatus === "failed" || row.rule?.lastStatus === "resume_failed").length;
   const uptimeValues = monitoredRows.map((row) => row.stats.uptimePercent).filter((value): value is number => typeof value === "number");
   const averageUptime = uptimeValues.length > 0 ? uptimeValues.reduce((sum, value) => sum + value, 0) / uptimeValues.length : null;
+  const averageUptimeTone = averageUptime === null ? "neutral" : averageUptime >= 0.95 ? "success" : averageUptime >= 0.8 ? "warning" : "danger";
   const activeActionSet = useMemo(() => new Set(activeActionKeys), [activeActionKeys]);
   const editorModels = useMemo(() => sortedModels((accountModels.data ?? []) as AccountModel[], editingRow), [accountModels.data, editingRow]);
 
@@ -393,11 +397,17 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
 
   const handleDelete = async (row: MonitorRow) => {
     if (!row.rule) return;
-    if (!confirm(`确定删除「${row.accountName}」的检测规则？`)) return;
+    setDeleteTarget(row);
+  };
+
+  const handleConfirmDelete = async () => {
+    const row = deleteTarget;
+    if (!row?.rule) return;
     setActionPending(row, "delete", true);
     try {
       await deleteRule.mutateAsync({ connectionId, accountId: row.accountId });
       await invalidate();
+      setDeleteTarget(null);
       showToast({ title: "检测规则已删除", variant: "success" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -415,44 +425,38 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
     }
     showToast({ title: "检测数据已刷新", variant: "success" });
   };
+  const deleteConfirmPending = deleteTarget ? activeActionSet.has(actionKey(deleteTarget.accountId, "delete")) : false;
 
   if (isLoading) {
-    return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中...</div>;
+    return <LoadingState />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">上游源站检测</h2>
-        <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={handleRefresh} disabled={isFetching}>
+      <PanelHeader
+        title="上游源站检测"
+        description="跟踪账号上游可用性、暂停状态和异常规则，辅助自动停用风险账号。"
+        actions={
+          <PanelActions className="grid-cols-1">
+        <Button variant="outline" size="sm" className="w-full lg:w-auto" onClick={handleRefresh} disabled={isFetching}>
           {isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
           刷新
         </Button>
-      </div>
+          </PanelActions>
+        }
+      />
 
-      {error ? <p className="text-sm text-destructive">加载检测数据失败：{error.message}</p> : null}
+      {error ? <ErrorState title="加载检测数据失败" description={error.message} /> : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className="h-full">
-          <CardHeader className="pb-1"><CardTitle className="text-sm text-muted-foreground">监测账号</CardTitle></CardHeader>
-          <CardContent className="flex min-h-10 items-center"><p className="text-2xl font-semibold">{monitoredRows.length}</p></CardContent>
-        </Card>
-        <Card className="h-full">
-          <CardHeader className="pb-1"><CardTitle className="text-sm text-muted-foreground">平均 Uptime</CardTitle></CardHeader>
-          <CardContent className="flex min-h-10 items-center"><p className="text-2xl font-semibold">{formatUptime(averageUptime)}</p></CardContent>
-        </Card>
-        <Card className="h-full">
-          <CardHeader className="pb-1"><CardTitle className="text-sm text-muted-foreground">暂停中</CardTitle></CardHeader>
-          <CardContent className="flex min-h-10 items-center"><p className="text-2xl font-semibold">{pausedCount}</p></CardContent>
-        </Card>
-        <Card className="h-full">
-          <CardHeader className="pb-1"><CardTitle className="text-sm text-muted-foreground">异常规则</CardTitle></CardHeader>
-          <CardContent className="flex min-h-10 items-center"><p className="text-2xl font-semibold">{failingCount}</p></CardContent>
-        </Card>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard title="监测账号" value={monitoredRows.length} tone="info" />
+        <MetricCard title="平均 Uptime" value={formatUptime(averageUptime)} tone={averageUptimeTone} />
+        <MetricCard title="暂停中" value={pausedCount} tone={pausedCount > 0 ? "warning" : "neutral"} />
+        <MetricCard title="异常规则" value={failingCount} tone={failingCount > 0 ? "danger" : "success"} />
       </div>
 
       {rows.length === 0 ? (
-        <MobileRecordEmpty>暂无账号</MobileRecordEmpty>
+        <EmptyState title="暂无上游检测账号" description="同步账号后即可在这里配置上游可用性检测规则。" className="lg:hidden" />
       ) : (
         <MobileRecordList>
           {rows.map((row) => {
@@ -476,12 +480,12 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
                   {row.schedulable === false ? <Badge variant="secondary">未调度</Badge> : <Badge variant="success">可调度</Badge>}
                 </MobileRecordHeader>
                 <MobileRecordFields>
-                  <MobileRecordField label="类型" value={<span className="line-clamp-2">{[row.platform, row.type].filter(Boolean).join(" / ") || "-"}</span>} />
+                  <MobileRecordField label="类型" value={<span className="whitespace-normal break-words text-sm leading-5 [overflow-wrap:anywhere]">{[row.platform, row.type].filter(Boolean).join(" / ") || "-"}</span>} />
                   <MobileRecordField label="规则" value={rule ? (rule.enabled ? <Badge variant="default">启用</Badge> : <Badge variant="secondary">停用</Badge>) : <Badge variant="outline">未配置</Badge>} />
                   <MobileRecordField className="col-span-2" label="最近检测" value={
                     <div className="space-y-1">
                       <div>{statusBadge(rule?.lastStatus)}</div>
-                      <div className="line-clamp-2 text-xs text-muted-foreground">{rule?.lastMessage || "-"}</div>
+                      <div className="whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">{rule?.lastMessage || "-"}</div>
                       <div className="text-xs text-muted-foreground">{formatRelative(rule?.lastCheckedAt)}{rule?.lastLatencyMs ? ` / ${rule.lastLatencyMs}ms` : ""}</div>
                     </div>
                   } />
@@ -504,24 +508,29 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
                   )}
                 </MobileRecordSection>
                 <MobileRecordActions>
-                  <Button variant="outline" size="icon" className="h-8 w-8" title={rule ? "编辑规则" : "配置规则"} onClick={() => openEditor(row)} disabled={rowPending}>
+                  <Button variant="outline" size="sm" title={rule ? "编辑规则" : "配置规则"} aria-label={`${rule ? "编辑" : "配置"} ${row.accountName} 的检测规则`} onClick={() => openEditor(row)} disabled={rowPending}>
                     <Settings2 className="h-4 w-4" />
+                    {rule ? "编辑规则" : "配置规则"}
                   </Button>
                   {rule ? (
                     <>
-                      <Button variant="outline" size="icon" className="h-8 w-8" title={rule.enabled ? "停用检测" : "启用检测"} onClick={() => handleToggle(row)} disabled={rowPending}>
+                      <Button variant="outline" size="sm" title={rule.enabled ? "停用检测" : "启用检测"} aria-label={`${rule.enabled ? "停用" : "启用"} ${row.accountName} 的检测`} onClick={() => handleToggle(row)} disabled={rowPending}>
                         {togglePending ? <Loader2 className="h-4 w-4 animate-spin" /> : rule.enabled ? <PauseCircle className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        {rule.enabled ? "停用检测" : "启用检测"}
                       </Button>
-                      <Button variant="outline" size="icon" className="h-8 w-8" title="立即检测" onClick={() => handleRunNow(row)} disabled={rowPending}>
+                      <Button variant="outline" size="sm" title="立即检测" aria-label={`立即检测 ${row.accountName}`} onClick={() => handleRunNow(row)} disabled={rowPending}>
                         {runPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4 text-blue-500" />}
+                        立即检测
                       </Button>
                       {paused ? (
-                        <Button variant="outline" size="icon" className="h-8 w-8" title="立即恢复调度" onClick={() => handleResume(row)} disabled={rowPending}>
+                        <Button variant="outline" size="sm" title="立即恢复调度" aria-label={`立即恢复 ${row.accountName} 的检测调度`} onClick={() => handleResume(row)} disabled={rowPending}>
                           {resumePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 text-teal-600" />}
+                          恢复调度
                         </Button>
                       ) : null}
-                      <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" title="删除规则" onClick={() => handleDelete(row)} disabled={rowPending}>
+                      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" title="删除规则" aria-label={`删除 ${row.accountName} 的检测规则`} onClick={() => handleDelete(row)} disabled={rowPending}>
                         {deletePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        删除规则
                       </Button>
                     </>
                   ) : null}
@@ -532,7 +541,7 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
         </MobileRecordList>
       )}
 
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -543,12 +552,12 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
             <TableHead className="min-w-[460px]">Uptime</TableHead>
             <TableHead>最近检测</TableHead>
             <TableHead>暂停</TableHead>
-            <TableHead className="w-56">操作</TableHead>
+            <TableActionHead className="w-56">操作</TableActionHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
-            <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">暂无账号</TableCell></TableRow>
+            <TableEmptyRow colSpan={8}>暂无账号</TableEmptyRow>
           ) : (
             rows.map((row) => {
               const rule = row.rule;
@@ -590,7 +599,7 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">{statusBadge(rule?.lastStatus)}</div>
-                    <div className="mt-1 max-w-[220px] truncate text-xs text-muted-foreground" title={rule?.lastMessage ?? ""}>{rule?.lastMessage || "-"}</div>
+                    <div className="mt-1 max-w-[280px] whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]" title={rule?.lastMessage ?? ""}>{rule?.lastMessage || "-"}</div>
                     <div className="text-xs text-muted-foreground">
                       {formatRelative(rule?.lastCheckedAt)}{rule?.lastLatencyMs ? ` / ${rule.lastLatencyMs}ms` : ""}
                     </div>
@@ -605,31 +614,31 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
                       <div className="text-xs text-muted-foreground">下次 {formatRelative(rule?.nextCheckAt)}</div>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableActionCell>
                     <div className="flex flex-wrap gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title={rule ? "编辑规则" : "配置规则"} onClick={() => openEditor(row)} disabled={rowPending}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title={rule ? "编辑规则" : "配置规则"} aria-label={`${rule ? "编辑" : "配置"} ${row.accountName} 的检测规则`} onClick={() => openEditor(row)} disabled={rowPending}>
                         <Settings2 className="h-4 w-4" />
                       </Button>
                       {rule ? (
                         <>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" title={rule.enabled ? "停用检测" : "启用检测"} onClick={() => handleToggle(row)} disabled={rowPending}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title={rule.enabled ? "停用检测" : "启用检测"} aria-label={`${rule.enabled ? "停用" : "启用"} ${row.accountName} 的检测`} onClick={() => handleToggle(row)} disabled={rowPending}>
                             {togglePending ? <Loader2 className="h-4 w-4 animate-spin" /> : rule.enabled ? <PauseCircle className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" title="立即检测" onClick={() => handleRunNow(row)} disabled={rowPending}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="立即检测" aria-label={`立即检测 ${row.accountName}`} onClick={() => handleRunNow(row)} disabled={rowPending}>
                             {runPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4 text-blue-500" />}
                           </Button>
                           {paused ? (
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="立即恢复调度" onClick={() => handleResume(row)} disabled={rowPending}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="立即恢复调度" aria-label={`立即恢复 ${row.accountName} 的检测调度`} onClick={() => handleResume(row)} disabled={rowPending}>
                               {resumePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 text-teal-600" />}
                             </Button>
                           ) : null}
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除规则" onClick={() => handleDelete(row)} disabled={rowPending}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除规则" aria-label={`删除 ${row.accountName} 的检测规则`} onClick={() => handleDelete(row)} disabled={rowPending}>
                             {deletePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           </Button>
                         </>
                       ) : null}
                     </div>
-                  </TableCell>
+                  </TableActionCell>
                 </TableRow>
               );
             })
@@ -639,82 +648,85 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
       </div>
 
       <Dialog open={!!editingRow} onOpenChange={(open) => { if (!open) closeEditor(); }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
             <DialogTitle>{editingRow?.rule ? "编辑检测规则" : "新增检测规则"}</DialogTitle>
           </DialogHeader>
-          {editingRow ? (
-            <div className="space-y-4">
-              <div className="rounded-md border border-border/70 px-3 py-2 text-sm">
-                <div className="font-medium">{editingRow.accountName}</div>
-                <div className="text-xs text-muted-foreground">#{editingRow.accountId} {editingRow.platform ? `/ ${editingRow.platform}` : ""}</div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
-                <Label htmlFor="monitor-enabled">启用检测</Label>
-                <Switch id="monitor-enabled" checked={form.enabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, enabled: checked }))} />
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>检测间隔分钟</Label>
-                  <Input type="number" min="1" step="1" value={form.checkIntervalMinutes} onChange={(e) => setForm((current) => ({ ...current, checkIntervalMinutes: e.target.value }))} />
+          <DialogBody className="flex-1 space-y-4 py-5">
+            {editingRow ? (
+              <>
+                <div className="rounded-md border border-border/70 px-3 py-2 text-sm">
+                  <div className="font-medium">{editingRow.accountName}</div>
+                  <div className="text-xs text-muted-foreground">#{editingRow.accountId} {editingRow.platform ? `/ ${editingRow.platform}` : ""}</div>
                 </div>
-                <div className="space-y-2">
-                  <Label>连续错误次数</Label>
-                  <Input type="number" min="1" step="1" value={form.failureThreshold} onChange={(e) => setForm((current) => ({ ...current, failureThreshold: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>暂停调度分钟</Label>
-                  <Input type="number" min="1" step="1" value={form.pauseMinutes} onChange={(e) => setForm((current) => ({ ...current, pauseMinutes: e.target.value }))} />
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label>测试模型</Label>
-                {editorModels.length > 0 ? (
-                  <Select
-                    value={form.modelId.trim() || defaultModelValue}
-                    onValueChange={(value) => setForm((current) => ({
-                      ...current,
-                      modelId: value === defaultModelValue ? "" : value,
-                    }))}
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+                  <Label htmlFor="monitor-enabled">启用检测</Label>
+                  <Switch id="monitor-enabled" checked={form.enabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, enabled: checked }))} />
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="monitor-check-interval-minutes">检测间隔分钟</Label>
+                    <Input id="monitor-check-interval-minutes" type="number" min="1" step="1" value={form.checkIntervalMinutes} onChange={(e) => setForm((current) => ({ ...current, checkIntervalMinutes: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="monitor-failure-threshold">连续错误次数</Label>
+                    <Input id="monitor-failure-threshold" type="number" min="1" step="1" value={form.failureThreshold} onChange={(e) => setForm((current) => ({ ...current, failureThreshold: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="monitor-pause-minutes">暂停调度分钟</Label>
+                    <Input id="monitor-pause-minutes" type="number" min="1" step="1" value={form.pauseMinutes} onChange={(e) => setForm((current) => ({ ...current, pauseMinutes: e.target.value }))} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="monitor-model-id">测试模型</Label>
+                  {editorModels.length > 0 ? (
+                    <Select
+                      value={form.modelId.trim() || defaultModelValue}
+                      onValueChange={(value) => setForm((current) => ({
+                        ...current,
+                        modelId: value === defaultModelValue ? "" : value,
+                      }))}
+                      disabled={upsertRule.isPending || accountModels.isLoading}
+                    >
+                      <SelectTrigger aria-label="选择测试模型">
+                        <SelectValue placeholder="选择测试模型" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={defaultModelValue}>Sub2API 默认测试模型</SelectItem>
+                        {editorModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {getModelLabel(model)}
+                          </SelectItem>
+                        ))}
+                        {form.modelId.trim() && !editorModels.some((model) => model.id === form.modelId.trim()) ? (
+                          <SelectItem value={form.modelId.trim()}>{form.modelId.trim()}</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  <Input
+                    id="monitor-model-id"
+                    value={form.modelId}
+                    onChange={(e) => setForm((current) => ({ ...current, modelId: e.target.value }))}
+                    placeholder={accountModels.isLoading ? "正在加载模型" : "留空使用 Sub2API 默认测试模型"}
                     disabled={upsertRule.isPending || accountModels.isLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择测试模型" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={defaultModelValue}>Sub2API 默认测试模型</SelectItem>
-                      {editorModels.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          {getModelLabel(model)}
-                        </SelectItem>
-                      ))}
-                      {form.modelId.trim() && !editorModels.some((model) => model.id === form.modelId.trim()) ? (
-                        <SelectItem value={form.modelId.trim()}>{form.modelId.trim()}</SelectItem>
-                      ) : null}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-                <Input
-                  value={form.modelId}
-                  onChange={(e) => setForm((current) => ({ ...current, modelId: e.target.value }))}
-                  placeholder={accountModels.isLoading ? "正在加载模型" : "留空使用 Sub2API 默认测试模型"}
-                  disabled={upsertRule.isPending || accountModels.isLoading}
-                />
-                {accountModels.error ? <p className="text-sm text-destructive">加载模型失败：{accountModels.error.message}</p> : null}
-              </div>
+                  />
+                  {accountModels.error ? <InlineError>加载模型失败：{accountModels.error.message}</InlineError> : null}
+                </div>
 
-              <div className="space-y-2">
-                <Label>测试 Prompt</Label>
-                <Textarea value={form.prompt} onChange={(e) => setForm((current) => ({ ...current, prompt: e.target.value }))} rows={3} placeholder="留空使用 Sub2API 默认测试内容" />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="monitor-prompt">测试 Prompt</Label>
+                  <Textarea id="monitor-prompt" value={form.prompt} onChange={(e) => setForm((current) => ({ ...current, prompt: e.target.value }))} rows={3} placeholder="留空使用 Sub2API 默认测试内容" />
+                </div>
 
-              {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
-            </div>
-          ) : null}
-          <DialogFooter>
+                {formError ? <InlineError>{formError}</InlineError> : null}
+              </>
+            ) : null}
+          </DialogBody>
+          <DialogFooter className="shrink-0 border-t border-border/70 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={closeEditor} disabled={upsertRule.isPending}>取消</Button>
             <Button onClick={handleSave} disabled={!editingRow || upsertRule.isPending}>
               {upsertRule.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
@@ -723,6 +735,17 @@ export function UpstreamMonitorPanel({ connectionId }: { connectionId: number })
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="删除检测规则"
+        description={`确定删除「${deleteTarget?.accountName ?? ""}」的检测规则？删除后该账号将停止上游可用性监控，无法撤销。`}
+        confirmLabel="删除规则"
+        pending={deleteConfirmPending}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }

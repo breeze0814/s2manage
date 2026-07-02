@@ -2,11 +2,13 @@
 
 import type { ReactNode } from "react";
 import { Bot, ListChecks, Radio, Save, Send, SlidersHorizontal } from "lucide-react";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -92,26 +94,30 @@ export function BotHeader({
   testingWs: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
+    <PanelHeader
+      title={(
+        <span className="flex min-w-0 items-center gap-2">
           <Bot className="size-4 text-primary" />
           QQBot 管理
-        </h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">{connectionLabel}，集中管理接入配置、群指令、消息发送和 WS 日志。</p>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        </span>
+      )}
+      description={`${connectionLabel}，集中管理接入配置、群指令、消息发送和 WS 日志。`}
+      meta={(
         <Badge variant={enabled ? "success" : "secondary"}>{enabled ? "已启用" : "未启用"}</Badge>
-        <Button variant="outline" size="sm" onClick={onTestWs} disabled={actionDisabled}>
-          <Radio className="size-4" />
-          {testingWs ? "测试中..." : "测试 WS"}
-        </Button>
-        <Button size="sm" onClick={onSave} disabled={isLoading || saving}>
-          <Save className="size-4" />
-          {saving ? "保存中..." : "保存配置"}
-        </Button>
-      </div>
-    </div>
+      )}
+      actions={(
+        <PanelActions>
+          <Button variant="outline" size="sm" onClick={onTestWs} disabled={actionDisabled}>
+            <Radio className="size-4" />
+            {testingWs ? "测试中..." : "测试 WS"}
+          </Button>
+          <Button size="sm" onClick={onSave} disabled={isLoading || saving}>
+            <Save className="size-4" />
+            {saving ? "保存中..." : "保存配置"}
+          </Button>
+        </PanelActions>
+      )}
+    />
   );
 }
 
@@ -136,14 +142,14 @@ export function BasicConfigCard({
           基本配置
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-3 px-3 pb-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_minmax(200px,0.8fr)_minmax(280px,1.1fr)]">
+      <CardContent className="grid gap-3 px-3 pb-3 lg:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_minmax(200px,0.8fr)_minmax(280px,1.1fr)]">
         <div className="space-y-1.5">
           <Label htmlFor="qqbot-ws-url" className="text-xs">NapCat WebSocket 地址</Label>
           <Input id="qqbot-ws-url" value={draft.wsUrl} placeholder="ws://localhost:3001" onChange={(event) => setField("wsUrl", event.target.value)} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="qqbot-token" className="text-xs">NapCat Token</Label>
-          <Input id="qqbot-token" type="password" value={draft.token} placeholder="可选" autoComplete="new-password" onChange={(event) => setField("token", event.target.value)} />
+          <PasswordInput id="qqbot-token" value={draft.token} placeholder="可选" autoComplete="new-password" onChange={(event) => setField("token", event.target.value)} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="qqbot-target-group-id" className="text-xs">目标 QQ 群号</Label>
@@ -188,7 +194,7 @@ export function FeatureCommandCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 px-3 pb-3">
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="grid gap-2 lg:grid-cols-2">
           {activitySlot}
           <FeatureSwitch id="qqbot-enabled" title="启用 QQBot" description="控制当前连接是否开启 QQBot 能力。" checked={draft.enabled} onChange={(checked) => setField("enabled", checked)} />
           <FeatureSwitch id="qqbot-rate-change-push" title="分组倍率变动推送" description="目标分组倍率变化后向目标 QQ 群发送说明。" checked={draft.rateChangePushEnabled} onChange={(checked) => setField("rateChangePushEnabled", checked)} />
@@ -241,13 +247,13 @@ export function ManualMessageCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 px-3 pb-3">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
           <Label htmlFor="qqbot-manual-message" className="text-xs">目标群消息</Label>
           <span className="text-xs text-muted-foreground">发送到：{targetGroupId ? `QQ 群 ${targetGroupId}` : "请选择群组"}</span>
         </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
           <Textarea id="qqbot-manual-message" className="min-h-24" value={message} placeholder="输入要发送到当前 QQ 群的消息" onChange={(event) => onMessageChange(event.target.value)} />
-          <Button className="md:self-end" size="sm" onClick={onSend} disabled={!canSend}>
+          <Button className="lg:self-end" size="sm" onClick={onSend} disabled={!canSend}>
             <Send className="size-4" />
             {sending ? "发送中..." : "发送消息"}
           </Button>

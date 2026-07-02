@@ -1,14 +1,27 @@
 "use client";
 
-import type React from "react";
+import { useState } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Database, Loader2, RefreshCw, ServerCog, Trash2, WifiOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { logActionLabel } from "@/lib/log-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
+import { EmptyState, ErrorState, LoadingState } from "@/components/app/feedback-state";
+import { MetricCard, type MetricTone } from "@/components/app/metric-card";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
+import {
+  MobileRecord,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordHeader,
+  MobileRecordList,
+  MobileRecordMeta,
+  MobileRecordTitle,
+} from "@/components/app/mobile-record";
 
 type StatusTone = "ok" | "warn" | "bad";
 
@@ -60,44 +73,16 @@ function statusBadge(tone: StatusTone, label: string) {
   return <Badge variant="destructive">{label}</Badge>;
 }
 
-function StatusCard({
-  icon: Icon,
-  title,
-  value,
-  detail,
-  tone,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  value: string;
-  detail: string;
-  tone: StatusTone;
-}) {
-  const toneClass = tone === "ok"
-    ? "bg-teal-500/10 text-teal-700 dark:text-teal-300"
-    : tone === "warn"
-      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-      : "bg-destructive/10 text-destructive";
-
-  return (
-    <Card className="h-full">
-      <CardContent className="flex min-h-24 items-center gap-3 p-4">
-        <div className={`rounded-md p-2 ${toneClass}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm text-muted-foreground">{title}</div>
-          <div className="mt-1 text-lg font-semibold">{value}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+function metricTone(tone: StatusTone): MetricTone {
+  if (tone === "ok") return "success";
+  if (tone === "warn") return "warning";
+  return "danger";
 }
 
 export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) {
   const utils = trpc.useUtils();
   const { showToast } = useToast();
+  const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
   const { data, error, isLoading, isFetching, refetch } = trpc.serviceStatus.overview.useQuery(
     connectionId ? { connectionId } : undefined,
     { refetchInterval: 30_000 },
@@ -135,6 +120,7 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
         description: `删除/移除 ${totalRemoved} 项，禁用 ${totalDisabled} 项，异常连接 ${result.unavailableConnections} 个`,
         variant: result.unavailableConnections > 0 ? "info" : "success",
       });
+      setCleanupConfirmOpen(false);
     },
     onError: (cleanupError) => {
       showToast({ title: "清理无效数据失败", description: cleanupError.message, variant: "error" });
@@ -151,22 +137,19 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
   };
 
   const handleCleanupInvalidData = () => {
-    const scope = connectionId ? "当前连接" : "全部连接";
-    if (!confirm(`确认清理${scope}的无效绑定、倍率规则和监控规则？源站分组删除会移除对应来源绑定，源站分组改名会更新绑定名称；连接不可用时会禁用自动规则但保留绑定。`)) return;
+    setCleanupConfirmOpen(true);
+  };
+
+  const handleConfirmCleanupInvalidData = () => {
     cleanupInvalidData.mutate(connectionId ? { connectionId } : undefined);
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        加载中...
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (error) {
-    return <p className="text-sm text-destructive">加载服务状态失败：{error.message}</p>;
+    return <ErrorState title="加载服务状态失败" description={error.message} />;
   }
 
   if (!data) return null;
@@ -178,15 +161,15 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
   const databaseTone: StatusTone = data.database.ok ? "ok" : "bad";
   const blTone: StatusTone = data.bl.configured ? "ok" : "warn";
   const failedLogsTone: StatusTone = data.recentLogs.failed > 0 ? "warn" : "ok";
+  const cleanupScope = connectionId ? "当前连接" : "全部连接";
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">服务状态</h2>
-          <p className="text-sm text-muted-foreground">最后检查：{formatDateTime(data.checkedAt)}</p>
-        </div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:items-center sm:justify-end [&>button]:flex-1 sm:[&>button]:flex-none">
+      <PanelHeader
+        title="服务状态"
+        description={`最后检查：${formatDateTime(data.checkedAt)}。集中查看 Web、数据库、Worker 与近期任务健康度。`}
+        actions={
+          <PanelActions>
           <Button variant="outline" size="sm" onClick={handleCleanupInvalidData} disabled={cleanupInvalidData.isPending}>
             {cleanupInvalidData.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}
             清理无效数据
@@ -195,37 +178,38 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
             {isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
             刷新
           </Button>
-        </div>
-      </div>
+          </PanelActions>
+        }
+      />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StatusCard
+        <MetricCard
           icon={ServerCog}
           title="Web 服务"
           value="在线"
           detail={`已运行 ${formatDuration(data.web.uptimeSeconds)}`}
-          tone="ok"
+          tone="success"
         />
-        <StatusCard
+        <MetricCard
           icon={Database}
           title="数据库"
           value={data.database.ok ? "正常" : "异常"}
           detail={data.database.message}
-          tone={databaseTone}
+          tone={metricTone(databaseTone)}
         />
-        <StatusCard
+        <MetricCard
           icon={data.worker.online ? Activity : WifiOff}
           title="Worker"
           value={workerLabel}
           detail={data.worker.heartbeatAt ? `心跳 ${formatRelative(data.worker.heartbeatAt)}` : "尚未收到心跳"}
-          tone={workerTone}
+          tone={metricTone(workerTone)}
         />
-        <StatusCard
+        <MetricCard
           icon={data.recentLogs.failed > 0 ? AlertTriangle : CheckCircle2}
           title="最近任务"
           value={`${data.recentLogs.failed}/${data.recentLogs.total} 异常`}
           detail={connectionId ? "当前连接最近日志" : "全部连接最近日志"}
-          tone={failedLogsTone}
+          tone={metricTone(failedLogsTone)}
         />
       </div>
 
@@ -234,7 +218,7 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
           <CardHeader>
             <CardTitle className="text-base">Worker 详情</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+          <CardContent className="grid gap-3 text-sm lg:grid-cols-2">
             <div className="rounded-md border border-border/70 p-3">
               <div className="text-muted-foreground">当前状态</div>
               <div className="mt-1">{statusBadge(workerTone, workerLabel)}</div>
@@ -273,7 +257,7 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
             </div>
             <div className="rounded-md border border-border/70 p-3">
               <div className="text-muted-foreground">最近消息</div>
-              <div className="mt-1 truncate" title={data.worker.lastRunMessage ?? ""}>{data.worker.lastRunMessage || "-"}</div>
+              <div className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]" title={data.worker.lastRunMessage ?? ""}>{data.worker.lastRunMessage || "-"}</div>
             </div>
           </CardContent>
         </Card>
@@ -316,14 +300,14 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
           <CardTitle className="text-base">维护操作</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="flex flex-col gap-3 rounded-md border border-border/70 p-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 rounded-md border border-border/70 p-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="font-medium">清理无效数据</div>
               <p className="mt-1 text-muted-foreground">
                 删除不存在目标或来源对应的 BL 绑定、倍率规则和监控规则；源站分组改名时更新绑定名称；连接或密钥异常时禁用自动规则，保留绑定以便修复后重新启用。
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={handleCleanupInvalidData} disabled={cleanupInvalidData.isPending} className="w-full shrink-0 md:w-auto">
+            <Button variant="outline" size="sm" onClick={handleCleanupInvalidData} disabled={cleanupInvalidData.isPending} className="w-full shrink-0 lg:w-auto">
               {cleanupInvalidData.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}
               执行清理
             </Button>
@@ -336,7 +320,7 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
                   检查 {cleanupInvalidData.data.checkedConnections} 个连接，清理 {cleanupInvalidData.data.cleanedConnections} 个连接
                 </span>
               </div>
-              <div className="mt-3 grid gap-2 text-xs md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-3 grid gap-2 text-xs lg:grid-cols-2 xl:grid-cols-4">
                 <div>分组绑定：{cleanupInvalidData.data.totals.deletedGroupBindings}</div>
                 <div>分组规则：{cleanupInvalidData.data.totals.deletedGroupRules}</div>
                 <div>账号绑定：{cleanupInvalidData.data.totals.deletedAccountBindings}</div>
@@ -362,7 +346,7 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
                   {cleanupInvalidData.data.connections
                     .filter((item) => item.status === "connection_unavailable")
                     .map((item) => (
-                      <div key={item.connectionId} className="truncate" title={item.groupError || item.accountError || item.sourceError || item.message}>
+                      <div key={item.connectionId} className="break-words [overflow-wrap:anywhere]" title={item.groupError || item.accountError || item.sourceError || item.message}>
                         {item.connectionName}：{item.groupError || item.accountError || item.sourceError || item.message}
                       </div>
                     ))}
@@ -378,34 +362,66 @@ export function ServiceStatusPanel({ connectionId }: { connectionId?: number }) 
           <CardTitle className="text-base">最近任务日志</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-40">时间</TableHead>
-                <TableHead className="w-48">动作</TableHead>
-                <TableHead className="w-44">目标</TableHead>
-                <TableHead className="w-24">状态</TableHead>
-                <TableHead>错误</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.recentLogs.items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">暂无日志</TableCell>
-                </TableRow>
-              ) : data.recentLogs.items.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
-                  <TableCell className="text-xs" title={log.action}>{log.actionLabel || logActionLabel(log.action)}</TableCell>
-                  <TableCell className="font-mono text-xs">{log.target || "-"}</TableCell>
-                  <TableCell>{log.status === "success" ? statusBadge("ok", "成功") : statusBadge("bad", "失败")}</TableCell>
-                  <TableCell className="max-w-[360px] truncate text-sm text-muted-foreground" title={log.error ?? ""}>{log.error || "-"}</TableCell>
-                </TableRow>
+          {data.recentLogs.items.length === 0 ? (
+            <EmptyState title="暂无任务日志" description="最近的同步、检测或维护任务完成后会显示在这里。" className="m-3 lg:hidden" />
+          ) : (
+            <MobileRecordList className="p-3">
+              {data.recentLogs.items.map((log) => (
+                <MobileRecord key={log.id}>
+                  <MobileRecordHeader>
+                    <div className="min-w-0">
+                      <MobileRecordTitle>{log.actionLabel || logActionLabel(log.action)}</MobileRecordTitle>
+                      <MobileRecordMeta>{formatDateTime(log.createdAt)}</MobileRecordMeta>
+                    </div>
+                    <div className="shrink-0">{log.status === "success" ? statusBadge("ok", "成功") : statusBadge("bad", "失败")}</div>
+                  </MobileRecordHeader>
+                  <MobileRecordFields>
+                    <MobileRecordField label="时间" value={formatDateTime(log.createdAt)} />
+                    <MobileRecordField label="目标" value={<span className="break-all font-mono">{log.target || "-"}</span>} />
+                    <MobileRecordField label="错误" value={<span className="break-words">{log.error || "-"}</span>} className="col-span-2" />
+                  </MobileRecordFields>
+                </MobileRecord>
               ))}
-            </TableBody>
-          </Table>
+            </MobileRecordList>
+          )}
+          <div className="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-40">时间</TableHead>
+                  <TableHead className="w-48">动作</TableHead>
+                  <TableHead className="w-44">目标</TableHead>
+                  <TableHead className="w-24">状态</TableHead>
+                  <TableHead>错误</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.recentLogs.items.length === 0 ? (
+                  <TableEmptyRow colSpan={5}>暂无日志</TableEmptyRow>
+                ) : data.recentLogs.items.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
+                    <TableCell className="text-xs" title={log.action}>{log.actionLabel || logActionLabel(log.action)}</TableCell>
+                    <TableCell className="font-mono text-xs">{log.target || "-"}</TableCell>
+                    <TableCell>{log.status === "success" ? statusBadge("ok", "成功") : statusBadge("bad", "失败")}</TableCell>
+                    <TableCell className="max-w-[360px] whitespace-normal break-words text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]" title={log.error ?? ""}>{log.error || "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={cleanupConfirmOpen}
+        onOpenChange={setCleanupConfirmOpen}
+        title={`清理${cleanupScope}无效数据`}
+        description={`确认清理${cleanupScope}的无效绑定、倍率规则和监控规则？源站分组删除会移除对应来源绑定，源站分组改名会更新绑定名称；连接不可用时会禁用自动规则但保留绑定。`}
+        confirmLabel="执行清理"
+        pending={cleanupInvalidData.isPending}
+        onConfirm={handleConfirmCleanupInvalidData}
+      />
     </div>
   );
 }

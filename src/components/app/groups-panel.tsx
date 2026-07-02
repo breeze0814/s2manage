@@ -5,18 +5,17 @@ import { Loader2, Pencil, Play, Plus, RefreshCw, Save, Trash2 } from "lucide-rea
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import {
   MobileRecord,
   MobileRecordActions,
-  MobileRecordEmpty,
   MobileRecordField,
   MobileRecordFields,
   MobileRecordHeader,
@@ -35,6 +34,10 @@ import {
   type BlRateOption,
 } from "@/components/app/bl-source-bindings";
 import { PlatformIcon } from "@/components/app/platform-icon";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
+import { EmptyState, ErrorState, InlineError, LoadingState } from "@/components/app/feedback-state";
+import { FilterField, FilterSearchField, FilterSummary, FilterToolbar } from "@/components/app/filter-toolbar";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
 
 type GroupRow = {
   id: number;
@@ -132,8 +135,23 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
   const [sourceBindings, setSourceBindings] = useState<BlBindingValue[]>([]);
   const [formError, setFormError] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [groupSearch, setGroupSearch] = useState("");
+  const [platformFilter, setPlatformFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
 
   const normalizedGroups = useMemo(() => normalizeGroups(groups), [groups]);
+  const platformOptions = useMemo(() => Array.from(new Set(normalizedGroups.map((group) => group.platform?.trim()).filter(Boolean) as string[])).sort(), [normalizedGroups]);
+  const typeOptions = useMemo(() => Array.from(new Set(normalizedGroups.map((group) => group.type?.trim()).filter(Boolean) as string[])).sort(), [normalizedGroups]);
+  const filteredGroups = useMemo(() => {
+    const query = groupSearch.trim().toLowerCase();
+    return normalizedGroups.filter((group) => {
+      if (platformFilter !== "all" && (group.platform ?? "") !== platformFilter) return false;
+      if (typeFilter !== "all" && (group.type ?? "") !== typeFilter) return false;
+      if (!query) return true;
+      return `${group.name} ${group.id} ${group.platform ?? ""} ${group.type ?? ""}`.toLowerCase().includes(query);
+    });
+  }, [groupSearch, normalizedGroups, platformFilter, typeFilter]);
+  const hasGroupFilters = Boolean(groupSearch.trim()) || platformFilter !== "all" || typeFilter !== "all";
   const groupIds = useMemo(() => normalizedGroups.map((group) => group.id).filter((id) => Number.isInteger(id) && id > 0), [normalizedGroups]);
   const { data: bindingData, isLoading: bindingsLoading } = trpc.bl.bindings.useQuery(
     { connectionId, targetType: "group", targetIds: groupIds },
@@ -307,20 +325,23 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
     showToast({ title: "分组已刷新", variant: "success" });
   };
 
+  const resetGroupFilters = () => {
+    setGroupSearch("");
+    setPlatformFilter("all");
+    setTypeFilter("all");
+  };
+
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        加载中...
-      </div>
-    );
+    return <LoadingState label="加载分组..." />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">分组倍率管理</h2>
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:justify-end">
+      <PanelHeader
+        title="分组倍率管理"
+        description="维护目标站点分组倍率，绑定采集源分组后可按规则计算并写入倍率。"
+        actions={
+          <PanelActions>
           <Button size="sm" className="min-w-0" onClick={openCreate} disabled={isSaving}>
             <Plus className="mr-1 h-4 w-4" />
             新增分组
@@ -329,19 +350,57 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
             {isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
             刷新
           </Button>
-        </div>
-      </div>
+          </PanelActions>
+        }
+      />
 
-      {listError ? <p className="text-sm text-destructive [overflow-wrap:anywhere]">加载分组失败：{listError.message}</p> : null}
-      {bindingData?.rateError ? <p className="text-sm text-destructive [overflow-wrap:anywhere]">加载采集生效倍率失败：{bindingData.rateError}</p> : null}
+      {listError ? <ErrorState title="加载分组失败" description={listError.message} /> : null}
+      {bindingData?.rateError ? <ErrorState title="加载采集生效倍率失败" description={bindingData.rateError} /> : null}
+
+      <Card>
+        <CardContent className="space-y-3 p-3">
+          <FilterToolbar columns={3}>
+            <FilterField label="查找分组" htmlFor="group-search">
+              <FilterSearchField id="group-search" type="search" value={groupSearch} onChange={(event) => setGroupSearch(event.target.value)} placeholder="搜索分组名称、ID、平台或类型" />
+            </FilterField>
+            <FilterField label="平台" htmlFor="group-platform-filter">
+              <Select value={platformFilter} onValueChange={setPlatformFilter}>
+                <SelectTrigger id="group-platform-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部平台</SelectItem>
+                  {platformOptions.map((platform) => <SelectItem key={platform} value={platform}>{platform}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="类型" htmlFor="group-type-filter">
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger id="group-type-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部类型</SelectItem>
+                  {typeOptions.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FilterField>
+          </FilterToolbar>
+          <FilterSummary
+            actions={hasGroupFilters ? (
+              <Button variant="outline" size="sm" onClick={resetGroupFilters}>重置筛选</Button>
+            ) : null}
+          >
+            已筛选 {filteredGroups.length} / 共 {normalizedGroups.length} 个分组
+          </FilterSummary>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-3 md:p-0">
           {normalizedGroups.length === 0 ? (
-            <MobileRecordEmpty>暂无分组</MobileRecordEmpty>
+            <EmptyState title="暂无分组" description="新增或同步 Sub2API 分组后即可在这里配置倍率。" className="lg:hidden" />
+          ) : filteredGroups.length === 0 ? (
+            <EmptyState title="没有匹配的分组" description="调整分组名称、ID、平台或类型筛选条件后再试。" className="lg:hidden" />
           ) : (
             <MobileRecordList>
-              {normalizedGroups.map((group, idx) => {
+              {filteredGroups.map((group, idx) => {
                 const rule = rulesByGroup.get(group.id);
                 const bindings = bindingsByGroup.get(group.id) ?? [];
                 return (
@@ -358,24 +417,26 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                     </MobileRecordHeader>
                     <MobileRecordFields>
                       <MobileRecordField label="默认倍率" value={<span className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</span>} />
-                      <MobileRecordField label="默认倍率" value={<span className="font-mono">{formatRate(group.rate_multiplier ?? 1)}</span>} />
-                      <MobileRecordField label="规则" value={<span className="line-clamp-2">{ruleSummary(rule)}</span>} />
+                      <MobileRecordField label="类型" value={<span className="whitespace-normal break-words text-sm leading-5 [overflow-wrap:anywhere]">{[group.platform, group.type].filter(Boolean).join(" / ") || "-"}</span>} />
+                      <MobileRecordField label="规则" value={<span className="whitespace-normal break-words [overflow-wrap:anywhere]">{ruleSummary(rule)}</span>} />
                     </MobileRecordFields>
                     <MobileRecordSection>
                       <div className="mb-2 text-[11px] text-muted-foreground">采集源分组 / 生效倍率</div>
                       <BlSourceBadges bindings={bindings} loading={bindingsLoading && groupIds.length > 0} />
                     </MobileRecordSection>
                     <MobileRecordActions>
-                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => openEdit(group)} title="编辑分组" aria-label={`编辑 ${group.name}`} disabled={isSaving}>
+                      <Button variant="outline" size="sm" onClick={() => openEdit(group)} title="编辑分组" aria-label={`编辑 ${group.name}`} disabled={isSaving}>
                         <Pencil className="h-4 w-4" />
+                        编辑
                       </Button>
-                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleApplyRule(group)} title="应用规则" aria-label={`应用 ${group.name} 的规则`} disabled={applyRule.isPending || !rule?.enabled || bindings.length === 0}>
+                      <Button variant="outline" size="sm" onClick={() => handleApplyRule(group)} title="应用规则" aria-label={`应用 ${group.name} 的规则`} disabled={applyRule.isPending || !rule?.enabled || bindings.length === 0}>
                         <Play className="h-4 w-4" />
+                        应用
                       </Button>
                       <Button
                         variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
                         onClick={() => {
                           setDeleteGroup(group);
                           setDeleteError("");
@@ -384,7 +445,8 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                         aria-label={`删除 ${group.name}`}
                         disabled={removeGroup.isPending}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="h-4 w-4" />
+                        删除
                       </Button>
                     </MobileRecordActions>
                   </MobileRecord>
@@ -392,7 +454,7 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
               })}
             </MobileRecordList>
           )}
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -401,18 +463,16 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                 <TableHead className="w-24 text-right">默认倍率</TableHead>
                 <TableHead className="min-w-[200px]">采集源分组 / 生效倍率</TableHead>
                 <TableHead className="w-[200px]">规则</TableHead>
-                <TableHead className="w-32 text-right">操作</TableHead>
+                <TableActionHead className="w-32">操作</TableActionHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {normalizedGroups.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    暂无分组
-                  </TableCell>
-                </TableRow>
+                <TableEmptyRow colSpan={6}>暂无分组</TableEmptyRow>
+              ) : filteredGroups.length === 0 ? (
+                <TableEmptyRow colSpan={6}>没有匹配的分组</TableEmptyRow>
               ) : (
-                normalizedGroups.map((group, idx) => {
+                filteredGroups.map((group, idx) => {
                   const rule = rulesByGroup.get(group.id);
                   const bindings = bindingsByGroup.get(group.id) ?? [];
                   return (
@@ -428,8 +488,8 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                       <TableCell>
                         <BlSourceBadges bindings={bindings} loading={bindingsLoading && groupIds.length > 0} />
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-sm" title={ruleSummary(rule)}>{ruleSummary(rule)}</TableCell>
-                      <TableCell>
+                      <TableCell className="max-w-[260px] whitespace-normal break-words text-sm leading-5 [overflow-wrap:anywhere]" title={ruleSummary(rule)}>{ruleSummary(rule)}</TableCell>
+                      <TableActionCell>
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => openEdit(group)} title="编辑分组" aria-label={`编辑 ${group.name}`} disabled={isSaving}>
                             <Pencil className="h-4 w-4" />
@@ -451,7 +511,7 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
-                      </TableCell>
+                      </TableActionCell>
                     </TableRow>
                   );
                 })
@@ -463,24 +523,25 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
       </Card>
 
       <Dialog open={formMode !== null} onOpenChange={(open) => { if (!open) closeForm(); }}>
-        <DialogContent className="flex h-[88vh] max-h-[88vh] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0">
-          <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
+        <DialogContent className="flex max-h-[min(92dvh,760px)] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
             <DialogTitle>{formMode === "create" ? "新增分组" : `编辑分组 - ${editGroup?.name ?? ""}`}</DialogTitle>
             <p className="text-sm text-muted-foreground">配置分组的默认倍率与计算规则，并绑定采集源分组作为倍率来源。</p>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <DialogBody className="flex-1 py-5">
             <div className="grid gap-6 lg:grid-cols-5 lg:gap-8">
               <div className="space-y-6 lg:col-span-2">
                 <section className="space-y-4">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">基础信息</p>
                   <div className="space-y-2">
-                    <Label>分组名称</Label>
-                    <Input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} placeholder="输入分组名称" />
+                    <Label htmlFor="group-name">分组名称</Label>
+                    <Input id="group-name" value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} placeholder="输入分组名称" />
                   </div>
                   <div className="space-y-2">
-                    <Label>默认倍率</Label>
+                    <Label htmlFor="group-rate-multiplier">默认倍率</Label>
                     <Input
+                      id="group-rate-multiplier"
                       type="number"
                       step="any"
                       min="0.0001"
@@ -511,9 +572,9 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                   {form.useRateRule ? (
                     <div className="space-y-4 border-t border-border/60 pt-4">
                       <div className="space-y-2">
-                        <Label>计算方式</Label>
+                        <Label htmlFor="group-rate-rule-mode">计算方式</Label>
                         <Select value={form.ruleMode} onValueChange={(value) => setForm((current) => ({ ...current, ruleMode: value as RuleMode }))} disabled={isSaving}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectTrigger id="group-rate-rule-mode"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="first">首个源倍率</SelectItem>
                             <SelectItem value="average">平均源倍率</SelectItem>
@@ -525,8 +586,9 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                       </div>
                       {form.ruleMode === "custom" ? (
                         <div className="space-y-2">
-                          <Label>自定义公式</Label>
+                          <Label htmlFor="group-rate-rule-expression">自定义公式</Label>
                           <Textarea
+                            id="group-rate-rule-expression"
                             value={form.ruleExpression}
                             onChange={(e) => setForm((current) => ({ ...current, ruleExpression: e.target.value }))}
                             placeholder="avg + 0.1"
@@ -537,8 +599,9 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
                         </div>
                       ) : null}
                       <div className="space-y-2">
-                        <Label>偏移</Label>
+                        <Label htmlFor="group-rate-rule-offset">偏移</Label>
                         <Input
+                          id="group-rate-rule-offset"
                           type="number"
                           step="any"
                           className="font-mono"
@@ -570,10 +633,10 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
               </section>
             </div>
 
-            {formError ? <p className="mt-5 text-sm text-destructive">{formError}</p> : null}
-          </div>
+            {formError ? <InlineError className="mt-5">{formError}</InlineError> : null}
+          </DialogBody>
 
-          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-6 py-4 sm:gap-0">
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:gap-0 sm:px-6">
             <Button variant="outline" onClick={closeForm} disabled={isSaving}>
               取消
             </Button>
@@ -589,27 +652,21 @@ export function GroupsPanel({ connectionId }: { connectionId: number }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!deleteGroup} onOpenChange={(open) => { if (!open) setDeleteGroup(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>删除分组</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <p>确认删除分组「{deleteGroup?.name}」？</p>
-            <p className="text-destructive">删除会影响该分组关联的账号、用户和倍率配置。</p>
-          </div>
-          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteGroup(null)}>
-              取消
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={removeGroup.isPending}>
-              {removeGroup.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}
-              删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={Boolean(deleteGroup)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteGroup(null);
+            setDeleteError("");
+          }
+        }}
+        title="删除分组"
+        description={`确认删除分组「${deleteGroup?.name ?? ""}」？删除会影响该分组关联的账号、用户和倍率配置。`}
+        confirmLabel="删除"
+        pending={removeGroup.isPending}
+        error={deleteError}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

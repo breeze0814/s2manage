@@ -13,7 +13,7 @@ type MobileRecordFieldProps = {
 };
 
 function MobileRecordList({ children, className }: MobileRecordProps) {
-  return <div className={cn("space-y-3 md:hidden", className)}>{children}</div>;
+  return <div className={cn("space-y-3 lg:hidden", className)}>{children}</div>;
 }
 
 function MobileRecord({ children, className }: MobileRecordProps) {
@@ -61,12 +61,12 @@ function MobileRecordSection({ children, className }: MobileRecordProps) {
 }
 
 function MobileRecordActions({ children, className }: MobileRecordProps) {
-  return <div className={cn("mt-3 flex flex-wrap gap-1.5", className)}>{children}</div>;
+  return <div className={cn("mt-3 flex flex-wrap gap-2 [&_button]:min-h-11 [&_button]:min-w-11", className)}>{children}</div>;
 }
 
 function MobileRecordEmpty({ children, className }: MobileRecordProps) {
   return (
-    <div className={cn("rounded-lg border border-dashed border-border/70 px-3 py-8 text-center text-sm text-muted-foreground md:hidden", className)}>
+    <div className={cn("rounded-lg border border-dashed border-border/70 px-3 py-8 text-center text-sm text-muted-foreground lg:hidden", className)}>
       {children}
     </div>
   );

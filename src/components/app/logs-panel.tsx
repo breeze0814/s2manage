@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw, Save, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, Save, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { logActionLabel } from "@/lib/log-actions";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import {
   MobileRecord,
-  MobileRecordEmpty,
   MobileRecordField,
   MobileRecordFields,
   MobileRecordHeader,
@@ -24,6 +23,10 @@ import {
   MobileRecordSection,
   MobileRecordTitle,
 } from "@/components/app/mobile-record";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
+import { FilterField, FilterSearchField, FilterToolbar } from "@/components/app/filter-toolbar";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
+import { EmptyState, ErrorState, LoadingState } from "@/components/app/feedback-state";
 
 type LogLevel = "info" | "warning" | "error";
 type LogStatus = "success" | "failed";
@@ -353,6 +356,7 @@ export function LogsPanel() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [limit, setLimit] = useState("100");
+  const [clearTarget, setClearTarget] = useState<{ connectionId?: number; label: string } | null>(null);
   const debouncedActionFilter = useDebouncedValue(actionFilter, SEARCH_DEBOUNCE_MS);
   const debouncedTargetFilter = useDebouncedValue(targetFilter, SEARCH_DEBOUNCE_MS);
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
@@ -415,6 +419,7 @@ export function LogsPanel() {
     onSuccess: async (result, variables) => {
       await Promise.all([utils.sync.logs.invalidate(), utils.serviceStatus.overview.invalidate()]);
       const unit = variables?.connectionId ? "条日志" : "个日志文件";
+      setClearTarget(null);
       showToast({ title: `已删除 ${result.deleted} ${unit}`, variant: "success" });
     },
     onError: (error) => showToast({ title: "清空日志失败", description: error.message, variant: "error" }),
@@ -451,23 +456,36 @@ export function LogsPanel() {
   const isBusy = saveSettings.isPending || cleanupLogs.isPending || clearLogs.isPending;
   const settingsReady = Boolean(settings) && !settingsQueryError;
   const settingsControlsDisabled = isBusy || !settingsReady;
+  const selectedConnection = parsedConnectionId ? connections?.find((connection) => connection.id === parsedConnectionId) : null;
+  const clearScopeLabel = parsedConnectionId ? `连接「${selectedConnection?.name ?? "当前连接"}」` : "全部连接";
+
+  const requestClearLogs = () => {
+    setClearTarget({ connectionId: parsedConnectionId, label: clearScopeLabel });
+  };
+
+  const confirmClearLogs = () => {
+    if (!clearTarget) return;
+    clearLogs.mutate({ connectionId: clearTarget.connectionId });
+  };
 
   if (settingsLoading) {
-    return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中...</div>;
+    return <LoadingState label="加载日志设置..." />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">日志管理</h2>
-          <p className="text-sm text-muted-foreground">查看任务日志，控制记录开关、记录级别和日志保留时间。</p>
-        </div>
-        <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => logsQuery.refetch()} disabled={logsQuery.isFetching}>
+      <PanelHeader
+        title="日志管理"
+        description="查看任务日志，控制记录开关、记录级别和日志保留时间。"
+        actions={
+          <PanelActions className="grid-cols-1">
+        <Button variant="outline" size="sm" className="w-full lg:w-auto" onClick={() => logsQuery.refetch()} disabled={logsQuery.isFetching}>
           {logsQuery.isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
           刷新
         </Button>
-      </div>
+          </PanelActions>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -482,32 +500,32 @@ export function LogsPanel() {
             <Switch id="logs-enabled" checked={enabled} onCheckedChange={setEnabled} disabled={settingsControlsDisabled} />
           </div>
           <div className="space-y-2">
-            <Label>保存天数</Label>
-            <Input type="number" min="1" max="3650" step="1" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value)} disabled={settingsControlsDisabled} />
+            <Label htmlFor="logs-retention-days">保存天数</Label>
+            <Input id="logs-retention-days" type="number" min="1" max="3650" step="1" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value)} disabled={settingsControlsDisabled} />
           </div>
           <div className="space-y-2">
-            <Label>记录级别</Label>
+            <Label htmlFor="logs-min-level">记录级别</Label>
             <Select value={minLevel} onValueChange={(value) => setMinLevel(value as LogLevel)} disabled={settingsControlsDisabled}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="logs-min-level"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {levelOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-end">
-            <Button className="w-full sm:w-auto" onClick={handleSaveSettings} disabled={settingsControlsDisabled}>
+            <Button className="w-full lg:w-auto" onClick={handleSaveSettings} disabled={settingsControlsDisabled}>
               {saveSettings.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               保存设置
             </Button>
           </div>
           <div className="flex items-end">
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => cleanupLogs.mutate({ retentionDays: Number(retentionDays) || undefined })} disabled={settingsControlsDisabled}>
+            <Button variant="outline" className="w-full lg:w-auto" onClick={() => cleanupLogs.mutate({ retentionDays: Number(retentionDays) || undefined })} disabled={settingsControlsDisabled}>
               <Trash2 className="h-4 w-4" />
               清理过期
             </Button>
           </div>
-          {settingsQueryError ? <p className="text-sm text-destructive lg:col-span-5">加载日志设置失败：{settingsQueryError.message}</p> : null}
-          {settingsError ? <p className="text-sm text-destructive lg:col-span-5">{settingsError}</p> : null}
+          {settingsQueryError ? <ErrorState title="加载日志设置失败" description={settingsQueryError.message} className="lg:col-span-5" /> : null}
+          {settingsError ? <ErrorState title="保存日志设置失败" description={settingsError} className="lg:col-span-5" /> : null}
         </CardContent>
       </Card>
 
@@ -516,11 +534,10 @@ export function LogsPanel() {
           <CardTitle className="text-base">筛选与搜索</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label>连接</Label>
+          <FilterToolbar columns={4}>
+            <FilterField label="连接" htmlFor="logs-connection-filter">
               <Select value={connectionFilter} onValueChange={setConnectionFilter}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="logs-connection-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部连接</SelectItem>
                   {(connections ?? []).map((connection) => (
@@ -528,65 +545,53 @@ export function LogsPanel() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>级别</Label>
+            </FilterField>
+            <FilterField label="级别" htmlFor="logs-level-filter">
               <Select value={levelFilter} onValueChange={setLevelFilter}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="logs-level-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部级别</SelectItem>
                   {levelOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>状态</Label>
+            </FilterField>
+            <FilterField label="状态" htmlFor="logs-status-filter">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="logs-status-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部状态</SelectItem>
                   <SelectItem value="success">成功</SelectItem>
                   <SelectItem value="failed">失败</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>显示条数</Label>
-              <Input type="number" min="20" max="500" step="10" value={limit} onChange={(event) => setLimit(event.target.value)} />
-            </div>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label>动作</Label>
-              <Input value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} placeholder="auto_bl_sync..." />
-            </div>
-            <div className="space-y-2">
-              <Label>目标</Label>
-              <Input value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)} placeholder="分组名称、账号名称或连接名称" />
-            </div>
-            <div className="space-y-2">
-              <Label>开始时间</Label>
-              <Input type="datetime-local" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>结束时间</Label>
-              <Input type="datetime-local" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            </div>
-          </div>
+            </FilterField>
+            <FilterField label="显示条数" htmlFor="logs-limit">
+              <Input id="logs-limit" type="number" min="20" max="500" step="10" value={limit} onChange={(event) => setLimit(event.target.value)} />
+            </FilterField>
+          </FilterToolbar>
+          <FilterToolbar columns={4}>
+            <FilterField label="动作" htmlFor="logs-action-filter">
+              <Input id="logs-action-filter" type="search" value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} placeholder="auto_bl_sync..." />
+            </FilterField>
+            <FilterField label="目标" htmlFor="logs-target-filter">
+              <Input id="logs-target-filter" type="search" value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)} placeholder="分组名称、账号名称或连接名称" />
+            </FilterField>
+            <FilterField label="开始时间" htmlFor="logs-date-from">
+              <Input id="logs-date-from" type="datetime-local" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+            </FilterField>
+            <FilterField label="结束时间" htmlFor="logs-date-to">
+              <Input id="logs-date-to" type="datetime-local" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            </FilterField>
+          </FilterToolbar>
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索动作、目标、详情或错误" className="pl-9" />
-            </div>
-            <Button variant="outline" className="w-full sm:w-auto" onClick={resetFilters}>重置筛选</Button>
+            <FilterField label="全文搜索" htmlFor="logs-search">
+              <FilterSearchField id="logs-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索动作、目标、详情或错误" />
+            </FilterField>
+            <Button variant="outline" className="w-full lg:w-auto" onClick={resetFilters}>重置筛选</Button>
             <Button
               variant="destructive"
-              className="w-full sm:w-auto"
-              onClick={() => {
-                const label = parsedConnectionId ? "当前连接" : "全部";
-                if (!confirm(`确定清空${label}日志？`)) return;
-                clearLogs.mutate({ connectionId: parsedConnectionId });
-              }}
+              className="w-full lg:w-auto"
+              onClick={requestClearLogs}
               disabled={clearLogs.isPending}
             >
               {clearLogs.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -597,15 +602,19 @@ export function LogsPanel() {
       </Card>
 
       <Card>
-        <CardHeader className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <CardTitle className="text-base">日志列表</CardTitle>
           <span className="text-sm text-muted-foreground">当前显示 {logs.length} 条 / 扫描匹配 {scannedTotal} 条</span>
         </CardHeader>
         <CardContent className="p-3 md:p-0">
           {logsQuery.isLoading ? (
-            <MobileRecordEmpty><Loader2 className="mr-1 inline h-4 w-4 animate-spin" />加载中...</MobileRecordEmpty>
+            <LoadingState label="加载日志..." className="lg:hidden" />
           ) : logs.length === 0 ? (
-            <MobileRecordEmpty>暂无日志</MobileRecordEmpty>
+            <EmptyState
+              title="暂无日志"
+              description="调整筛选条件，或等待系统产生新的同步、调度、公告操作日志。"
+              className="lg:hidden"
+            />
           ) : (
             <MobileRecordList>
               {logs.map((log) => {
@@ -623,19 +632,19 @@ export function LogsPanel() {
                       </div>
                     </MobileRecordHeader>
                     <MobileRecordFields>
-                      <MobileRecordField className="col-span-2" label="目标" value={<span className="line-clamp-2">{targetLabel(log)}</span>} />
+                      <MobileRecordField className="col-span-2" label="目标" value={<span className="whitespace-normal break-all text-sm leading-5 [overflow-wrap:anywhere]">{targetLabel(log)}</span>} />
                     </MobileRecordFields>
                     <MobileRecordSection className={log.error ? "text-destructive" : "text-muted-foreground"}>
                       {log.error ? (
                         <div className="flex min-w-0 items-start gap-2 text-sm">
                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                          <span className="line-clamp-3">{lines[0]}</span>
+                          <span className="min-w-0 whitespace-pre-wrap break-all leading-5 [overflow-wrap:anywhere]">{lines[0]}</span>
                         </div>
                       ) : (
-                        <div className="line-clamp-3 text-sm">{lines[0]}</div>
+                        <div className="whitespace-pre-wrap break-all text-sm leading-5 [overflow-wrap:anywhere]">{lines[0]}</div>
                       )}
                       {lines.length > 1 ? (
-                        <div className="mt-1 line-clamp-3 text-xs opacity-85">{lines.slice(1).join("；")}</div>
+                        <div className="mt-1 whitespace-pre-wrap break-all text-xs leading-5 opacity-85 [overflow-wrap:anywhere]">{lines.slice(1).join("；")}</div>
                       ) : null}
                     </MobileRecordSection>
                   </MobileRecord>
@@ -643,7 +652,7 @@ export function LogsPanel() {
               })}
             </MobileRecordList>
           )}
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -657,9 +666,11 @@ export function LogsPanel() {
             </TableHeader>
             <TableBody>
               {logsQuery.isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground"><Loader2 className="mr-1 inline h-4 w-4 animate-spin" />加载中...</TableCell></TableRow>
+                <TableEmptyRow colSpan={6}>
+                  <LoadingState label="加载日志..." className="mx-auto min-h-20 max-w-md border-0 bg-transparent shadow-none" />
+                </TableEmptyRow>
               ) : logs.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">暂无日志</TableCell></TableRow>
+                <TableEmptyRow colSpan={6}>暂无日志</TableEmptyRow>
               ) : logs.map((log) => {
                 const lines = detailLines(log);
                 const title = lines.join("\n");
@@ -669,19 +680,19 @@ export function LogsPanel() {
                     <TableCell>{levelBadge(log.level)}</TableCell>
                     <TableCell>{statusBadge(log.status)}</TableCell>
                     <TableCell className="text-xs" title={log.action}>{log.actionLabel || logActionLabel(log.action)}</TableCell>
-                    <TableCell className="max-w-[180px] truncate text-sm" title={targetLabel(log)}>{targetLabel(log)}</TableCell>
+                    <TableCell className="max-w-[220px] whitespace-normal break-all text-sm leading-5" title={targetLabel(log)}>{targetLabel(log)}</TableCell>
                     <TableCell className="max-w-[640px]">
-                      <div className={`min-w-0 space-y-1 text-sm ${log.error ? "text-destructive" : "text-muted-foreground"}`} title={title}>
+                      <div className={`min-w-0 space-y-1 whitespace-normal break-words text-sm ${log.error ? "text-destructive" : "text-muted-foreground"} [overflow-wrap:anywhere]`} title={title}>
                         {log.error ? (
                           <div className="flex min-w-0 items-start gap-2">
                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                            <span className="truncate">{lines[0]}</span>
+                            <span className="min-w-0 break-words [overflow-wrap:anywhere]">{lines[0]}</span>
                           </div>
                         ) : (
-                          <span className="block truncate">{lines[0]}</span>
+                          <span className="block break-words [overflow-wrap:anywhere]">{lines[0]}</span>
                         )}
                         {lines.length > 1 ? (
-                          <div className="truncate text-xs opacity-85">{lines.slice(1).join("；")}</div>
+                          <div className="break-words text-xs opacity-85 [overflow-wrap:anywhere]">{lines.slice(1).join("；")}</div>
                         ) : null}
                       </div>
                     </TableCell>
@@ -701,6 +712,17 @@ export function LogsPanel() {
           ) : null}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={Boolean(clearTarget)}
+        onOpenChange={(open) => {
+          if (!open) setClearTarget(null);
+        }}
+        title="清空日志"
+        description={`确定清空${clearTarget?.label ?? "当前范围"}日志？该操作无法撤销。`}
+        confirmLabel="清空日志"
+        pending={clearLogs.isPending}
+        onConfirm={confirmClearLogs}
+      />
     </div>
   );
 }

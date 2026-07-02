@@ -7,18 +7,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import {
   MobileRecord,
   MobileRecordActions,
-  MobileRecordEmpty,
   MobileRecordField,
   MobileRecordFields,
   MobileRecordHeader,
@@ -27,6 +26,10 @@ import {
   MobileRecordSection,
   MobileRecordTitle,
 } from "@/components/app/mobile-record";
+import { PanelActions, PanelHeader } from "@/components/app/panel-header";
+import { FilterField, FilterSummary, FilterToolbar } from "@/components/app/filter-toolbar";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
+import { EmptyState, ErrorState, InlineError, LoadingState } from "@/components/app/feedback-state";
 
 type AnnouncementStatus = "draft" | "active" | "archived";
 type NotifyMode = "silent" | "popup";
@@ -126,6 +129,11 @@ type BulkTimeForm = {
   clearEndsAt: boolean;
 };
 
+type DeleteTarget =
+  | { type: "rule"; id: number; label: string }
+  | { type: "announcement"; id: number; label: string }
+  | { type: "bulk"; ids: number[]; count: number };
+
 const defaultAnnouncementFilters: AnnouncementFilters = {
   search: "",
   status: "all",
@@ -217,6 +225,7 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
   const [bulkStatus, setBulkStatus] = useState<AnnouncementStatus>("active");
   const [bulkNotifyMode, setBulkNotifyMode] = useState<NotifyMode>("silent");
   const [bulkTimeForm, setBulkTimeForm] = useState<BulkTimeForm>(defaultBulkTimeForm);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const groupsQuery = trpc.groups.list.useQuery(
     { connectionId },
     { enabled: ruleOpen, staleTime: 60_000, refetchOnWindowFocus: false },
@@ -263,6 +272,7 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
   const del = trpc.announcements.delete.useMutation({
     onSuccess: async () => {
       await refetch();
+      setDeleteTarget(null);
       showToast({ title: "公告已删除", variant: "success" });
     },
     onError: (e) => {
@@ -289,6 +299,7 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
     onSuccess: async (result) => {
       await refetch();
       await utils.sync.logs.invalidate();
+      setDeleteTarget(null);
       setSelectedIds([]);
       showToast({ title: `已删除 ${result.success}/${result.total} 条公告`, variant: result.failed ? "error" : "success" });
     },
@@ -414,11 +425,11 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
     }
   };
 
-  const handleDeleteRule = async (rule: AnnouncementRuleRow) => {
-    if (!confirm(`确定删除公告规则「${rule.name}」？`)) return;
+  const handleDeleteRule = async (rule: Pick<AnnouncementRuleRow, "id">) => {
     try {
       await deleteRule.mutateAsync({ connectionId, id: rule.id });
       await invalidateRules();
+      setDeleteTarget(null);
       showToast({ title: "公告规则已删除", variant: "success" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -555,8 +566,28 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
 
   const runBulkDelete = () => {
     if (selectedCount === 0) return;
-    if (!confirm(`确定删除选中的 ${selectedCount} 条公告？`)) return;
-    bulkDelete.mutate({ connectionId, ids: selectedActionIds });
+    setDeleteTarget({ type: "bulk", ids: selectedActionIds, count: selectedCount });
+  };
+
+  const requestDeleteRule = (rule: AnnouncementRuleRow) => {
+    setDeleteTarget({ type: "rule", id: rule.id, label: rule.name });
+  };
+
+  const requestDeleteAnnouncement = (announcement: AnnouncementRow) => {
+    setDeleteTarget({ type: "announcement", id: announcement.id, label: announcement.title });
+  };
+
+  const handleDeleteTarget = () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.type === "rule") {
+      void handleDeleteRule(deleteTarget);
+      return;
+    }
+    if (deleteTarget.type === "announcement") {
+      del.mutate({ connectionId, id: deleteTarget.id });
+      return;
+    }
+    bulkDelete.mutate({ connectionId, ids: deleteTarget.ids });
   };
 
   const openBulkStatus = (status: AnnouncementStatus) => {
@@ -594,21 +625,24 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
   };
 
   const anyBulkPending = bulkUpdate.isPending || bulkDelete.isPending;
+  const deletePending = del.isPending || bulkDelete.isPending || deleteRule.isPending;
+  const deleteDialogDescription = deleteTarget?.type === "bulk"
+    ? `确定删除选中的 ${deleteTarget.count} 条公告？该操作无法撤销。`
+    : deleteTarget?.type === "rule"
+      ? `确定删除公告规则「${deleteTarget.label}」？该操作无法撤销。`
+      : `确定删除公告「${deleteTarget?.label ?? "当前公告"}」？该操作无法撤销。`;
 
   if (isLoading && rulesQuery.isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        加载中...
-      </div>
-    );
+    return <LoadingState label="加载公告..." />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">公告管理</h2>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:items-center sm:justify-end [&>button]:flex-1 sm:[&>button]:flex-none">
+      <PanelHeader
+        title="公告管理"
+        description="维护站点公告与自动发布规则，支持批量更新展示窗口和通知方式。"
+        actions={
+          <PanelActions>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching || rulesQuery.isFetching}>
             {isFetching || rulesQuery.isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
             刷新
@@ -621,27 +655,28 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
             <Plus className="mr-1 h-4 w-4" />
             新建公告
           </Button>
-        </div>
-      </div>
+          </PanelActions>
+        }
+      />
 
-      {listError ? <p className="text-sm text-destructive">加载公告失败：{listError.message}</p> : null}
-      {rulesQuery.error ? <p className="text-sm text-destructive">加载公告规则失败：{rulesQuery.error.message}</p> : null}
-      {error && !editOpen ? <p className="text-sm text-destructive">{error}</p> : null}
-      {ruleError && !ruleOpen ? <p className="text-sm text-destructive">{ruleError}</p> : null}
+      {listError ? <ErrorState title="加载公告失败" description={listError.message} /> : null}
+      {rulesQuery.error ? <ErrorState title="加载公告规则失败" description={rulesQuery.error.message} /> : null}
+      {error && !editOpen ? <ErrorState title="保存公告失败" description={error} /> : null}
+      {ruleError && !ruleOpen ? <ErrorState title="保存公告规则失败" description={ruleError} /> : null}
 
       <Card>
         <CardContent className="p-3 md:p-0">
           {rulesQuery.isLoading ? (
-            <MobileRecordEmpty>加载公告规则中...</MobileRecordEmpty>
+            <LoadingState label="加载公告规则..." className="lg:hidden" />
           ) : rules.length === 0 ? (
-            <MobileRecordEmpty>暂无公告规则</MobileRecordEmpty>
+            <EmptyState title="暂无公告规则" description="创建规则后，可在分组倍率变化时自动生成公告。" className="lg:hidden" />
           ) : (
             <MobileRecordList>
               {rules.map((rule, idx) => (
                 <MobileRecord key={rule.id}>
                   <MobileRecordHeader>
                     <div className="min-w-0">
-                      <MobileRecordTitle className="truncate">{rule.name}</MobileRecordTitle>
+                      <MobileRecordTitle className="whitespace-normal break-words leading-5 [overflow-wrap:anywhere]">{rule.name}</MobileRecordTitle>
                       <MobileRecordMeta>#{idx + 1} / {dateLabel(rule.updatedAt ?? rule.createdAt)}</MobileRecordMeta>
                     </div>
                     {rule.enabled ? <Badge variant="success">启用</Badge> : <Badge variant="secondary">停用</Badge>}
@@ -651,28 +686,30 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                     <MobileRecordField label="通知" value={notifyLabel(rule.notifyMode)} />
                     <MobileRecordField className="col-span-2" label="适用分组" value={
                       <div className="space-y-0.5">
-                        <div className="line-clamp-2">{targetGroupLabel(rule.targetGroupIds ?? [])}</div>
+                        <div className="whitespace-normal break-words text-sm leading-5 [overflow-wrap:anywhere]">{targetGroupLabel(rule.targetGroupIds ?? [])}</div>
                         <div className="text-xs text-muted-foreground">{targetGroupCountLabel(rule.targetGroupIds ?? [])}</div>
                       </div>
                     } />
                   </MobileRecordFields>
                   <MobileRecordSection>
                     <div className="mb-1 text-[11px] text-muted-foreground">标题模板</div>
-                    <div className="line-clamp-3 break-words font-mono text-xs">{rule.titleTemplate}</div>
+                    <div className="whitespace-normal break-words font-mono text-xs leading-5 [overflow-wrap:anywhere]">{rule.titleTemplate}</div>
                   </MobileRecordSection>
                   <MobileRecordActions>
-                    <Button variant="outline" size="icon" className="h-8 w-8" disabled={ruleSaving} title="编辑规则" onClick={() => openEditRule(rule)}>
+                    <Button variant="outline" size="sm" disabled={ruleSaving} title="编辑规则" aria-label={`编辑公告规则 ${rule.name}`} onClick={() => openEditRule(rule)}>
                       <Pencil className="h-4 w-4" />
+                      编辑规则
                     </Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" disabled={ruleSaving} title="删除规则" onClick={() => handleDeleteRule(rule)}>
+                    <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={ruleSaving} title="删除规则" aria-label={`删除公告规则 ${rule.name}`} onClick={() => requestDeleteRule(rule)}>
                       <Trash2 className="h-4 w-4" />
+                      删除规则
                     </Button>
                   </MobileRecordActions>
                 </MobileRecord>
               ))}
             </MobileRecordList>
           )}
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -684,14 +721,14 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                 <TableHead>适用分组</TableHead>
                 <TableHead>标题模板</TableHead>
                 <TableHead className="w-40">更新时间</TableHead>
-                <TableHead className="w-24">操作</TableHead>
+                <TableActionHead className="w-24">操作</TableActionHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rulesQuery.isLoading ? (
-                <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">加载公告规则中...</TableCell></TableRow>
+                <TableEmptyRow colSpan={9}>加载公告规则中...</TableEmptyRow>
               ) : rules.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">暂无公告规则</TableCell></TableRow>
+                <TableEmptyRow colSpan={9}>暂无公告规则</TableEmptyRow>
               ) : (
                 rules.map((rule, idx) => (
                   <TableRow key={rule.id}>
@@ -701,21 +738,21 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                     <TableCell>{statusBadge(rule.status)}</TableCell>
                     <TableCell>{notifyLabel(rule.notifyMode)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      <div className="max-w-[220px] truncate">{targetGroupLabel(rule.targetGroupIds ?? [])}</div>
+                      <div className="max-w-[260px] whitespace-normal break-words text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]">{targetGroupLabel(rule.targetGroupIds ?? [])}</div>
                       <div className="text-xs">{targetGroupCountLabel(rule.targetGroupIds ?? [])}</div>
                     </TableCell>
-                    <TableCell className="max-w-[320px] truncate font-mono text-xs">{rule.titleTemplate}</TableCell>
+                    <TableCell className="max-w-[360px] whitespace-normal break-words font-mono text-xs leading-5 [overflow-wrap:anywhere]">{rule.titleTemplate}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{dateLabel(rule.updatedAt ?? rule.createdAt)}</TableCell>
-                    <TableCell>
+                    <TableActionCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={ruleSaving} title="编辑规则" onClick={() => openEditRule(rule)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={ruleSaving} title="编辑规则" aria-label={`编辑公告规则 ${rule.name}`} onClick={() => openEditRule(rule)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={ruleSaving} title="删除规则" onClick={() => handleDeleteRule(rule)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={ruleSaving} title="删除规则" aria-label={`删除公告规则 ${rule.name}`} onClick={() => requestDeleteRule(rule)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </TableCell>
+                    </TableActionCell>
                   </TableRow>
                 ))
               )}
@@ -727,15 +764,13 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
 
       <Card>
         <CardContent className="space-y-4 p-4">
-          <div className="grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.9fr_0.9fr_auto]">
-            <div className="space-y-1">
-              <Label>搜索</Label>
-              <Input value={filters.search} onChange={(e) => setFilters((current) => ({ ...current, search: e.target.value }))} placeholder="标题或内容" />
-            </div>
-            <div className="space-y-1">
-              <Label>状态</Label>
+          <FilterToolbar columns={6} className="lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.9fr_0.9fr_auto]">
+            <FilterField label="搜索" htmlFor="announcement-search" className="space-y-1">
+              <Input id="announcement-search" type="search" value={filters.search} onChange={(e) => setFilters((current) => ({ ...current, search: e.target.value }))} placeholder="标题或内容" />
+            </FilterField>
+            <FilterField label="状态" htmlFor="announcement-status-filter" className="space-y-1">
               <Select value={filters.status} onValueChange={(value) => setFilters((current) => ({ ...current, status: value as AnnouncementFilters["status"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="announcement-status-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
                   <SelectItem value="active">已发布</SelectItem>
@@ -743,39 +778,35 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                   <SelectItem value="archived">已归档</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>展示方式</Label>
+            </FilterField>
+            <FilterField label="展示方式" htmlFor="announcement-notify-mode-filter" className="space-y-1">
               <Select value={filters.notifyMode} onValueChange={(value) => setFilters((current) => ({ ...current, notifyMode: value as AnnouncementFilters["notifyMode"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="announcement-notify-mode-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
                   <SelectItem value="silent">静默</SelectItem>
                   <SelectItem value="popup">弹窗</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>创建日期从</Label>
-              <Input type="date" value={filters.createdFrom} onChange={(e) => setFilters((current) => ({ ...current, createdFrom: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label>创建日期到</Label>
-              <Input type="date" value={filters.createdTo} onChange={(e) => setFilters((current) => ({ ...current, createdTo: e.target.value }))} />
-            </div>
+            </FilterField>
+            <FilterField label="创建日期从" htmlFor="announcement-created-from" className="space-y-1">
+              <Input id="announcement-created-from" type="date" value={filters.createdFrom} onChange={(e) => setFilters((current) => ({ ...current, createdFrom: e.target.value }))} />
+            </FilterField>
+            <FilterField label="创建日期到" htmlFor="announcement-created-to" className="space-y-1">
+              <Input id="announcement-created-to" type="date" value={filters.createdTo} onChange={(e) => setFilters((current) => ({ ...current, createdTo: e.target.value }))} />
+            </FilterField>
             <div className="flex items-end">
-              <Button variant="outline" type="button" className="w-full sm:w-auto" onClick={resetFilters}>
+              <Button variant="outline" type="button" className="w-full lg:w-auto" onClick={resetFilters}>
                 <X className="h-4 w-4" />
                 清空
               </Button>
             </div>
-          </div>
+          </FilterToolbar>
 
-          <div className="flex flex-col gap-3 rounded-md border border-border/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-muted-foreground">
-              已筛选 {filteredAnnouncements.length} / 共 {list.length} 条，时间：{formatRangeLabel(filters.createdFrom, filters.createdTo)}，已选 {selectedCount} 条
-            </div>
-            <div className="flex flex-wrap gap-2 sm:items-center [&>button]:flex-1 sm:[&>button]:flex-none">
+          <FilterSummary
+            className="text-sm"
+            actions={(
+              <>
               <Button variant="outline" size="sm" onClick={() => openBulkStatus("archived")} disabled={selectedCount === 0 || anyBulkPending}>
                 <Archive className="h-4 w-4" />
                 归档
@@ -792,13 +823,16 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                 {bulkDelete.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 删除
               </Button>
-            </div>
-          </div>
+              </>
+            )}
+          >
+              已筛选 {filteredAnnouncements.length} / 共 {list.length} 条，时间：{formatRangeLabel(filters.createdFrom, filters.createdTo)}，已选 {selectedCount} 条
+          </FilterSummary>
 
           {list.length === 0 ? (
-            <MobileRecordEmpty>暂无公告</MobileRecordEmpty>
+            <EmptyState title="暂无公告" description="新增公告后，可集中管理展示状态、通知方式和有效时间。" className="lg:hidden" />
           ) : filteredAnnouncements.length === 0 ? (
-            <MobileRecordEmpty>没有匹配的公告</MobileRecordEmpty>
+            <EmptyState title="没有匹配的公告" description="调整标题、内容、状态、通知方式或时间筛选后再试。" className="lg:hidden" />
           ) : (
             <MobileRecordList>
               {filteredAnnouncements.map((announcement) => {
@@ -810,10 +844,10 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                   <MobileRecord key={announcement.id}>
                     <MobileRecordHeader>
                       <div className="flex min-w-0 gap-2">
-                        <Checkbox className="mt-0.5 size-5 shrink-0 border-slate-400/80 bg-white/85 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.65),0_2px_8px_hsl(217_34%_35%/0.14)] dark:border-white/35 dark:bg-white/15" checked={checked} onCheckedChange={(value) => toggleAnnouncement(announcement.id, value === true)} aria-label={`选择 ${announcement.title}`} />
+                        <Checkbox className="mt-0.5" checked={checked} onCheckedChange={(value) => toggleAnnouncement(announcement.id, value === true)} aria-label={`选择 ${announcement.title}`} />
                         <div className="min-w-0">
-                          <MobileRecordTitle className="truncate">{announcement.title}</MobileRecordTitle>
-                          <MobileRecordMeta className="line-clamp-2">{announcement.content}</MobileRecordMeta>
+                          <MobileRecordTitle className="whitespace-normal break-words leading-5 [overflow-wrap:anywhere]">{announcement.title}</MobileRecordTitle>
+                          <MobileRecordMeta className="whitespace-normal break-words leading-5 [overflow-wrap:anywhere]">{announcement.content}</MobileRecordMeta>
                         </div>
                       </div>
                       {statusBadge(announcement.status ?? "active")}
@@ -829,8 +863,8 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                       } />
                     </MobileRecordFields>
                     <MobileRecordActions>
-                      <Button variant="outline" size="icon" className="h-8 w-8" disabled={update.isPending} title="编辑公告" onClick={() => openEdit(announcement)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" disabled={del.isPending} title="删除公告" onClick={() => { if (!confirm("确定删除？")) return; del.mutate({ connectionId, id: announcement.id }); }}><Trash2 className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="sm" disabled={update.isPending} title="编辑公告" aria-label={`编辑公告 ${announcement.title}`} onClick={() => openEdit(announcement)}><Pencil className="h-4 w-4" />编辑公告</Button>
+                      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={del.isPending} title="删除公告" aria-label={`删除公告 ${announcement.title}`} onClick={() => requestDeleteAnnouncement(announcement)}><Trash2 className="h-4 w-4" />删除公告</Button>
                     </MobileRecordActions>
                   </MobileRecord>
                 );
@@ -838,26 +872,26 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
             </MobileRecordList>
           )}
 
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-14 min-w-14 text-center">
-                  <Checkbox className="mx-auto size-5 border-slate-400/80 bg-white/85 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.65),0_2px_8px_hsl(217_34%_35%/0.14)] dark:border-white/35 dark:bg-white/15" checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false} onCheckedChange={(value) => toggleVisibleAnnouncements(value === true)} aria-label="选择当前筛选结果" />
+                  <Checkbox className="mx-auto" checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false} onCheckedChange={(value) => toggleVisibleAnnouncements(value === true)} aria-label="选择当前筛选结果" />
                 </TableHead>
                 <TableHead>标题</TableHead>
                 <TableHead className="w-24">状态</TableHead>
                 <TableHead className="w-28">展示方式</TableHead>
                 <TableHead className="w-44">创建时间</TableHead>
                 <TableHead className="w-44">展示时间</TableHead>
-                <TableHead className="w-24">操作</TableHead>
+                <TableActionHead className="w-24">操作</TableActionHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {list.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">暂无公告</TableCell></TableRow>
+                <TableEmptyRow colSpan={7}>暂无公告</TableEmptyRow>
               ) : filteredAnnouncements.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">没有匹配的公告</TableCell></TableRow>
+                <TableEmptyRow colSpan={7}>没有匹配的公告</TableEmptyRow>
               ) : (
                 filteredAnnouncements.map((announcement) => {
                   const createdAt = announcement.created_at ?? announcement.createdAt;
@@ -867,11 +901,11 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                   return (
                     <TableRow key={announcement.id}>
                       <TableCell className="w-14 min-w-14 text-center">
-                        <Checkbox className="mx-auto size-5 border-slate-400/80 bg-white/85 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.65),0_2px_8px_hsl(217_34%_35%/0.14)] dark:border-white/35 dark:bg-white/15" checked={checked} onCheckedChange={(value) => toggleAnnouncement(announcement.id, value === true)} aria-label={`选择 ${announcement.title}`} />
+                        <Checkbox className="mx-auto" checked={checked} onCheckedChange={(value) => toggleAnnouncement(announcement.id, value === true)} aria-label={`选择 ${announcement.title}`} />
                       </TableCell>
                       <TableCell>
-                        <div className="max-w-[460px] truncate font-medium">{announcement.title}</div>
-                        <div className="max-w-[460px] truncate text-xs text-muted-foreground">{announcement.content}</div>
+                        <div className="max-w-[520px] whitespace-normal break-words font-medium leading-5 [overflow-wrap:anywhere]">{announcement.title}</div>
+                        <div className="mt-1 max-w-[520px] whitespace-normal break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">{announcement.content}</div>
                       </TableCell>
                       <TableCell>{statusBadge(announcement.status ?? "active")}</TableCell>
                       <TableCell>{notifyLabel(announcement.notify_mode)}</TableCell>
@@ -880,12 +914,12 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                         <div>开始：{dateLabel(startsAt)}</div>
                         <div>结束：{dateLabel(endsAt)}</div>
                       </TableCell>
-                      <TableCell>
+                      <TableActionCell>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled={update.isPending} title="编辑公告" onClick={() => openEdit(announcement)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={del.isPending} title="删除公告" onClick={() => { if (!confirm("确定删除？")) return; del.mutate({ connectionId, id: announcement.id }); }}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled={update.isPending} title="编辑公告" aria-label={`编辑公告 ${announcement.title}`} onClick={() => openEdit(announcement)}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={del.isPending} title="删除公告" aria-label={`删除公告 ${announcement.title}`} onClick={() => requestDeleteAnnouncement(announcement)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
-                      </TableCell>
+                      </TableActionCell>
                     </TableRow>
                   );
                 })
@@ -897,27 +931,27 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
       </Card>
 
       <Dialog open={ruleOpen} onOpenChange={setRuleOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{ruleForm.id ? "编辑公告规则" : "新建公告规则"}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+        <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6"><DialogTitle>{ruleForm.id ? "编辑公告规则" : "新建公告规则"}</DialogTitle></DialogHeader>
+          <DialogBody className="flex-1 space-y-4 py-5">
+            <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
               <div className="space-y-2">
-                <Label>规则名称</Label>
-                <Input value={ruleForm.name} onChange={(e) => setRuleForm((prev) => ({ ...prev, name: e.target.value }))} />
+                <Label htmlFor="announcement-rule-name">规则名称</Label>
+                <Input id="announcement-rule-name" value={ruleForm.name} onChange={(e) => setRuleForm((prev) => ({ ...prev, name: e.target.value }))} />
               </div>
               <div className="flex items-end">
-                <div className="flex h-9 items-center gap-3 rounded-md border border-border/70 px-3">
+                <div className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-border/70 px-3 lg:w-auto lg:justify-start">
                   <Label htmlFor="announcement-rule-enabled">启用</Label>
                   <Switch id="announcement-rule-enabled" checked={ruleForm.enabled} onCheckedChange={(checked) => setRuleForm((prev) => ({ ...prev, enabled: checked }))} />
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <Label>发布状态</Label>
+                <Label htmlFor="announcement-rule-status">发布状态</Label>
                 <Select value={ruleForm.status} onValueChange={(value) => setRuleForm((prev) => ({ ...prev, status: value as AnnouncementStatus }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="announcement-rule-status"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">已发布</SelectItem>
                     <SelectItem value="draft">草稿</SelectItem>
@@ -926,9 +960,9 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>通知方式</Label>
+                <Label htmlFor="announcement-rule-notify-mode">通知方式</Label>
                 <Select value={ruleForm.notifyMode} onValueChange={(value) => setRuleForm((prev) => ({ ...prev, notifyMode: value as NotifyMode }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="announcement-rule-notify-mode"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="silent">静默</SelectItem>
                     <SelectItem value="popup">弹窗</SelectItem>
@@ -940,7 +974,7 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
             <div className="space-y-3 rounded-md border border-border/70 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <Label>适用分组</Label>
+                  <Label htmlFor="announcement-rule-group-search">适用分组</Label>
                   <p className="text-xs text-muted-foreground">留空表示全部分组；只勾选的分组倍率变动才会发公告。</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -948,21 +982,30 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                   <Button variant="outline" size="sm" type="button" onClick={clearTargetGroups}>清空</Button>
                 </div>
               </div>
-              <Input value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} placeholder="搜索分组名称或 ID" />
+              <Input id="announcement-rule-group-search" type="search" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} placeholder="搜索分组名称或 ID" />
               <div className="max-h-56 overflow-y-auto rounded-md border border-border/60">
                 {groupsQuery.isLoading ? (
-                  <div className="p-4 text-sm text-muted-foreground">加载分组中...</div>
+                  <LoadingState label="加载分组..." className="m-2 min-h-24" />
                 ) : groupsQuery.error ? (
-                  <div className="p-4 text-sm text-destructive">加载分组失败：{groupsQuery.error.message}</div>
+                  <EmptyState
+                    title="加载分组失败"
+                    description={groupsQuery.error.message}
+                    className="m-2 py-6 text-destructive"
+                  />
                 ) : filteredGroupOptions.length === 0 ? (
-                  <div className="p-4 text-sm text-muted-foreground">没有匹配的分组</div>
+                  <EmptyState
+                    title="没有匹配的分组"
+                    description="调整搜索关键词后再试，留空表示全部分组。"
+                    className="m-2 py-6"
+                  />
                 ) : (
                   <div className="divide-y divide-border/60">
                     {filteredGroupOptions.map((group) => {
                       const checked = ruleForm.targetGroupIds.includes(group.id);
+                      const checkboxId = `announcement-rule-group-${group.id}`;
                       return (
-                        <label key={group.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-secondary/50">
-                          <Checkbox checked={checked} onCheckedChange={(value) => toggleTargetGroup(group.id, value === true)} />
+                        <label key={group.id} htmlFor={checkboxId} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-secondary/50">
+                          <Checkbox id={checkboxId} checked={checked} onCheckedChange={(value) => toggleTargetGroup(group.id, value === true)} />
                           <span className="min-w-0 flex-1 truncate">{group.name}</span>
                           <span className="text-xs text-muted-foreground">#{group.id}</span>
                         </label>
@@ -977,16 +1020,16 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
             </div>
 
             <div className="space-y-2">
-              <Label>标题模板</Label>
-              <Input value={ruleForm.titleTemplate} onChange={(e) => setRuleForm((prev) => ({ ...prev, titleTemplate: e.target.value }))} />
+              <Label htmlFor="announcement-rule-title-template">标题模板</Label>
+              <Input id="announcement-rule-title-template" value={ruleForm.titleTemplate} onChange={(e) => setRuleForm((prev) => ({ ...prev, titleTemplate: e.target.value }))} />
             </div>
             <div className="space-y-2">
-              <Label>内容模板</Label>
-              <Textarea value={ruleForm.contentTemplate} onChange={(e) => setRuleForm((prev) => ({ ...prev, contentTemplate: e.target.value }))} rows={6} />
+              <Label htmlFor="announcement-rule-content-template">内容模板</Label>
+              <Textarea id="announcement-rule-content-template" value={ruleForm.contentTemplate} onChange={(e) => setRuleForm((prev) => ({ ...prev, contentTemplate: e.target.value }))} rows={6} />
             </div>
 
             <div className="space-y-2">
-              <Label>可用变量</Label>
+              <div className="text-sm font-medium leading-none text-foreground">可用变量</div>
               <div className="flex flex-wrap gap-1">
                 {templateVariables.map((item) => (
                   <Badge key={item} variant="outline" className="font-mono">{`{{${item}}}`}</Badge>
@@ -996,7 +1039,7 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
 
             <div className="space-y-2 rounded-md border border-border/70 p-3">
               <div className="flex items-center justify-between gap-2">
-                <Label>预览</Label>
+                <div className="text-sm font-medium leading-none text-foreground">预览</div>
                 {preview.isFetching ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
               </div>
               <div className="space-y-2 text-sm">
@@ -1005,9 +1048,9 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
               </div>
             </div>
 
-            {ruleError ? <p className="text-sm text-destructive">{ruleError}</p> : null}
-          </div>
-          <DialogFooter className="gap-2">
+            {ruleError ? <InlineError>{ruleError}</InlineError> : null}
+          </DialogBody>
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setRuleOpen(false)} disabled={ruleSaving}>取消</Button>
             <Button onClick={handleRuleSubmit} disabled={ruleSaving}>
               {ruleSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1018,18 +1061,18 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editData.id ? "编辑公告" : "新建公告"}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+        <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6"><DialogTitle>{editData.id ? "编辑公告" : "新建公告"}</DialogTitle></DialogHeader>
+          <DialogBody className="flex-1 space-y-4 py-5">
             <div className="space-y-2">
-              <Label>标题</Label>
-              <Input value={editData.title} onChange={(e) => setEditData((prev) => ({ ...prev, title: e.target.value }))} required />
+              <Label htmlFor="announcement-title">标题</Label>
+              <Input id="announcement-title" value={editData.title} onChange={(e) => setEditData((prev) => ({ ...prev, title: e.target.value }))} required />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <Label>状态</Label>
+                <Label htmlFor="announcement-status">状态</Label>
                 <Select value={editData.status} onValueChange={(value) => setEditData((prev) => ({ ...prev, status: value as AnnouncementStatus }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="announcement-status"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">已发布</SelectItem>
                     <SelectItem value="draft">草稿</SelectItem>
@@ -1038,9 +1081,9 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>通知方式</Label>
+                <Label htmlFor="announcement-notify-mode">通知方式</Label>
                 <Select value={editData.notify_mode} onValueChange={(value) => setEditData((prev) => ({ ...prev, notify_mode: value as NotifyMode }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="announcement-notify-mode"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="silent">静默</SelectItem>
                     <SelectItem value="popup">弹窗</SelectItem>
@@ -1048,23 +1091,23 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                 </Select>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <Label>开始展示时间</Label>
-                <Input type="datetime-local" value={editData.startsAt} onChange={(e) => setEditData((prev) => ({ ...prev, startsAt: e.target.value }))} />
+                <Label htmlFor="announcement-starts-at">开始展示时间</Label>
+                <Input id="announcement-starts-at" type="datetime-local" value={editData.startsAt} onChange={(e) => setEditData((prev) => ({ ...prev, startsAt: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>结束展示时间</Label>
-                <Input type="datetime-local" value={editData.endsAt} onChange={(e) => setEditData((prev) => ({ ...prev, endsAt: e.target.value }))} />
+                <Label htmlFor="announcement-ends-at">结束展示时间</Label>
+                <Input id="announcement-ends-at" type="datetime-local" value={editData.endsAt} onChange={(e) => setEditData((prev) => ({ ...prev, endsAt: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>内容</Label>
-              <Textarea value={editData.content} onChange={(e) => setEditData((prev) => ({ ...prev, content: e.target.value }))} rows={4} required />
+              <Label htmlFor="announcement-content">内容</Label>
+              <Textarea id="announcement-content" value={editData.content} onChange={(e) => setEditData((prev) => ({ ...prev, content: e.target.value }))} rows={4} required />
             </div>
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          </div>
-          <DialogFooter>
+            {error ? <InlineError>{error}</InlineError> : null}
+          </DialogBody>
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
             <Button onClick={handleSubmit} disabled={create.isPending || update.isPending}>
               {create.isPending || update.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -1075,14 +1118,14 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
       </Dialog>
 
       <Dialog open={bulkStatusOpen} onOpenChange={setBulkStatusOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>批量修改状态</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+        <DialogContent className="flex max-h-[min(92dvh,520px)] max-w-md flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6"><DialogTitle>批量修改状态</DialogTitle></DialogHeader>
+          <DialogBody className="flex-1 space-y-4 py-4">
             <p className="text-sm text-muted-foreground">将选中的 {selectedCount} 条公告统一修改状态。</p>
             <div className="space-y-2">
-              <Label>状态</Label>
+              <Label htmlFor="announcement-bulk-status">状态</Label>
               <Select value={bulkStatus} onValueChange={(value) => setBulkStatus(value as AnnouncementStatus)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="announcement-bulk-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">已发布</SelectItem>
                   <SelectItem value="draft">草稿</SelectItem>
@@ -1090,8 +1133,8 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <DialogFooter className="gap-2">
+          </DialogBody>
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setBulkStatusOpen(false)} disabled={bulkUpdate.isPending}>取消</Button>
             <Button onClick={() => runBulkUpdate({ status: bulkStatus })} disabled={bulkUpdate.isPending || selectedCount === 0}>
               {bulkUpdate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1102,22 +1145,22 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
       </Dialog>
 
       <Dialog open={bulkNotifyOpen} onOpenChange={setBulkNotifyOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>批量修改展示方式</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+        <DialogContent className="flex max-h-[min(92dvh,520px)] max-w-md flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6"><DialogTitle>批量修改展示方式</DialogTitle></DialogHeader>
+          <DialogBody className="flex-1 space-y-4 py-4">
             <p className="text-sm text-muted-foreground">将选中的 {selectedCount} 条公告统一设置为静默或弹窗展示。</p>
             <div className="space-y-2">
-              <Label>展示方式</Label>
+              <Label htmlFor="announcement-bulk-notify-mode">展示方式</Label>
               <Select value={bulkNotifyMode} onValueChange={(value) => setBulkNotifyMode(value as NotifyMode)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="announcement-bulk-notify-mode"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="silent">静默</SelectItem>
                   <SelectItem value="popup">弹窗</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <DialogFooter className="gap-2">
+          </DialogBody>
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setBulkNotifyOpen(false)} disabled={bulkUpdate.isPending}>取消</Button>
             <Button onClick={() => runBulkUpdate({ notify_mode: bulkNotifyMode })} disabled={bulkUpdate.isPending || selectedCount === 0}>
               {bulkUpdate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1128,40 +1171,42 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
       </Dialog>
 
       <Dialog open={bulkTimeOpen} onOpenChange={setBulkTimeOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>批量修改展示时间</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+        <DialogContent className="flex max-h-[min(92dvh,640px)] max-w-lg flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6"><DialogTitle>批量修改展示时间</DialogTitle></DialogHeader>
+          <DialogBody className="flex-1 space-y-4 py-4">
             <p className="text-sm text-muted-foreground">修改选中 {selectedCount} 条公告的开始展示时间和结束展示时间；未填写且未勾选清空的字段不会修改。</p>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <Label>开始展示时间</Label>
+                <Label htmlFor="announcement-bulk-starts-at">开始展示时间</Label>
                 <Input
+                  id="announcement-bulk-starts-at"
                   type="datetime-local"
                   value={bulkTimeForm.startsAt}
                   onChange={(e) => setBulkTimeForm((current) => ({ ...current, startsAt: e.target.value, clearStartsAt: false }))}
                   disabled={bulkTimeForm.clearStartsAt}
                 />
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox checked={bulkTimeForm.clearStartsAt} onCheckedChange={(value) => setBulkTimeForm((current) => ({ ...current, clearStartsAt: value === true, startsAt: value === true ? "" : current.startsAt }))} />
+                <Label htmlFor="announcement-bulk-clear-starts-at" className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox id="announcement-bulk-clear-starts-at" checked={bulkTimeForm.clearStartsAt} onCheckedChange={(value) => setBulkTimeForm((current) => ({ ...current, clearStartsAt: value === true, startsAt: value === true ? "" : current.startsAt }))} />
                   清空开始时间
-                </label>
+                </Label>
               </div>
               <div className="space-y-2">
-                <Label>结束展示时间</Label>
+                <Label htmlFor="announcement-bulk-ends-at">结束展示时间</Label>
                 <Input
+                  id="announcement-bulk-ends-at"
                   type="datetime-local"
                   value={bulkTimeForm.endsAt}
                   onChange={(e) => setBulkTimeForm((current) => ({ ...current, endsAt: e.target.value, clearEndsAt: false }))}
                   disabled={bulkTimeForm.clearEndsAt}
                 />
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox checked={bulkTimeForm.clearEndsAt} onCheckedChange={(value) => setBulkTimeForm((current) => ({ ...current, clearEndsAt: value === true, endsAt: value === true ? "" : current.endsAt }))} />
+                <Label htmlFor="announcement-bulk-clear-ends-at" className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox id="announcement-bulk-clear-ends-at" checked={bulkTimeForm.clearEndsAt} onCheckedChange={(value) => setBulkTimeForm((current) => ({ ...current, clearEndsAt: value === true, endsAt: value === true ? "" : current.endsAt }))} />
                   清空结束时间
-                </label>
+                </Label>
               </div>
             </div>
-          </div>
-          <DialogFooter className="gap-2">
+          </DialogBody>
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setBulkTimeOpen(false)} disabled={bulkUpdate.isPending}>取消</Button>
             <Button onClick={submitBulkTime} disabled={bulkUpdate.isPending || selectedCount === 0}>
               {bulkUpdate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1170,6 +1215,17 @@ export function AnnouncementsPanel({ connectionId }: { connectionId: number }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="删除公告"
+        description={deleteDialogDescription}
+        confirmLabel="删除"
+        pending={deletePending}
+        onConfirm={handleDeleteTarget}
+      />
     </div>
   );
 }

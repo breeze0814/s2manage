@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-3 text-sm font-medium shadow-[inset_0_1px_0_hsl(0_0%_100%/0.2),0_8px_22px_hsl(214_34%_24%/0.1)] backdrop-blur-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/55 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45 dark:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.07),0_10px_26px_hsl(214_55%_5%/0.28)] [&_svg]:size-4",
+  "inline-flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-3 text-sm font-medium shadow-[inset_0_1px_0_hsl(0_0%_100%/0.2),0_8px_22px_hsl(214_34%_24%/0.1)] backdrop-blur-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/55 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45 lg:min-h-9 dark:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.07),0_10px_26px_hsl(214_55%_5%/0.28)] [&_svg]:size-4",
   {
     variants: {
       variant: {
@@ -20,9 +20,9 @@ const buttonVariants = cva(
           "border-destructive/35 bg-destructive/90 text-destructive-foreground hover:bg-destructive",
       },
       size: {
-        default: "h-9 px-3",
-        sm: "h-8 px-2.5 text-xs",
-        icon: "h-9 w-9 px-0",
+        default: "px-3",
+        sm: "min-h-11 px-2.5 text-xs lg:min-h-8",
+        icon: "min-h-11 min-w-11 px-0 lg:min-h-9 lg:min-w-9",
       },
     },
     defaultVariants: {

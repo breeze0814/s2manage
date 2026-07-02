@@ -62,29 +62,30 @@ export function ToastProvider({ children }: PropsWithChildren) {
   return (
     <ToastContext.Provider value={{ showToast, dismissToast }}>
       {children}
-      <div className="fixed right-4 top-4 z-[100] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2">
+      <div className="fixed left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-[100] flex flex-col gap-2 sm:left-auto sm:w-[min(360px,calc(100vw-2rem))]">
         {toasts.map((toast) => {
           const Icon = variantIcons[toast.variant];
           return (
             <div
               key={toast.id}
               role={toast.variant === "error" ? "alert" : "status"}
+              aria-live={toast.variant === "error" ? "assertive" : "polite"}
               data-motion="toast"
               className={cn("rounded-xl border p-3 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.28),0_18px_58px_hsl(217_34%_35%/0.18)] backdrop-blur-2xl dark:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.08),0_20px_70px_hsl(0_0%_0%/0.45)]", variantStyles[toast.variant])}
             >
               <div className="flex items-start gap-3">
-                <Icon className={cn("mt-0.5 size-5 shrink-0", iconStyles[toast.variant])} />
+                <Icon className={cn("mt-0.5 size-5 shrink-0", iconStyles[toast.variant])} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{toast.title}</p>
                   {toast.description ? <p className="mt-1 break-words text-xs opacity-85">{toast.description}</p> : null}
                 </div>
                 <button
                   type="button"
-                  className="rounded-sm p-0.5 opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="-m-2 flex min-h-11 min-w-11 items-center justify-center rounded-md opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
                   onClick={() => dismissToast(toast.id)}
                   aria-label="关闭提示"
                 >
-                  <X className="size-4" />
+                  <X className="size-4" aria-hidden="true" />
                 </button>
               </div>
             </div>

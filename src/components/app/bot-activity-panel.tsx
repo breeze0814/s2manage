@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Gift } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -104,15 +105,17 @@ export function BotActivityPanel({ connectionId }: { connectionId: number }) {
   return (
     <Dialog open={state.open} onOpenChange={state.setOpen}>
       <ActivityTrigger affiliateEnabled={state.affiliateEnabled} />
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[min(92dvh,720px)] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 sm:px-6">
           <DialogTitle className="flex items-center gap-2">
             <Gift className="size-4 text-primary" />
             邀请活动
           </DialogTitle>
           <DialogDescription>三日周期内按余额和最近使用时间分类计算奖励。</DialogDescription>
         </DialogHeader>
-        <ActivityDialogContent state={state} />
+        <DialogBody className="flex-1 space-y-3 py-5">
+          <ActivityDialogContent state={state} />
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

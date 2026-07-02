@@ -1,11 +1,12 @@
 ﻿"use client";
 
 import { memo, useCallback, useMemo, useState } from "react";
-import { Loader2, Search, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
+import { EmptyState, InlineError, LoadingState } from "@/components/app/feedback-state";
+import { FilterField, FilterSearchField, FilterSummary, FilterToolbar } from "@/components/app/filter-toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -297,7 +298,6 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs"
             onClick={() => onChange([])}
             disabled={disabled || value.length === 0}
           >
@@ -316,30 +316,32 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
               return (
                 <span
                   key={key}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.08] py-1 pl-2.5 pr-1 text-xs leading-5 text-foreground shadow-sm"
+                  className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.08] py-1 pl-2.5 pr-1 text-xs leading-5 text-foreground shadow-sm"
                   title={`${binding.sourceSiteName} / ${getSourceLabel(binding)}`}
                 >
                   {binding.sourceSiteName ? (
                     <>
-                      <span className="max-w-[7rem] shrink truncate text-[11px] text-muted-foreground">
+                      <span className="min-w-0 whitespace-normal break-words text-[11px] leading-4 text-muted-foreground [overflow-wrap:anywhere]">
                         {binding.sourceSiteName}
                       </span>
                       <span className="shrink-0 text-muted-foreground/50">/</span>
                     </>
                   ) : null}
-                  <span className="truncate font-medium">{getSourceLabel(binding)}</span>
+                  <span className="min-w-0 whitespace-normal break-words font-medium leading-5 [overflow-wrap:anywhere]">{getSourceLabel(binding)}</span>
                   <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
                     {formatRate(resolveEffectiveRate(rate))}
                   </span>
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => removeBinding(key)}
-                    disabled={disabled}
+                    variant="ghost"
+                    size="icon"
                     aria-label={`移除 ${getSourceLabel(binding)}`}
-                    className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-primary/15 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    className="-my-2 -mr-2 rounded-full text-muted-foreground hover:bg-primary/15 hover:text-foreground"
+                    disabled={disabled}
+                    onClick={() => removeBinding(key)}
                   >
-                    <X className="size-3.5" />
-                  </button>
+                    <X className="size-3.5" aria-hidden="true" />
+                  </Button>
                 </span>
               );
             })}
@@ -347,28 +349,26 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
         )}
       </div>
 
-      <div className="flex items-center justify-end">
-        <p className="text-xs text-muted-foreground tabular-nums">
-          可选 {rates.length} / 当前匹配 {filteredRates.length}
-        </p>
-      </div>
+      <FilterSummary>
+        <span className="tabular-nums">可选 {rates.length} / 当前匹配 {filteredRates.length}</span>
+      </FilterSummary>
 
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {errorMessage ? <InlineError>{errorMessage}</InlineError> : null}
 
-      <div className="space-y-2 rounded-md border border-border/70 bg-background/70 p-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+      <FilterToolbar columns={4}>
+        <FilterField label="查找源分组" htmlFor="bl-source-search" className="sm:col-span-2 lg:col-span-1">
+          <FilterSearchField
+            id="bl-source-search"
+            type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="查找源分组、分组 ID、源站或平台"
-            className="pl-9"
             disabled={loading}
           />
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        </FilterField>
+        <FilterField label="源站" htmlFor="bl-source-site-filter">
           <Select value={siteFilter} onValueChange={setSiteFilter} disabled={loading}>
-            <SelectTrigger><SelectValue placeholder="源站" /></SelectTrigger>
+            <SelectTrigger id="bl-source-site-filter"><SelectValue placeholder="源站" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部源站</SelectItem>
               {siteOptions.map(([siteId, siteName]) => (
@@ -376,8 +376,10 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
               ))}
             </SelectContent>
           </Select>
+        </FilterField>
+        <FilterField label="平台" htmlFor="bl-source-platform-filter">
           <Select value={platformFilter} onValueChange={setPlatformFilter} disabled={loading}>
-            <SelectTrigger><SelectValue placeholder="平台" /></SelectTrigger>
+            <SelectTrigger id="bl-source-platform-filter"><SelectValue placeholder="平台" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部平台</SelectItem>
               {platformOptions.map((platform) => (
@@ -385,16 +387,20 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
               ))}
             </SelectContent>
           </Select>
+        </FilterField>
+        <FilterField label="选择状态" htmlFor="bl-source-selection-filter">
           <Select value={selectionFilter} onValueChange={setSelectionFilter} disabled={loading}>
-            <SelectTrigger><SelectValue placeholder="选择状态" /></SelectTrigger>
+            <SelectTrigger id="bl-source-selection-filter"><SelectValue placeholder="选择状态" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部状态</SelectItem>
               <SelectItem value="selected">仅已选</SelectItem>
               <SelectItem value="unselected">仅未选</SelectItem>
             </SelectContent>
           </Select>
+        </FilterField>
+        <FilterField label="排序" htmlFor="bl-source-sort">
           <Select value={sortBy} onValueChange={setSortBy} disabled={loading}>
-            <SelectTrigger><SelectValue placeholder="排序" /></SelectTrigger>
+            <SelectTrigger id="bl-source-sort"><SelectValue placeholder="排序" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="site-name">源站 / 名称</SelectItem>
               <SelectItem value="selected">已选优先</SelectItem>
@@ -404,19 +410,16 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
               <SelectItem value="platform">平台</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-      </div>
+        </FilterField>
+      </FilterToolbar>
 
       <div className="max-h-[min(60vh,32rem)] min-h-48 overflow-y-auto rounded-md border border-border/70">
         {loading ? (
-          <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            加载中...
-          </div>
+          <LoadingState label="加载采集源分组..." className="m-3 min-h-32" />
         ) : rates.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">暂无可选采集源分组</div>
+          <EmptyState title="暂无可选采集源分组" description="完成一次倍率采集后，可在这里选择源站分组作为倍率来源。" className="m-3" />
         ) : filteredRates.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">没有匹配的采集源分组</div>
+          <EmptyState title="没有匹配的采集源分组" description="调整源站、平台、选择状态或搜索关键词后再试。" className="m-3" />
         ) : (
           <div className="divide-y divide-border/60">
             {visibleRates.map((rate) => {
@@ -434,8 +437,8 @@ export const BlSourceBindingSelector = memo(function BlSourceBindingSelector({
                     onCheckedChange={(item) => toggle(rate, item === true)}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{rate.name || rate.group_id}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
+                    <span className="block whitespace-normal break-words font-medium leading-5 [overflow-wrap:anywhere]">{rate.name || rate.group_id}</span>
+                    <span className="block whitespace-normal break-words text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
                       {rate.site_name} / #{rate.group_id}{rate.platform ? ` / ${rate.platform}` : ""}
                     </span>
                   </span>

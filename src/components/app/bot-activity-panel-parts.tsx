@@ -1,6 +1,8 @@
 "use client";
 
-import { CalendarDays, Gift, RefreshCw, Save, Trophy } from "lucide-react";
+import { CalendarDays, CalendarRange, Gift, RefreshCw, Save, Trophy, UserCheck, UserMinus, Users } from "lucide-react";
+import { EmptyState, InlineError, LoadingState } from "@/components/app/feedback-state";
+import { MetricCard } from "@/components/app/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DialogTrigger } from "@/components/ui/dialog";
@@ -104,15 +106,6 @@ function formatReward(value: number | null | undefined) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md border border-border/70 px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-sm font-medium tabular-nums">{value}</div>
-    </div>
-  );
-}
-
 function RewardField({
   id,
   label,
@@ -136,7 +129,7 @@ function RewardField({
 
 function Leaderboard({ entries }: { entries: InviteEntry[] }) {
   if (entries.length === 0) {
-    return <div className="rounded-md border border-dashed border-border/70 px-3 py-3 text-xs text-muted-foreground">暂无邀请数据</div>;
+    return <EmptyState title="暂无邀请数据" description="选择周期后可查看邀请人数、活跃状态和奖励排行。" className="py-6" />;
   }
 
   return (
@@ -144,7 +137,7 @@ function Leaderboard({ entries }: { entries: InviteEntry[] }) {
       {entries.map((entry, index) => (
         <div key={`${entry.inviterId}-${index}`} className="rounded-md border border-border/70 px-3 py-2 text-xs">
           <div className="flex items-center justify-between gap-3">
-            <span className="min-w-0 truncate">{index + 1}. {entry.inviterUsername || entry.inviterEmail}</span>
+            <span className="min-w-0 whitespace-normal break-all leading-5 [overflow-wrap:anywhere]">{index + 1}. {entry.inviterUsername || entry.inviterEmail}</span>
             <span className="shrink-0 font-medium tabular-nums">奖励 {formatReward(entry.rewardAmount)}</span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
@@ -162,27 +155,27 @@ function ActivitySwitch({ state }: { state: BotActivityPanelState }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
       <div className="min-w-0">
-        <Label className="text-sm">启用邀请活动</Label>
+        <Label htmlFor="invite-activity-enabled" className="text-sm">启用邀请活动</Label>
         <p className="text-xs text-muted-foreground">控制邀请统计和 @bot 邀请 指令。</p>
       </div>
-      <Switch checked={state.affiliateEnabled} onCheckedChange={state.handleToggle} disabled={state.saveAffiliateEnabled.isPending} />
+      <Switch id="invite-activity-enabled" checked={state.affiliateEnabled} onCheckedChange={state.handleToggle} disabled={state.saveAffiliateEnabled.isPending} />
     </div>
   );
 }
 
 function ActivityControls({ state }: { state: BotActivityPanelState }) {
   return (
-    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
       <div className="space-y-1.5">
         <Label htmlFor="invite-activity-date" className="text-xs">
           周期开始日
         </Label>
         <Input id="invite-activity-date" type="date" value={state.selectedDate} onChange={(event) => state.setSelectedDate(event.target.value)} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
         <RewardField id="invite-active-reward" label="活跃奖励额度" value={state.activeReward} onChange={state.setActiveReward} />
         <RewardField id="invite-inactive-reward" label="非活跃奖励额度" value={state.inactiveReward} onChange={state.setInactiveReward} />
-        <Button className="self-end" size="sm" onClick={state.handleSaveReward} disabled={state.saveRewardConfig.isPending}>
+        <Button className="w-full lg:w-auto lg:self-end" size="sm" onClick={state.handleSaveReward} disabled={state.saveRewardConfig.isPending}>
           <Save className="size-4" />
           {state.saveRewardConfig.isPending ? "保存中..." : "保存奖励"}
         </Button>
@@ -193,25 +186,21 @@ function ActivityControls({ state }: { state: BotActivityPanelState }) {
 
 function ActivityQueryState({ state }: { state: BotActivityPanelState }) {
   if (state.inviteActivityQuery.error) {
-    return (
-      <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-        {state.inviteActivityQuery.error.message}
-      </div>
-    );
+    return <InlineError>{state.inviteActivityQuery.error.message}</InlineError>;
   }
   if (state.inviteActivityQuery.isFetching && !state.summary) {
-    return <div className="rounded-md border border-border/70 px-3 py-3 text-xs text-muted-foreground">正在加载邀请活动数据...</div>;
+    return <LoadingState label="正在加载邀请活动数据..." className="min-h-20 py-4" />;
   }
   return null;
 }
 
 function ActivityMetrics({ summary }: { summary?: InviteSummary }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-      <Metric label="三日周期" value={summary ? `${summary.period.startDate} 至 ${summary.period.endDate}` : "-"} />
-      <Metric label="本期邀请" value={summary?.periodInviteeCount ?? 0} />
-      <Metric label="活跃用户" value={summary?.activeInviteeCount ?? 0} />
-      <Metric label="非活跃用户" value={summary?.inactiveInviteeCount ?? 0} />
+    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <MetricCard title="三日周期" value={summary ? "3 日" : "-"} detail={summary ? `${summary.period.startDate} 至 ${summary.period.endDate}` : "选择日期后加载"} icon={CalendarRange} tone="info" />
+      <MetricCard title="本期邀请" value={summary?.periodInviteeCount ?? 0} detail="周期内新增邀请" icon={Users} tone="neutral" />
+      <MetricCard title="活跃用户" value={summary?.activeInviteeCount ?? 0} detail="余额与使用状态达标" icon={UserCheck} tone="success" />
+      <MetricCard title="非活跃用户" value={summary?.inactiveInviteeCount ?? 0} detail="需继续激活" icon={UserMinus} tone="warning" />
     </div>
   );
 }
@@ -219,7 +208,7 @@ function ActivityMetrics({ summary }: { summary?: InviteSummary }) {
 function ViewerStats({ summary }: { summary?: InviteSummary }) {
   if (!summary?.viewer) return null;
   return (
-    <div className="grid gap-2 rounded-md border border-border/70 px-3 py-2 text-xs text-muted-foreground sm:grid-cols-4">
+    <div className="grid gap-2 rounded-md border border-border/70 px-3 py-2 text-xs text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
       <div>你的本期邀请：{summary.viewer.totalInvitees}</div>
       <div>活跃：{summary.viewer.activeInviteeCount}</div>
       <div>非活跃：{summary.viewer.inactiveInviteeCount}</div>
