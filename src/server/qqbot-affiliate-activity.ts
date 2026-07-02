@@ -208,11 +208,7 @@ export async function handleQqBotAffiliateActivityCommand(input: {
     return { ok: true as const };
   }
 
-  if (!settings.affiliate_enabled) {
-    const message = "邀请活动未开启";
-    await input.sendReply(message);
-    return { ok: false as const, reason: message };
-  }
+  if (!settings.affiliate_enabled) return replyDisabled(input.sendReply);
 
   try {
     const result = await loadQqBotAffiliateActivity({

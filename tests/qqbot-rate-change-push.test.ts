@@ -61,7 +61,10 @@ assert.equal(defaultQqBotSettings.sourceChangePrivatePushQq, "");
 
 const serviceSource = readFileSync("src/server/bot-settings.ts", "utf8");
 const routerSource = readFileSync("src/server/api/routers/bot-settings.ts", "utf8");
-const panelSource = readFileSync("src/components/app/bot-management-panel.tsx", "utf8");
+const panelSource = [
+  readFileSync("src/components/app/bot-management-panel.tsx", "utf8"),
+  readFileSync("src/components/app/bot-management-panel-parts.tsx", "utf8"),
+].join("\n");
 const workerSource = readFileSync("src/worker/monitor.ts", "utf8");
 const rateSyncSource = readFileSync("src/server/bl-rate-sync.ts", "utf8");
 
