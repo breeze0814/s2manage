@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, CalendarRange, Gift, RefreshCw, Save, Trophy, UserCheck, UserMinus, Users } from "lucide-react";
+import { CalendarDays, CalendarRange, Gift, RefreshCw, Save, TicketCheck, Trophy, UserCheck, UserMinus, Users } from "lucide-react";
 import { EmptyState, InlineError, LoadingState } from "@/components/app/feedback-state";
 import { MetricCard } from "@/components/app/metric-card";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,21 @@ export type InviteSummary = {
   leaderboard: InviteEntry[];
 };
 
+export type InviteRewardGrant = {
+  id: number;
+  inviterId: number;
+  inviterEmail: string;
+  inviterUsername?: string | null;
+  activeInviteeCount: number;
+  inactiveInviteeCount: number;
+  totalInviteeCount: number;
+  rewardAmount: number;
+  status: string;
+  redeemCode?: string | null;
+  error?: string | null;
+  attemptCount: number;
+};
+
 export type BotActivityPanelState = {
   selectedDate: string;
   setSelectedDate: (value: string) => void;
@@ -49,10 +64,13 @@ export type BotActivityPanelState = {
   inactiveReward: string;
   setInactiveReward: (value: string) => void;
   inviteActivityQuery: { error: { message: string } | null; isFetching: boolean; refetch: () => unknown };
+  rewardGrantsQuery: { data?: InviteRewardGrant[]; error: { message: string } | null; isFetching: boolean; refetch: () => unknown };
+  retryRewardGrants: { isPending: boolean };
   saveAffiliateEnabled: { isPending: boolean };
   saveRewardConfig: { isPending: boolean };
   summary?: InviteSummary;
   affiliateEnabled: boolean;
+  handleRetryRewardGrants: () => void;
   handleToggle: (checked: boolean) => void;
   handleSaveReward: () => void;
 };
@@ -96,6 +114,7 @@ export function ActivityDialogContent({ state }: { state: BotActivityPanelState 
       <ActivityMetrics summary={state.summary} />
       <ViewerStats summary={state.summary} />
       <RankingSection state={state} />
+      <RewardGrantSection state={state} />
       <ActivityNotice />
     </div>
   );
@@ -233,6 +252,87 @@ function RankingSection({ state }: { state: BotActivityPanelState }) {
       <Leaderboard entries={state.summary?.leaderboard ?? []} />
     </div>
   );
+}
+
+function RewardGrantSection({ state }: { state: BotActivityPanelState }) {
+  const grants = state.rewardGrantsQuery.data ?? [];
+  const retryableCount = grants.filter((grant) => grant.status !== "issued" && grant.rewardAmount > 0).length;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <TicketCheck className="size-4 text-primary" />
+          发放记录
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={state.handleRetryRewardGrants}
+          disabled={state.retryRewardGrants.isPending || state.rewardGrantsQuery.isFetching || retryableCount === 0}
+        >
+          <RefreshCw className="size-4" />
+          {state.retryRewardGrants.isPending ? "补发中..." : "一键补发未发放"}
+        </Button>
+      </div>
+      {state.rewardGrantsQuery.error ? <InlineError>{state.rewardGrantsQuery.error.message}</InlineError> : null}
+      {state.rewardGrantsQuery.isFetching && grants.length === 0 ? (
+        <LoadingState label="正在加载发放记录..." className="min-h-20 py-4" />
+      ) : (
+        <RewardGrantList grants={grants} />
+      )}
+    </div>
+  );
+}
+
+function RewardGrantList({ grants }: { grants: InviteRewardGrant[] }) {
+  if (grants.length === 0) {
+    return <EmptyState title="暂无发放记录" description="周期自动结算后会记录每个邀请人的兑换码发放状态。" className="py-6" />;
+  }
+
+  return (
+    <div className="space-y-2">
+      {grants.map((grant) => (
+        <div key={grant.id} className="rounded-md border border-border/70 px-3 py-2 text-xs">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 space-y-1">
+              <div className="break-all font-medium leading-5 [overflow-wrap:anywhere]">
+                {grant.inviterUsername || grant.inviterEmail}
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+                <span>奖励 {formatReward(grant.rewardAmount)}</span>
+                <span>总计 {grant.totalInviteeCount}</span>
+                <span>活跃 {grant.activeInviteeCount}</span>
+                <span>非活跃 {grant.inactiveInviteeCount}</span>
+                <span>尝试 {grant.attemptCount}</span>
+              </div>
+            </div>
+            <Badge variant={rewardGrantBadgeVariant(grant.status)}>{rewardGrantStatusText(grant.status)}</Badge>
+          </div>
+          {grant.redeemCode ? (
+            <div className="mt-2 break-all rounded-md bg-secondary/60 px-2 py-1 font-mono text-[11px] leading-5 [overflow-wrap:anywhere]">
+              {grant.redeemCode}
+            </div>
+          ) : null}
+          {grant.error ? <div className="mt-2 break-words text-[11px] leading-5 text-destructive [overflow-wrap:anywhere]">{grant.error}</div> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function rewardGrantStatusText(status: string) {
+  if (status === "issued") return "已发放";
+  if (status === "failed") return "未发放";
+  if (status === "pending") return "待发放";
+  return status || "未知";
+}
+
+function rewardGrantBadgeVariant(status: string) {
+  if (status === "issued") return "success";
+  if (status === "failed") return "destructive";
+  if (status === "pending") return "warning";
+  return "secondary";
 }
 
 function ActivityNotice() {

@@ -24,6 +24,8 @@ assert.match(serviceSource, /botLoginUpdatedAt/, "Bot settings should persist wh
 assert.match(routerSource, /get:\s*protectedProcedure/, "Bot settings router should expose a protected get endpoint");
 assert.match(routerSource, /save:\s*protectedProcedure/, "Bot settings router should expose a protected save endpoint");
 assert.match(routerSource, /inviteActivity:\s*protectedProcedure/, "Bot settings router should expose the invite activity endpoint");
+assert.match(routerSource, /inviteActivityRewardGrants:\s*protectedProcedure/, "Bot settings router should expose invite activity reward grant records");
+assert.match(routerSource, /retryInviteActivityRewardGrants:\s*protectedProcedure/, "Bot settings router should expose invite activity reward retry");
 assert.match(routerSource, /setInviteActivityEnabled:\s*protectedProcedure/, "Bot settings router should expose the invite activity toggle endpoint");
 assert.match(routerSource, /connectionId:\s*z\.number\(\)\.int\(\)\.positive\(\)/, "Bot settings router should scope requests by connectionId");
 

@@ -36,6 +36,7 @@ model Connection {
   upstreamMonitorResults UpstreamMonitorResult[]
   upstreamMonitorRateExclusions UpstreamMonitorRateExclusion[]
   qqBotUserBindings QqBotUserBinding[]
+  inviteActivityRewardGrants InviteActivityRewardGrant[]
   blCollectionSites BlCollectionSite[]
   blCollectionRuns BlCollectionRun[]
   blCollectedGroupRates BlCollectedGroupRate[]
@@ -69,6 +70,35 @@ model QqBotUserBinding {
   @@index([connectionId, qqUserId])
   @@index([connectionId, sub2UserId])
   @@map("qq_bot_user_bindings")
+}
+
+model InviteActivityRewardGrant {
+  id                  Int        @id @default(autoincrement())
+  connectionId        Int        @map("connection_id")
+  periodStartDate     String     @map("period_start_date")
+  periodEndDate       String     @map("period_end_date")
+  inviterId           Int        @map("inviter_id")
+  inviterEmail        String     @map("inviter_email")
+  inviterUsername     String?    @map("inviter_username")
+  activeInviteeCount  Int        @default(0) @map("active_invitee_count")
+  inactiveInviteeCount Int       @default(0) @map("inactive_invitee_count")
+  totalInviteeCount   Int        @default(0) @map("total_invitee_count")
+  rewardAmount        Float      @map("reward_amount")
+  status              String     @default("pending")
+  redeemCodeId        Int?       @map("redeem_code_id")
+  redeemCode          String?    @map("redeem_code")
+  error               String?
+  attemptCount        Int        @default(0) @map("attempt_count")
+  issuedAt            DateTime?  @map("issued_at") @db.Timestamptz(3)
+  lastAttemptAt       DateTime?  @map("last_attempt_at") @db.Timestamptz(3)
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  connection          Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, periodStartDate, inviterId])
+  @@index([connectionId, periodStartDate, status])
+  @@index([connectionId, inviterId])
+  @@map("invite_activity_reward_grants")
 }
 
 model BlSourceBinding {

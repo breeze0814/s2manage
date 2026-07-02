@@ -12,6 +12,8 @@ import {
 } from "@/server/bot-settings";
 import {
   loadQqBotAffiliateActivity,
+  listQqBotInviteActivityRewardGrants,
+  retryQqBotInviteActivityRewardGrants,
   setQqBotAffiliateActivityEnabled,
   setQqBotInviteActivityRewardConfig,
 } from "@/server/qqbot-affiliate-activity";
@@ -93,6 +95,18 @@ export const botSettingsRouter = createTRPCRouter({
       connectionId: input.connectionId,
       qqUserId: input.qqUserId,
       currentDate: input.currentDate,
+    })),
+  inviteActivityRewardGrants: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive(), periodStartDate: z.string().trim().min(1) }))
+    .query(({ input }) => listQqBotInviteActivityRewardGrants({
+      connectionId: input.connectionId,
+      periodStartDate: input.periodStartDate,
+    })),
+  retryInviteActivityRewardGrants: protectedProcedure
+    .input(z.object({ connectionId: z.number().int().positive(), periodStartDate: z.string().trim().min(1) }))
+    .mutation(({ input }) => retryQqBotInviteActivityRewardGrants({
+      connectionId: input.connectionId,
+      periodStartDate: input.periodStartDate,
     })),
   setInviteActivityEnabled: protectedProcedure
     .input(z.object({ connectionId: z.number().int().positive(), enabled: z.boolean() }))

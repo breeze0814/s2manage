@@ -21,7 +21,7 @@ import {
   type InviteSummary,
 } from "@/components/app/bot-activity-panel-parts";
 
-function useInviteActivityMutations(connectionId: number, currentDate: Date) {
+function useInviteActivityMutations(connectionId: number, currentDate: Date, periodStartDate: string) {
   const { showToast } = useToast();
   const utils = trpc.useUtils();
   const saveAffiliateEnabled = trpc.botSettings.setInviteActivityEnabled.useMutation({
@@ -42,8 +42,24 @@ function useInviteActivityMutations(connectionId: number, currentDate: Date) {
       showToast({ title: "邀请活动奖励保存失败", description: error.message, variant: "error" });
     },
   });
+  const retryRewardGrants = trpc.botSettings.retryInviteActivityRewardGrants.useMutation({
+    onSuccess: async (result) => {
+      await Promise.all([
+        utils.botSettings.inviteActivity.invalidate({ connectionId, currentDate }),
+        utils.botSettings.inviteActivityRewardGrants.invalidate({ connectionId, periodStartDate }),
+      ]);
+      showToast({
+        title: result.failed > 0 ? "邀请活动奖励部分补发失败" : "邀请活动奖励补发完成",
+        description: `处理 ${result.retried} 条，成功 ${result.issued}，失败 ${result.failed}`,
+        variant: result.failed > 0 ? "error" : "success",
+      });
+    },
+    onError: (error) => {
+      showToast({ title: "邀请活动奖励补发失败", description: error.message, variant: "error" });
+    },
+  });
 
-  return { saveAffiliateEnabled, saveRewardConfig, showToast };
+  return { retryRewardGrants, saveAffiliateEnabled, saveRewardConfig, showToast };
 }
 
 function useRewardInputSync(summary: InviteSummary | undefined, setActiveReward: (value: string) => void, setInactiveReward: (value: string) => void) {
@@ -64,12 +80,14 @@ function useInviteActivityPanel(connectionId: number): BotActivityPanelState & {
   const [inactiveReward, setInactiveReward] = useState("");
   const currentDate = useMemo(() => new Date(`${selectedDate}T00:00:00+08:00`), [selectedDate]);
   const inviteActivityQuery = trpc.botSettings.inviteActivity.useQuery({ connectionId, currentDate }, { enabled: open });
-  const { saveAffiliateEnabled, saveRewardConfig, showToast } = useInviteActivityMutations(connectionId, currentDate);
+  const rewardGrantsQuery = trpc.botSettings.inviteActivityRewardGrants.useQuery({ connectionId, periodStartDate: selectedDate }, { enabled: open });
+  const { retryRewardGrants, saveAffiliateEnabled, saveRewardConfig, showToast } = useInviteActivityMutations(connectionId, currentDate, selectedDate);
   const summary = inviteActivityQuery.data?.summary as InviteSummary | undefined;
   const affiliateEnabled = Boolean(summary?.affiliateEnabled);
   useRewardInputSync(summary, setActiveReward, setInactiveReward);
 
   const handleToggle = (checked: boolean) => saveAffiliateEnabled.mutate({ connectionId, enabled: checked });
+  const handleRetryRewardGrants = () => retryRewardGrants.mutate({ connectionId, periodStartDate: selectedDate });
   const handleSaveReward = () => {
     const activeRewardAmount = parseRewardInput(activeReward);
     const inactiveRewardAmount = parseRewardInput(inactiveReward);
@@ -90,10 +108,13 @@ function useInviteActivityPanel(connectionId: number): BotActivityPanelState & {
     inactiveReward,
     setInactiveReward,
     inviteActivityQuery,
+    rewardGrantsQuery,
+    retryRewardGrants,
     saveAffiliateEnabled,
     saveRewardConfig,
     summary,
     affiliateEnabled,
+    handleRetryRewardGrants,
     handleToggle,
     handleSaveReward,
   };

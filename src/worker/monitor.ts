@@ -16,7 +16,7 @@ import { normalizeRateMultiplier, ratesEqual } from "@/server/rates";
 import { cleanupOldLogs, writeSyncLog } from "@/server/sync-logs";
 import { checkAccountBalanceAlerts } from "@/server/account-balance-alert";
 import { runDueInviteActivitySettlements } from "@/server/invite-activity-settlement";
-import { loadQqBotAffiliateActivity } from "@/server/qqbot-affiliate-activity";
+import { issueQqBotInviteActivityReward, loadQqBotAffiliateActivity } from "@/server/qqbot-affiliate-activity";
 
 const db = new PrismaClient();
 const runOnce = process.env.S2A_WORKER_ONCE === "1";
@@ -240,6 +240,10 @@ async function runDueInviteActivitySettlementsFromDb() {
     loadActivity: ({ connectionId, currentDate }) => loadQqBotAffiliateActivity({
       connectionId,
       currentDate,
+      dbClient: db,
+    }),
+    issueReward: (reward) => issueQqBotInviteActivityReward({
+      ...reward,
       dbClient: db,
     }),
   });

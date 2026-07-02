@@ -16,6 +16,11 @@ import {
   type InviteActivityPeriod,
   type InviteActivityRewardConfig,
 } from "@/server/invite-activity-rewards";
+import {
+  listInviteActivityRewardGrants,
+  retryInviteActivityRewardGrants,
+  type InviteActivityRewardGrantDb,
+} from "@/server/invite-activity-settlement";
 
 type BindingRow = {
   connectionId: number;
@@ -28,6 +33,7 @@ type QqBotAffiliateActivityDb = {
   connection?: {
     findUniqueOrThrow(args: { where: { id: number } }): Promise<{ baseUrl: string; adminApiKey: string }>;
   };
+  inviteActivityRewardGrant?: InviteActivityRewardGrantDb["inviteActivityRewardGrant"];
   qqBotUserBinding: {
     findUnique(args: { where: { connectionId_qqUserId: { connectionId: number; qqUserId: string } } }): Promise<BindingRow | null>;
   };
@@ -35,7 +41,7 @@ type QqBotAffiliateActivityDb = {
 
 type QqBotAffiliateActivitySub2Client = Pick<
   Sub2ApiAdminClient,
-  "getSettings" | "listAffiliateInvites" | "searchUsers" | "updateSettings"
+  "generateRedeemCodes" | "getSettings" | "listAffiliateInvites" | "searchUsers" | "updateSettings"
 >;
 
 type ViewerInviteActivity = {
@@ -261,6 +267,58 @@ export async function setQqBotInviteActivityRewardConfig(input: {
     [INACTIVE_REWARD_SETTING_KEY]: input.inactiveRewardAmount,
   });
   return { ok: true, config };
+}
+
+export async function listQqBotInviteActivityRewardGrants(input: {
+  connectionId: number;
+  periodStartDate: string;
+  dbClient?: QqBotAffiliateActivityDb;
+}) {
+  return listInviteActivityRewardGrants({
+    db: input.dbClient ?? db,
+    connectionId: input.connectionId,
+    periodStartDate: input.periodStartDate,
+  });
+}
+
+export async function retryQqBotInviteActivityRewardGrants(input: {
+  connectionId: number;
+  periodStartDate: string;
+  dbClient?: QqBotAffiliateActivityDb;
+  sub2Client?: QqBotAffiliateActivitySub2Client;
+}) {
+  const dbClient = input.dbClient ?? db;
+  return retryInviteActivityRewardGrants({
+    db: dbClient,
+    connectionId: input.connectionId,
+    periodStartDate: input.periodStartDate,
+    issueReward: (reward) => issueQqBotInviteActivityReward({
+      ...reward,
+      dbClient,
+      sub2Client: input.sub2Client,
+    }),
+  });
+}
+
+export async function issueQqBotInviteActivityReward(input: {
+  connectionId: number;
+  periodStartDate: string;
+  periodEndDate: string;
+  inviterId: number;
+  inviterEmail: string;
+  inviterUsername: string | null;
+  rewardAmount: number;
+  dbClient?: QqBotAffiliateActivityDb;
+  sub2Client?: QqBotAffiliateActivitySub2Client;
+}) {
+  const sub2Client = await resolveSub2Client(input.dbClient ?? db, input.connectionId, input.sub2Client);
+  const [redeemCode] = await sub2Client.generateRedeemCodes({
+    count: 1,
+    type: "balance",
+    value: input.rewardAmount,
+  });
+  if (!redeemCode?.code) throw new Error(`邀请活动奖励兑换码生成失败：user ${input.inviterId}`);
+  return { id: redeemCode.id ?? null, code: redeemCode.code };
 }
 
 async function resolveSub2Client(

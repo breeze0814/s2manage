@@ -38,6 +38,8 @@ assert.match(botActivitySource, /DialogTrigger/, "Invite activity should open fr
 assert.match(botActivitySource, /DialogContent/, "Invite activity details should render inside a dialog");
 assert.match(botActivitySource, /DialogBody/, "Invite activity dialog should use the shared scrollable dialog body");
 assert.match(botActivitySource, /邀请活动排行榜/, "Bot activity panel should render the leaderboard");
+assert.match(botActivitySource, /发放记录/, "Bot activity panel should render reward grant records");
+assert.match(botActivitySource, /一键补发未发放/, "Bot activity panel should expose reward grant retry");
 assert.match(botActivitySource, /@bot 邀请/, "Bot activity panel should describe the invite command");
 assert.match(botActivitySource, /三日周期/, "Bot activity panel should display the three-day reward period");
 assert.match(botPanelSource, /功能与指令/, "Bot panel should combine feature controls and command reference");
