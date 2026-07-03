@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  buildQqBotRateChangePushMessage,
   buildQqBotSourceSiteChangePrivateMessage,
   buildQqBotTargetGroupRateChangeMessage,
   defaultQqBotSettings,
@@ -26,6 +27,20 @@ assert.match(targetMessage, /- VIP：0.9/);
 assert.doesNotMatch(targetMessage, /关闭分组/);
 assert.doesNotMatch(targetMessage, /来源/);
 assert.doesNotMatch(targetMessage, /source/i);
+
+const rateChangePushMessage = buildQqBotRateChangePushMessage({
+  groupId: 1,
+  groupName: "余额",
+  oldRate: 1,
+  newRate: 1.1167,
+  sourceLabel: "BL / xxxx-特惠渠道",
+  changedAt: new Date("2026-07-01T04:30:00.000Z"),
+});
+
+assert.match(rateChangePushMessage, /^分组倍率变动\n/);
+assert.match(rateChangePushMessage, /分组：余额 \(#1\)/);
+assert.doesNotMatch(rateChangePushMessage, /来源/);
+assert.doesNotMatch(rateChangePushMessage, /特惠渠道/);
 
 const sourceMessage = buildQqBotSourceSiteChangePrivateMessage({
   siteName: "源站A",

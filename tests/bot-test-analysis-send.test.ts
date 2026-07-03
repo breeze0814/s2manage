@@ -72,7 +72,7 @@ assert.doesNotMatch(serviceSource, /\.on\("message\.private\.friend"/, "Bot sett
 assert.doesNotMatch(serviceSource, /\.on\("message\.private\.group"/, "Bot settings should not attach separate group-temp-private-message listeners");
 assert.doesNotMatch(serviceSource, /from "undici"/, "Bot settings should not hand-roll NapCat WebSocket calls");
 assert.match(serviceSource, /targetGroupId/, "Test analysis should send to the configured QQ group id");
-assert.match(announcementSource, /publishQqBotRateChangePush/, "Rate-change announcements should trigger the QQBot rate-change push path");
+assert.doesNotMatch(announcementSource, /publishQqBotRateChangePush/, "Rate-change announcements should not send the extra QQBot group push");
 assert.match(logActionsSource, /auto_qqbot_rate_change_push/, "QQBot rate-change push should have a log action label");
 
 assert.match(routerSource, /sendTestAnalysis:\s*protectedProcedure/, "Bot settings router should expose a protected sendTestAnalysis endpoint");

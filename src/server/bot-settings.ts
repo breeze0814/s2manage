@@ -296,7 +296,6 @@ export function buildQqBotRateChangePushMessage(input: {
     `原倍率：${formatNullableRate(input.oldRate)}`,
     `新倍率：${formatNullableRate(input.newRate)}`,
   ];
-  if (input.sourceLabel) lines.push(`来源：${input.sourceLabel}`);
   if (input.connectionName) lines.push(`连接：${input.connectionName}`);
   lines.push(`时间：${changedAt}`);
   return lines.join("\n");

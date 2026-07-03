@@ -1,6 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
 import type { Sub2ApiAdminClient } from "@/server/clients/sub2api-admin";
-import { publishQqBotRateChangePush } from "@/server/bot-settings";
 import { formatRateMultiplier, normalizeRateMultiplier, ratesEqual } from "@/server/rates";
 import { writeSyncLog } from "@/server/sync-logs";
 
@@ -95,53 +94,6 @@ async function logAnnouncementRule(db: AnnouncementRuleDb, connectionId: number,
   }
 }
 
-async function logQqBotRateChangePush(
-  db: unknown,
-  context: RateChangeAnnouncementContext,
-  status: "success" | "failed",
-  error?: string,
-) {
-  try {
-    await writeSyncLog(db, {
-      connectionId: context.connectionId,
-      action: "auto_qqbot_rate_change_push",
-      target: `group:${context.groupId}`,
-      detail: {
-        action: context.action,
-        groupId: context.groupId,
-        groupName: context.groupName,
-        oldRate: context.oldRate,
-        newRate: context.newRate,
-      },
-      status,
-      error,
-    });
-  } catch {
-    // Do not hide the primary rate-update result with local notification logging failure.
-  }
-}
-
-async function publishQqBotPushForContext(db: unknown, context: RateChangeAnnouncementContext) {
-  try {
-    const result = await publishQqBotRateChangePush({
-      connectionId: context.connectionId,
-      connectionName: context.connectionName,
-      groupId: context.groupId,
-      groupName: context.groupName,
-      oldRate: context.oldRate,
-      newRate: context.newRate,
-      sourceLabel: rateChangeSourceLabel(context),
-      changedAt: context.changedAt,
-    });
-    if (result.sent) await logQqBotRateChangePush(db, context, "success");
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await logQqBotRateChangePush(db, context, "failed", message);
-    return { ok: false as const, sent: false as const, error: message };
-  }
-}
-
 function ruleMatchesTargetGroup(rule: { targetGroupIds?: number[] | null }, groupId: number) {
   const targetGroupIds = rule.targetGroupIds ?? [];
   return targetGroupIds.length === 0 || targetGroupIds.includes(groupId);
@@ -161,7 +113,6 @@ export async function publishRateChangeAnnouncements(input: {
   ) {
     return { ok: true, published: 0, skipped: true };
   }
-  const qqBotPush = await publishQqBotPushForContext(db, context);
 
   let rules: Awaited<ReturnType<AnnouncementRuleDb["announcementRule"]["findMany"]>>;
   try {
@@ -178,7 +129,7 @@ export async function publishRateChangeAnnouncements(input: {
       oldRate: context.oldRate,
       newRate: context.newRate,
     }, "failed", message);
-    return { ok: false, published: 0, skipped: false, error: message, qqBotPush };
+    return { ok: false, published: 0, skipped: false, error: message };
   }
 
   let published = 0;
@@ -219,5 +170,5 @@ export async function publishRateChangeAnnouncements(input: {
     }
   }
 
-  return { ok: true, published, skipped: false, qqBotPush };
+  return { ok: true, published, skipped: false };
 }
