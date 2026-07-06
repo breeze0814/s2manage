@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sub2检测站</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/components.css" />
+    <link rel="stylesheet" href="/auth.css" />
+    <link rel="stylesheet" href="/dashboard.css" />
+    <link rel="stylesheet" href="/dashboard-responsive.css" />
+    <link rel="stylesheet" href="/group-rules.css" />
+    <link rel="stylesheet" href="/accounts.css" />
+    <link rel="stylesheet" href="/cyberpunk.css" />
+  </head>
+  <body class="cyber-grid">
+    <div class="app-shell vercel-frame">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">S2A</span>
+          <div>
+            <p class="eyebrow">sub2检测站</p>
+            <h1>sub2检测站</h1>
+            <p class="topbar-subtitle">目标站点、采集站、分组规则和机器人运行状态集中管理。</p>
+          </div>
+        </div>
+        <div class="command-panel">
+          <span class="status-chip">SQLite 持久化</span>
+          <button class="icon-button" id="refresh" type="button" aria-label="刷新本地数据" title="刷新本地数据">刷新</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="status-matrix" aria-label="服务状态">
+          <article class="status-tile">
+            <span class="label">API</span>
+            <strong id="api-state">读取中</strong>
+            <small id="api-detail">等待状态接口返回</small>
+          </article>
+          <article class="status-tile">
+            <span class="label">Worker</span>
+            <strong id="worker-state">读取中</strong>
+            <small id="worker-detail">等待状态接口返回</small>
+          </article>
+          <article class="status-tile">
+            <span class="label">Bot</span>
+            <strong id="bot-state">读取中</strong>
+            <small id="bot-detail">等待状态接口返回</small>
+          </article>
+          <article class="status-tile balance-tile">
+            <span class="label">采集站余额</span>
+            <div class="balance-list" id="source-balance-list" role="list">
+              <span class="balance-empty">尚未读取采集站</span>
+            </div>
+            <small id="source-balance-detail">添加采集站后展示每站余额</small>
+          </article>
+        </section>
+
+      <nav class="tabs main-nav" aria-label="主导航">
+        <button class="tab active" type="button" data-route="groups">分组</button>
+        <button class="tab" type="button" data-route="sources">采集站</button>
+        <button class="tab" type="button" data-route="accounts">账号调度</button>
+        <button class="tab" type="button" data-route="settings">设置</button>
+      </nav>
+
+      <section class="view" id="settings-view" data-view="settings" aria-label="设置界面">
+        <div class="settings-grid">
+          <form class="panel" id="target-form" aria-label="目标站点设置">
+            <div class="panel-heading">
+              <h2>目标站点</h2>
+              <span class="pill">Sub2API</span>
+            </div>
+            <label>
+              连接名称
+              <input name="connectionName" type="text" value="主站" />
+            </label>
+            <label>
+              管理地址
+              <input name="targetBaseUrl" type="url" placeholder="https://example.com" required />
+            </label>
+            <label>
+              Admin API Key
+              <input name="adminApiKey" type="password" placeholder="用于本次请求" required />
+            </label>
+            <button type="submit">读取目标分组</button>
+            <pre class="result" id="target-result">目标站点配置会被分组页复用</pre>
+          </form>
+
+          <form class="panel" id="bot-settings-form" aria-label="机器人设置">
+            <div class="panel-heading">
+              <h2>机器人信息</h2>
+              <span class="pill neutral">NapCat</span>
+            </div>
+            <label class="switch-row">
+              <input name="botEnabled" type="checkbox" />
+              <span>启用机器人</span>
+            </label>
+            <label>
+              WebSocket 地址
+              <input name="botWsUrl" type="url" placeholder="ws://127.0.0.1:3001" />
+            </label>
+            <label>
+              Token
+              <input name="botToken" type="password" placeholder="NapCat access token" />
+            </label>
+            <label>
+              目标 QQ 群
+              <input name="botGroupId" type="text" placeholder="群号" />
+            </label>
+            <label>
+              机器人 QQ
+              <input name="botUserId" type="text" placeholder="机器人 QQ 号" />
+            </label>
+            <label class="switch-row">
+              <input name="mentionCommandEnabled" type="checkbox" checked />
+              <span>@Bot 倍率查询</span>
+            </label>
+            <button type="submit">保存机器人信息</button>
+          </form>
+
+          <form class="panel" id="proxy-settings-form" aria-label="代理设置">
+            <div class="panel-heading">
+              <h2>代理信息</h2>
+              <span class="pill accent">网络</span>
+            </div>
+            <label>
+              HTTP 代理
+              <input name="httpProxy" type="url" placeholder="http://127.0.0.1:7890" />
+            </label>
+            <label>
+              HTTPS 代理
+              <input name="httpsProxy" type="url" placeholder="http://127.0.0.1:7890" />
+            </label>
+            <label class="switch-row">
+              <input name="proxyEnabled" type="checkbox" />
+              <span>启用代理</span>
+            </label>
+            <button type="submit">保存代理信息</button>
+          </form>
+          <form class="panel" id="worker-settings-form" aria-label="Worker 设置">
+            <div class="panel-heading">
+              <h2>Worker</h2>
+              <span class="pill neutral">定时任务</span>
+            </div>
+            <label>
+              执行间隔（秒）
+              <input name="intervalSeconds" type="number" min="10" step="10" value="600" />
+            </label>
+            <button type="submit">保存 Worker 设置</button>
+          </form>
+          <p class="source-message" id="settings-message" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="view active" id="groups-view" data-view="groups" aria-label="分组界面">
+        <div class="collection-header">
+          <div>
+            <h2>目标分组</h2>
+            <p>每个目标分组维护自己的源分组绑定、规则模式和目标倍率。</p>
+          </div>
+          <button id="load-groups" type="button">刷新目标站分组</button>
+        </div>
+        <div class="group-list" id="groups-list">
+          <article class="empty-state">先在设置界面填写目标站点，再刷新分组。</article>
+        </div>
+        <pre class="result" id="rate-update-result">尚未更新目标倍率</pre>
+      </section>
+
+      <section class="view" id="accounts-view" data-view="accounts" aria-label="账号调度界面">
+        <div class="collection-header">
+          <div>
+            <h2>账号调度</h2>
+            <p>从目标站点读取账号调度状态，支持启用或停用账号参与调度。</p>
+          </div>
+          <button id="load-accounts" type="button">刷新目标站账号</button>
+        </div>
+        <div class="account-list" id="accounts-list">
+          <article class="empty-state">先配置目标站点，再刷新账号调度数据。</article>
+        </div>
+        <pre class="result" id="accounts-result">尚未读取目标站账号</pre>
+      </section>
+
+      <section class="view" id="sources-view" data-view="sources" aria-label="采集站界面">
+        <div class="collection-header">
+          <div>
+            <h2>采集站</h2>
+            <p>展示所有已添加采集站的分组和倍率数据。</p>
+          </div>
+          <button id="open-source-dialog" type="button">新建采集站</button>
+        </div>
+        <div class="source-ledger">
+          <div class="source-list" id="source-list">
+            <article class="empty-state">还没有采集站。点击“新建采集站”添加。</article>
+          </div>
+        </div>
+
+        <dialog class="dialog" id="source-dialog">
+          <form class="panel wide" id="source-form" aria-label="新建采集站配置">
+            <div class="panel-heading">
+              <h2>新建采集站</h2>
+              <button class="ghost-button" id="close-source-dialog" type="button">关闭</button>
+            </div>
+            <div class="form-grid">
+              <label>
+                源站名称
+                <input name="sourceName" type="text" placeholder="源站 A" required />
+              </label>
+              <label>
+                源站类型
+                <select name="siteType">
+                  <option value="sub2api">Sub2API</option>
+                  <option value="newapi">NewAPI</option>
+                </select>
+              </label>
+              <fieldset class="auth-mode" aria-label="认证方式">
+                <legend>认证方式</legend>
+                <label class="auth-choice">
+                  <input type="radio" name="authMode" value="password" />
+                  <span>
+                    <strong>账密登录</strong>
+                    <small>使用账号和密码登录采集站</small>
+                  </span>
+                </label>
+                <label class="auth-choice">
+                  <input type="radio" name="authMode" value="manual_token" checked />
+                  <span>
+                    <strong>Token</strong>
+                    <small>使用 Access Token 或 RT Token</small>
+                  </span>
+                </label>
+              </fieldset>
+              <label>
+                源站地址
+                <input name="sourceBaseUrl" type="url" placeholder="https://source.example.com" required />
+              </label>
+              <label data-auth-fields="password">
+                账号 / 邮箱
+                <input name="username" type="text" placeholder="Sub2API 邮箱或 NewAPI 用户名" data-auth-required />
+              </label>
+              <label data-auth-fields="password">
+                密码
+                <input name="password" type="password" placeholder="账号密码认证时填写" data-auth-required />
+              </label>
+              <label data-auth-fields="manual_token">
+                Access Token
+                <input name="accessToken" type="password" placeholder="手动 Token 认证时填写" />
+              </label>
+              <label data-auth-fields="manual_token">
+                RT Token
+                <input name="rtToken" type="password" placeholder="Sub2API refresh token，可替代 Access Token" />
+              </label>
+              <label>
+                采集间隔（秒）
+                <input name="intervalSeconds" type="number" min="60" step="60" value="3600" />
+              </label>
+              <label>
+                充值倍率
+                <input name="rechargeRatio" type="number" min="0.01" step="0.01" value="1" />
+              </label>
+              <label class="switch-row">
+                <input name="useProxy" type="checkbox" />
+                <span>使用全局代理</span>
+              </label>
+            </div>
+            <p class="source-message" id="source-message" role="status" aria-live="polite"></p>
+            <button type="submit">保存并读取倍率</button>
+          </form>
+        </dialog>
+      </section>
+      </main>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
