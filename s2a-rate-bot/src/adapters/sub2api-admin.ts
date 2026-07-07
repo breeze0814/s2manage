@@ -8,6 +8,37 @@ export type Sub2ApiGroup = {
   readonly rate_multiplier?: number | null;
 };
 
+export type Sub2ApiUser = {
+  readonly id: number;
+  readonly email: string;
+  readonly username?: string | null;
+  readonly balance?: number | null;
+  readonly last_used_at?: string | null;
+};
+
+export type Sub2ApiAffiliateInvite = {
+  readonly inviter_id: number;
+  readonly inviter_email: string;
+  readonly inviter_username?: string | null;
+  readonly invitee_id: number;
+  readonly invitee_email?: string | null;
+  readonly invitee_username?: string | null;
+};
+
+export type Sub2ApiListResult<T> = {
+  readonly items: readonly T[];
+  readonly total: number;
+  readonly page: number;
+  readonly page_size: number;
+  readonly pages: number;
+};
+
+export type Sub2ApiRedeemCode = {
+  readonly id?: number | null;
+  readonly code: string;
+  readonly value?: number;
+};
+
 type RemoteAccount = Record<string, unknown>;
 
 export class Sub2ApiAdminTarget {
@@ -35,6 +66,43 @@ export class Sub2ApiAdminTarget {
   async setAccountSchedulable(accountId: number, schedulable: boolean) {
     const payload = await this.request<unknown>("POST", `/accounts/${accountId}/schedulable`, { schedulable });
     return accountSnapshot(payload);
+  }
+
+  async getSettings() {
+    return this.request<Record<string, unknown>>("GET", "/settings");
+  }
+
+  async searchUsers(input: { page?: number; pageSize?: number; search?: string } = {}): Promise<Sub2ApiListResult<Sub2ApiUser>> {
+    const query = listQuery({
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 50,
+      status: "",
+      role: "",
+      search: input.search ?? "",
+    });
+    return normalizeListResult(await this.request<unknown>("GET", `/users?${query}`), userSnapshot);
+  }
+
+  async listAffiliateInvites(input: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    startAt?: string;
+    endAt?: string;
+  } = {}): Promise<Sub2ApiListResult<Sub2ApiAffiliateInvite>> {
+    const query = listQuery({
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 20,
+      search: input.search ?? "",
+      ...(input.startAt !== undefined ? { start_at: input.startAt } : {}),
+      ...(input.endAt !== undefined ? { end_at: input.endAt } : {}),
+    });
+    return normalizeListResult(await this.request<unknown>("GET", `/affiliates/invites?${query}`), inviteSnapshot);
+  }
+
+  async generateRedeemCodes(input: { count: number; type: "balance"; value: number }) {
+    const payload = await this.request<unknown>("POST", "/redeem-codes/generate", input);
+    return redeemCodeList(payload);
   }
 
   private adminUrl(path: string) {
@@ -81,6 +149,61 @@ function accountList(value: unknown) {
     return (data as Record<string, unknown>).items as RemoteAccount[];
   }
   return [];
+}
+
+function listQuery(params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  return query.toString();
+}
+
+function normalizeListResult<T>(value: unknown, mapItem: (item: unknown) => T): Sub2ApiListResult<T> {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const items = Array.isArray(record.items) ? record.items : Array.isArray(value) ? value : [];
+  return {
+    items: items.map(mapItem),
+    total: nullableInt(record.total) ?? items.length,
+    page: nullableInt(record.page) ?? 1,
+    page_size: nullableInt(record.page_size ?? record.pageSize) ?? items.length,
+    pages: nullableInt(record.pages) ?? 1,
+  };
+}
+
+function redeemCodeList(value: unknown) {
+  const items = Array.isArray(value) ? value : accountList(value);
+  return items.map((item) => {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    return {
+      id: nullableInt(row.id),
+      code: text(row.code),
+      value: nullableNumber(row.value) ?? undefined,
+    } satisfies Sub2ApiRedeemCode;
+  }).filter((item) => item.code);
+}
+
+function userSnapshot(value: unknown): Sub2ApiUser {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    id: positiveInt(row.id),
+    email: text(row.email),
+    username: optionalText(row.username),
+    balance: nullableNumber(row.balance),
+    last_used_at: optionalText(row.last_used_at ?? row.lastUsedAt),
+  };
+}
+
+function inviteSnapshot(value: unknown): Sub2ApiAffiliateInvite {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    inviter_id: positiveInt(row.inviter_id ?? row.inviterId),
+    inviter_email: text(row.inviter_email ?? row.inviterEmail),
+    inviter_username: optionalText(row.inviter_username ?? row.inviterUsername),
+    invitee_id: positiveInt(row.invitee_id ?? row.inviteeId),
+    invitee_email: optionalText(row.invitee_email ?? row.inviteeEmail),
+    invitee_username: optionalText(row.invitee_username ?? row.inviteeUsername),
+  };
 }
 
 function accountSnapshot(account: unknown): TargetAccountSnapshot {
@@ -152,4 +275,9 @@ function nullableNumber(value: unknown) {
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function optionalText(value: unknown) {
+  const result = text(value);
+  return result ? result : undefined;
 }

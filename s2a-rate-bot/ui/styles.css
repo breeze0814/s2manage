@@ -1,16 +1,16 @@
 :root {
-  color-scheme: dark;
-  --bg: #080b0f;
-  --surface: #12151a;
-  --surface-2: #171c22;
-  --text: #f8fafc;
-  --muted: #a8b3c7;
-  --border: #343b45;
-  --accent: #2dd67f;
-  --accent-2: #6ee7b7;
-  --danger: #f87171;
-  --warning: #fbbf24;
-  --info: #7dd3fc;
+  color-scheme: light;
+  --bg: #ede6d9;
+  --surface: rgba(250, 246, 239, 0.78);
+  --surface-2: rgba(252, 248, 242, 0.92);
+  --text: #1f1b17;
+  --muted: #6a6259;
+  --border: rgba(55, 50, 42, 0.12);
+  --accent: #176d59;
+  --accent-2: #245f52;
+  --danger: #b94b5a;
+  --warning: #a86f1c;
+  --info: #176d59;
   --radius: 8px;
   font-family: "Fira Sans", "Segoe UI", system-ui, sans-serif;
 }
@@ -40,7 +40,7 @@ select {
   gap: 24px;
   padding: 24px clamp(16px, 4vw, 48px);
   border-bottom: 1px solid var(--border);
-  background: #0b0f14;
+  background: rgba(250, 246, 239, 0.86);
 }
 
 .eyebrow {
@@ -166,7 +166,7 @@ button {
   border: 0;
   border-radius: var(--radius);
   background: var(--accent);
-  color: #041109;
+  color: #f8f7f4;
   font-weight: 800;
   cursor: pointer;
   transition: transform 180ms ease, filter 180ms ease;

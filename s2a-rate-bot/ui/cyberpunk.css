@@ -1,54 +1,81 @@
 :root {
-  color-scheme: dark;
-  --bg: #070a12;
-  --surface: #101827;
-  --surface-2: #0b1220;
-  --text: #e6edf6;
-  --muted: #98a7ba;
-  --border: rgba(125, 145, 170, 0.28);
-  --accent: #78c6d4;
-  --accent-2: #8aa4c2;
-  --success: #55c98a;
-  --success-bg: rgba(85, 201, 138, 0.12);
-  --success-border: rgba(85, 201, 138, 0.44);
-  --danger: #e06472;
-  --danger-bg: rgba(224, 100, 114, 0.12);
-  --danger-border: rgba(224, 100, 114, 0.46);
-  --warning: #d6a84f;
-  --warning-bg: rgba(214, 168, 79, 0.12);
-  --warning-border: rgba(214, 168, 79, 0.42);
-  --info: #78c6d4;
-  --signal-cyan: #78c6d4;
-  --signal-amber: #d6a84f;
-  --button-primary-bg: #8ccfd8;
-  --button-primary-text: #071019;
-  --button-muted-bg: rgba(125, 145, 170, 0.08);
-  --button-muted-text: #a9b6c6;
-  --shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+  color-scheme: light;
+  --bg: #ede6d9;
+  --bg-deep: #d4c6b4;
+  --panel: rgba(250, 246, 239, 0.78);
+  --panel-strong: rgba(252, 248, 242, 0.92);
+  --surface: var(--panel);
+  --surface-2: rgba(255, 255, 255, 0.52);
+  --text: #1f1b17;
+  --muted: #6a6259;
+  --border: rgba(55, 50, 42, 0.12);
+  --border-strong: rgba(22, 80, 68, 0.18);
+  --accent: #176d59;
+  --accent-2: #245f52;
+  --success: #176d59;
+  --success-bg: rgba(23, 109, 89, 0.1);
+  --success-border: rgba(23, 109, 89, 0.28);
+  --danger: #b94b5a;
+  --danger-bg: rgba(185, 75, 90, 0.1);
+  --danger-border: rgba(185, 75, 90, 0.28);
+  --warning: #a86f1c;
+  --warning-bg: rgba(168, 111, 28, 0.11);
+  --warning-border: rgba(168, 111, 28, 0.28);
+  --info: #176d59;
+  --signal-green: #176d59;
+  --signal-amber: #a86f1c;
+  --button-primary-bg: #176d59;
+  --button-primary-text: #f8f7f4;
+  --button-muted-bg: rgba(31, 27, 23, 0.06);
+  --button-muted-text: #544b42;
+  --shadow: 0 22px 60px rgba(77, 67, 52, 0.14);
 }
 
 body {
   background:
-    linear-gradient(rgba(125, 145, 170, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(125, 145, 170, 0.022) 1px, transparent 1px),
-    radial-gradient(circle at 50% 0, rgba(32, 72, 96, 0.24), transparent 36%),
-    linear-gradient(180deg, #090d17 0, #05070d 100%);
-  background-size: 48px 48px, 48px 48px, 100% 440px, auto;
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), transparent 36%),
+    radial-gradient(circle at 82% 22%, rgba(154, 189, 171, 0.34), transparent 18%),
+    radial-gradient(circle at 88% 76%, rgba(210, 198, 167, 0.44), transparent 16%),
+    linear-gradient(180deg, #efe8dc 0%, #e5ddcf 100%);
   color: var(--text);
 }
 
 .vercel-frame {
-  --frame-width: 1180px;
+  --frame-width: 1460px;
   width: min(var(--frame-width), calc(100% - 32px));
   margin: 0 auto;
-  border-right: 1px solid rgba(125, 145, 170, 0.16);
-  border-left: 1px solid rgba(125, 145, 170, 0.16);
+  border-right: 0;
+  border-left: 0;
 }
 
 .cyber-grid .topbar {
-  border-bottom-color: rgba(120, 198, 212, 0.18);
-  background: rgba(7, 10, 18, 0.92);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+  border-bottom-color: rgba(23, 109, 89, 0.14);
+  background: rgba(250, 246, 239, 0.88);
+  box-shadow: 0 12px 34px rgba(77, 67, 52, 0.1);
+}
+
+.cyber-grid .console-header,
+.cyber-grid .overview-panel {
+  overflow: hidden;
+  border-color: var(--border);
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+}
+
+.cyber-grid .console-header {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.36), transparent 42%),
+    var(--panel);
+}
+
+.cyber-grid .overview-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.34), transparent 28%),
+    var(--panel);
+}
+
+.cyber-grid .overview-head {
+  border-bottom-color: rgba(55, 50, 42, 0.1);
 }
 
 .cyber-grid .workspace {
@@ -56,17 +83,17 @@ body {
 }
 
 .cyber-grid .brand-mark {
-  border-color: rgba(120, 198, 212, 0.46);
-  background: #0d1726;
-  color: var(--signal-cyan);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  border-color: rgba(23, 109, 89, 0.2);
+  background: var(--accent);
+  color: #f8f7f4;
+  box-shadow: 0 12px 24px rgba(23, 109, 89, 0.16);
 }
 
 .cyber-grid .eyebrow,
 .cyber-grid .status-tile strong,
 .cyber-grid .rate-row strong,
 .cyber-grid .balance-item strong {
-  color: var(--signal-cyan);
+  color: var(--signal-green);
 }
 
 .cyber-grid .topbar-subtitle,
@@ -80,7 +107,16 @@ body {
 
 .cyber-grid .status-chip,
 .cyber-grid .main-nav,
+.cyber-grid .service-status-indicator,
 .cyber-grid .panel,
+.cyber-grid .bot-action-button,
+.cyber-grid .bot-capability,
+.cyber-grid .bot-dialog-note,
+.cyber-grid .bot-config-summary,
+.cyber-grid .invite-activity-summary,
+.cyber-grid .invite-leaderboard-row,
+.cyber-grid .runtime-event,
+.cyber-grid .service-status-indicator,
 .cyber-grid .status-tile,
 .cyber-grid .group-card,
 .cyber-grid .source-card,
@@ -89,12 +125,14 @@ body {
 .cyber-grid .empty-state,
 .cyber-grid .dialog {
   border-color: var(--border);
-  background: rgba(16, 24, 39, 0.96);
+  background: var(--panel);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
 }
 
 .cyber-grid .status-tile,
 .cyber-grid .panel,
+.cyber-grid .bot-action-button,
 .cyber-grid .group-card,
 .cyber-grid .source-card {
   position: relative;
@@ -110,49 +148,59 @@ body {
   z-index: 80;
 }
 
+.cyber-grid .service-status-indicator::before,
 .cyber-grid .status-tile::before,
 .cyber-grid .panel::before,
+.cyber-grid .bot-action-button::before,
 .cyber-grid .source-card::before {
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
-  background: rgba(120, 198, 212, 0.38);
+  background: linear-gradient(90deg, rgba(23, 109, 89, 0.28), transparent);
   content: "";
 }
 
+.cyber-grid .service-status-indicator[data-tone="success"],
 .cyber-grid .status-tile[data-tone="success"] {
   border-color: var(--success-border);
-  background: linear-gradient(180deg, var(--success-bg), rgba(16, 24, 39, 0.96) 52%);
+  background: linear-gradient(180deg, var(--success-bg), var(--panel) 56%);
 }
 
+.cyber-grid .service-status-indicator[data-tone="error"],
 .cyber-grid .status-tile[data-tone="error"] {
   border-color: var(--danger-border);
-  background: linear-gradient(180deg, var(--danger-bg), rgba(16, 24, 39, 0.96) 52%);
+  background: linear-gradient(180deg, var(--danger-bg), var(--panel) 56%);
 }
 
+.cyber-grid .service-status-indicator[data-tone="warning"],
 .cyber-grid .status-tile[data-tone="warning"] {
   border-color: var(--warning-border);
-  background: linear-gradient(180deg, var(--warning-bg), rgba(16, 24, 39, 0.96) 52%);
+  background: linear-gradient(180deg, var(--warning-bg), var(--panel) 56%);
 }
 
+.cyber-grid .service-status-indicator[data-tone="success"] strong,
 .cyber-grid .status-tile[data-tone="success"] strong {
   color: var(--success);
 }
 
+.cyber-grid .service-status-indicator[data-tone="error"] strong,
 .cyber-grid .status-tile[data-tone="error"] strong {
   color: var(--danger);
 }
 
+.cyber-grid .service-status-indicator[data-tone="warning"] strong,
 .cyber-grid .status-tile[data-tone="warning"] strong {
   color: var(--warning);
 }
 
 .cyber-grid .panel-heading {
-  border-bottom-color: rgba(125, 145, 170, 0.22);
+  border-bottom-color: rgba(55, 50, 42, 0.1);
 }
 
 .cyber-grid h1,
 .cyber-grid h2,
+.cyber-grid .bot-action-button strong,
+.cyber-grid .bot-capability strong,
 .cyber-grid .group-card-head strong,
 .cyber-grid .source-card-head strong,
 .cyber-grid .auth-choice strong {
@@ -160,15 +208,15 @@ body {
 }
 
 .cyber-grid .pill {
-  border-color: rgba(120, 198, 212, 0.34);
-  background: rgba(120, 198, 212, 0.08);
-  color: var(--signal-cyan);
+  border-color: rgba(23, 109, 89, 0.16);
+  background: rgba(23, 109, 89, 0.08);
+  color: var(--signal-green);
 }
 
 .cyber-grid .pill.neutral {
-  border-color: rgba(138, 164, 194, 0.32);
-  background: rgba(138, 164, 194, 0.08);
-  color: #b7c7d9;
+  border-color: rgba(55, 50, 42, 0.12);
+  background: rgba(31, 27, 23, 0.05);
+  color: #544b42;
 }
 
 .cyber-grid .pill.accent {
@@ -215,9 +263,9 @@ body {
 }
 
 .cyber-grid .tab.active {
-  background: rgba(120, 198, 212, 0.14);
+  background: rgba(23, 109, 89, 0.12);
   color: var(--text);
-  box-shadow: inset 0 0 0 1px rgba(120, 198, 212, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(23, 109, 89, 0.2);
 }
 
 .cyber-grid input,
@@ -225,34 +273,54 @@ body {
 .cyber-grid .result,
 .cyber-grid .rate-table,
 .cyber-grid .auth-choice,
+.cyber-grid .bot-capability,
+.cyber-grid .bot-config-summary,
 .cyber-grid .balance-item {
-  border-color: rgba(125, 145, 170, 0.24);
-  background: rgba(7, 12, 22, 0.92);
+  border-color: rgba(55, 50, 42, 0.12);
+  background: rgba(255, 255, 255, 0.52);
   color: var(--text);
+}
+
+.cyber-grid .bot-capability[data-tone="success"] {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+
+.cyber-grid .bot-capability[data-tone="warning"] {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.cyber-grid .runtime-event[data-tone="success"] {
+  border-color: var(--success-border);
+}
+
+.cyber-grid .runtime-event[data-tone="error"] {
+  border-color: var(--danger-border);
 }
 
 .cyber-grid input:focus,
 .cyber-grid select:focus,
 .cyber-grid button:focus-visible {
-  outline-color: rgba(120, 198, 212, 0.42);
+  outline-color: rgba(23, 109, 89, 0.28);
 }
 
 .cyber-grid .auth-choice:has(input:checked) {
-  border-color: rgba(120, 198, 212, 0.56);
-  background: rgba(120, 198, 212, 0.08);
+  border-color: rgba(23, 109, 89, 0.36);
+  background: rgba(23, 109, 89, 0.08);
 }
 
 .cyber-grid .rate-head {
-  background: rgba(120, 198, 212, 0.08);
-  color: #c7d8e6;
+  background: rgba(23, 109, 89, 0.08);
+  color: #245f52;
 }
 
 .cyber-grid .rate-row {
-  border-top-color: rgba(125, 145, 170, 0.16);
+  border-top-color: rgba(55, 50, 42, 0.08);
 }
 
 .cyber-grid .source-card {
-  border-color: rgba(120, 198, 212, 0.2);
+  border-color: rgba(23, 109, 89, 0.16);
 }
 
 .source-card-actions {
@@ -266,7 +334,7 @@ body {
 }
 
 .cyber-grid .dialog::backdrop {
-  background: rgba(2, 4, 10, 0.74);
+  background: rgba(31, 27, 23, 0.42);
 }
 
 .cyber-grid .source-message[data-tone="error"] {

@@ -6,11 +6,21 @@
   "scripts": {
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "tsx src/api/server.ts",
+    "dev:worker": "tsx src/worker/main.ts",
+    "dev:bot": "tsx src/bot/main.ts",
     "api": "tsx src/api/server.ts",
     "worker": "tsx src/worker/main.ts",
-    "bot": "tsx src/bot/main.ts"
+    "bot": "tsx src/bot/main.ts",
+    "pm2:start": "mkdir -p logs && pm2 start ecosystem.config.cjs",
+    "pm2:restart": "mkdir -p logs && pm2 restart ecosystem.config.cjs --update-env",
+    "pm2:stop": "pm2 stop ecosystem.config.cjs",
+    "pm2:delete": "pm2 delete ecosystem.config.cjs",
+    "pm2:logs": "pm2 logs s2a-rate-bot-api s2a-rate-bot-worker s2a-rate-bot-bot"
   },
   "dependencies": {
+    "@naplink/naplink": "^1.1.0",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3",
     "undici": "^8.5.0",

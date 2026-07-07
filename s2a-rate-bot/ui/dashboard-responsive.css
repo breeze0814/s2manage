@@ -7,16 +7,15 @@
 }
 
 @media (max-width: 1120px) {
-  .status-matrix,
   .settings-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .balance-tile {
-    grid-column: 1 / -1;
+  .group-rule-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .group-rule-grid {
+  .bot-action-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -32,9 +31,10 @@
     justify-content: flex-start;
   }
 
-  .status-matrix,
   .settings-grid,
-  .group-rule-grid {
+  .group-rule-grid,
+  .bot-action-grid,
+  .command-toggle-list {
     grid-template-columns: 1fr;
   }
 

@@ -29,8 +29,8 @@
 }
 
 .auth-choice:has(input:checked) {
-  border-color: rgba(45, 214, 127, 0.7);
-  background: rgba(45, 214, 127, 0.08);
+  border-color: rgba(23, 109, 89, 0.44);
+  background: rgba(23, 109, 89, 0.08);
 }
 
 .auth-choice input {

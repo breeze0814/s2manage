@@ -1,5 +1,6 @@
 import type { RateRuleMode } from "../core/rate-rule.ts";
 import type { SourceRateSnapshot } from "../adapters/source-rates.ts";
+import type { BotStorage } from "../bot/storage.ts";
 
 export type TargetSettings = {
   readonly name: string;
@@ -13,7 +14,23 @@ export type BotSettings = {
   readonly token: string;
   readonly targetGroupId: string;
   readonly mentionCommandEnabled: boolean;
+  readonly commandSettings: BotCommandSettings;
+  readonly activePrivateMessageEnabled: boolean;
+  readonly scheduledStatsEnabled: boolean;
+  readonly inviteActivityStartDate: string;
+  readonly inviteActivityActiveRewardAmount: number | null;
+  readonly inviteActivityInactiveRewardAmount: number | null;
   readonly botUserId: string;
+};
+
+export type BotCommandSettings = {
+  readonly help: boolean;
+  readonly rate: boolean;
+  readonly bind: boolean;
+  readonly unbind: boolean;
+  readonly inviteHelp: boolean;
+  readonly inviteMine: boolean;
+  readonly inviteLeaderboard: boolean;
 };
 
 export type ProxySettings = {
@@ -24,6 +41,22 @@ export type ProxySettings = {
 
 export type WorkerSettings = {
   readonly intervalSeconds: number;
+};
+
+export type RuntimeEventStatus = "running" | "success" | "failed";
+
+export type RuntimeEventInput = {
+  readonly service: "api" | "worker" | "bot";
+  readonly eventType: string;
+  readonly status: RuntimeEventStatus;
+  readonly message: string;
+  readonly metadata?: Record<string, unknown>;
+};
+
+export type RuntimeEvent = RuntimeEventInput & {
+  readonly id: number;
+  readonly metadata: Record<string, unknown>;
+  readonly createdAt: string;
 };
 
 export type TargetGroupSnapshot = {
@@ -97,7 +130,7 @@ export type AppConfig = {
   readonly groupRules: readonly GroupRuleSettings[];
 };
 
-export type AppStorage = {
+export type AppStorage = BotStorage & {
   readonly getAppConfig: () => Promise<AppConfig>;
   readonly saveTargetSettings: (settings: TargetSettings) => Promise<TargetSettings>;
   readonly saveBotSettings: (settings: BotSettings) => Promise<BotSettings>;
@@ -109,10 +142,22 @@ export type AppStorage = {
   readonly saveTargetAccount: (account: TargetAccountSnapshot) => Promise<void>;
   readonly saveGroupRule: (rule: GroupRuleSettings) => Promise<GroupRuleSettings>;
   readonly saveSourceOverview: (input: SourceOverviewInput) => Promise<SourceSiteConfig>;
+  readonly recordRuntimeEvent: (event: RuntimeEventInput) => Promise<RuntimeEvent>;
+  readonly listRuntimeEvents: (input?: { readonly limit?: number; readonly service?: RuntimeEventInput["service"] }) => Promise<RuntimeEvent[]>;
   readonly close: () => void;
 };
 
 export type AppStorageFactory = (databaseUrl: string) => AppStorage;
+
+export const defaultBotCommandSettings: BotCommandSettings = {
+  help: true,
+  rate: true,
+  bind: true,
+  unbind: true,
+  inviteHelp: true,
+  inviteMine: true,
+  inviteLeaderboard: true,
+};
 
 export const defaultBotSettings: BotSettings = {
   enabled: false,
@@ -120,6 +165,12 @@ export const defaultBotSettings: BotSettings = {
   token: "",
   targetGroupId: "",
   mentionCommandEnabled: true,
+  commandSettings: defaultBotCommandSettings,
+  activePrivateMessageEnabled: true,
+  scheduledStatsEnabled: true,
+  inviteActivityStartDate: "",
+  inviteActivityActiveRewardAmount: null,
+  inviteActivityInactiveRewardAmount: null,
   botUserId: "",
 };
 

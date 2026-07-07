@@ -1,9 +1,9 @@
 .rule-card {
   gap: 14px;
-  border-color: rgba(125, 145, 170, 0.26);
+  border-color: rgba(23, 109, 89, 0.16);
   background:
-    linear-gradient(180deg, rgba(120, 198, 212, 0.045), transparent 130px),
-    rgba(16, 24, 39, 0.96);
+    linear-gradient(180deg, rgba(23, 109, 89, 0.06), transparent 130px),
+    var(--surface);
 }
 
 .rule-card .group-card-head {
@@ -26,9 +26,9 @@
 
 .group-metric-strip span,
 .rule-panel {
-  border: 1px solid rgba(125, 145, 170, 0.18);
+  border: 1px solid rgba(55, 50, 42, 0.12);
   border-radius: 8px;
-  background: rgba(7, 12, 22, 0.56);
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .group-metric-strip span {
@@ -79,10 +79,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid rgba(125, 145, 170, 0.24);
+  border: 1px solid rgba(55, 50, 42, 0.12);
   border-radius: 8px;
   padding: 0 12px;
-  background: rgba(7, 12, 22, 0.92);
+  background: rgba(255, 255, 255, 0.56);
   color: var(--text);
   cursor: pointer;
   list-style: none;
@@ -112,10 +112,10 @@
   max-height: 280px;
   overflow: auto;
   gap: 8px;
-  border: 1px solid rgba(125, 145, 170, 0.28);
+  border: 1px solid rgba(55, 50, 42, 0.14);
   border-radius: 8px;
   padding: 10px;
-  background: rgba(8, 13, 24, 0.98);
+  background: rgba(252, 248, 242, 0.98);
   box-shadow: var(--shadow);
 }
 
@@ -123,10 +123,10 @@
   min-height: 52px;
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
-  border: 1px solid rgba(125, 145, 170, 0.24);
+  border: 1px solid rgba(55, 50, 42, 0.12);
   border-radius: 8px;
   padding: 10px 12px;
-  background: rgba(7, 12, 22, 0.72);
+  background: rgba(255, 255, 255, 0.48);
 }
 
 .binding-choice input {
@@ -152,8 +152,8 @@
 }
 
 .binding-choice:has(input:checked) {
-  border-color: rgba(120, 198, 212, 0.5);
-  background: rgba(120, 198, 212, 0.08);
+  border-color: rgba(23, 109, 89, 0.36);
+  background: rgba(23, 109, 89, 0.08);
 }
 
 .advanced-rule-grid {
@@ -172,11 +172,11 @@
   min-height: 44px;
   display: flex;
   align-items: center;
-  border: 1px solid rgba(125, 145, 170, 0.22);
+  border: 1px solid rgba(55, 50, 42, 0.12);
   border-radius: 8px;
   padding: 0 12px;
-  background: rgba(7, 12, 22, 0.76);
-  color: var(--signal-cyan);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--signal-green);
   font-size: 14px;
   font-weight: 700;
 }
@@ -186,7 +186,7 @@
 }
 
 .rule-action-row input[readonly] {
-  color: var(--signal-cyan);
+  color: var(--signal-green);
   font-weight: 800;
 }
 

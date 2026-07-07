@@ -1,9 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   defaultBotSettings,
+  defaultBotCommandSettings,
   defaultProxySettings,
   defaultWorkerSettings,
   type AppConfig,
+  type BotCommandSettings,
   type BotSettings,
   type GroupRuleSettings,
   type ProxySettings,
@@ -43,8 +45,19 @@ function readBot(database: DatabaseSync): BotSettings {
     token: text(row.token),
     targetGroupId: text(row.target_group_id),
     mentionCommandEnabled: bool(row.mention_command_enabled),
+    commandSettings: botCommandSettings(row.command_settings_json),
+    activePrivateMessageEnabled: bool(row.active_private_message_enabled),
+    scheduledStatsEnabled: bool(row.scheduled_stats_enabled),
+    inviteActivityStartDate: text(row.invite_activity_start_date),
+    inviteActivityActiveRewardAmount: nullableNumber(row.invite_activity_active_reward_amount),
+    inviteActivityInactiveRewardAmount: nullableNumber(row.invite_activity_inactive_reward_amount),
     botUserId: text(row.bot_user_id),
   };
+}
+
+function botCommandSettings(value: unknown): BotCommandSettings {
+  const parsed = value === null || value === undefined ? {} : JSON.parse(text(value)) as Partial<BotCommandSettings>;
+  return { ...defaultBotCommandSettings, ...parsed };
 }
 
 function readProxy(database: DatabaseSync): ProxySettings {

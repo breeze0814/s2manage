@@ -22,3 +22,5 @@ export function errorMessage(error: unknown) {
 export function sendError(response: ServerResponse, statusCode: number, error: unknown) {
   sendJson(response, statusCode, { error: errorMessage(error) });
 }
+
+export class BadRequestError extends Error {}

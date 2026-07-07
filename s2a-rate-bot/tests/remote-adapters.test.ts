@@ -65,6 +65,54 @@ test("Sub2ApiAdminTarget lists and updates target group rates", async () => {
   });
 });
 
+test("Sub2ApiAdminTarget supports invite activity APIs", async () => {
+  await withServer(async (request, response) => {
+    assert.equal(request.headers["x-api-key"], "secret");
+    if (request.method === "GET" && request.url === "/api/v1/admin/settings") {
+      json(response, { data: { affiliate_enabled: true, invite_activity_active_reward_amount: 10 } });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v1/admin/affiliates/invites?page=1&page_size=20&search=&start_at=2026-07-07&end_at=2026-07-10") {
+      json(response, {
+        data: {
+          items: [{ inviter_id: 21, inviter_email: "a@example.com", invitee_id: 101 }],
+          total: 1,
+          page: 1,
+          page_size: 20,
+          pages: 1,
+        },
+      });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v1/admin/users?page=1&page_size=100&status=&role=&search=") {
+      json(response, {
+        data: {
+          items: [{ id: 101, email: "u101@example.com", balance: 1, last_used_at: "2026-07-07T12:00:00+08:00" }],
+          total: 1,
+          page: 1,
+          page_size: 100,
+          pages: 1,
+        },
+      });
+      return;
+    }
+    if (request.method === "POST" && request.url === "/api/v1/admin/redeem-codes/generate") {
+      const body = await readJson(request) as Record<string, unknown>;
+      assert.deepEqual(body, { count: 1, type: "balance", value: 10 });
+      json(response, { data: [{ id: 9001, code: "reward-code-21", value: 10 }] });
+      return;
+    }
+    json(response, { message: "not found" }, 404);
+  }, async (baseUrl) => {
+    const client = new Sub2ApiAdminTarget(baseUrl, "secret");
+
+    assert.equal((await client.getSettings()).affiliate_enabled, true);
+    assert.equal((await client.listAffiliateInvites({ startAt: "2026-07-07", endAt: "2026-07-10" })).items[0]?.inviter_id, 21);
+    assert.equal((await client.searchUsers({ pageSize: 100 })).items[0]?.id, 101);
+    assert.equal((await client.generateRedeemCodes({ count: 1, type: "balance", value: 10 }))[0]?.code, "reward-code-21");
+  });
+});
+
 test("collectSub2ApiSourceRates reads available groups and user rates", async () => {
   await withServer((request, response) => {
     assert.equal(request.headers.authorization, "Bearer token-a");

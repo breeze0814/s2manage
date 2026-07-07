@@ -256,6 +256,99 @@ test("POST /api/source/overview returns source balance and group rates", async (
   });
 });
 
+test("POST /api/bot/invite-activity returns invite activity leaderboard preview", async () => {
+  await withServer((request, response) => {
+    assert.equal(request.headers["x-api-key"], "target-key");
+    if (request.method === "GET" && request.url === "/api/v1/admin/settings") {
+      json(response, { data: { affiliate_enabled: true } });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v1/admin/affiliates/invites?page=1&page_size=20&search=&start_at=2026-07-07&end_at=2026-07-10") {
+      json(response, {
+        data: {
+          items: [
+            { inviter_id: 21, inviter_email: "a@example.com", inviter_username: "Alice", invitee_id: 101 },
+            { inviter_id: 21, inviter_email: "a@example.com", inviter_username: "Alice", invitee_id: 102 },
+          ],
+          total: 2,
+          page: 1,
+          page_size: 20,
+          pages: 1,
+        },
+      });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v1/admin/users?page=1&page_size=100&status=&role=&search=") {
+      json(response, {
+        data: {
+          items: [
+            { id: 101, email: "u101@example.com", balance: 1, last_used_at: "2026-07-07T12:00:00+08:00" },
+            { id: 102, email: "u102@example.com", balance: 0, last_used_at: null },
+          ],
+          total: 2,
+          page: 1,
+          page_size: 100,
+          pages: 1,
+        },
+      });
+      return;
+    }
+    json(response, { message: "not found" }, 404);
+  }, async (targetBaseUrl) => {
+    await withServer(createHandler(testConfig()), async (apiBaseUrl) => {
+      const response = await fetch(`${apiBaseUrl}/api/bot/invite-activity`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: targetBaseUrl,
+          adminApiKey: "target-key",
+          activityEnabled: true,
+          startDate: "2026-07-07",
+          activeRewardAmount: 10,
+          inactiveRewardAmount: 2,
+        }),
+      });
+      assert.equal(response.status, 200);
+      const payload = await response.json() as {
+        summary: {
+          affiliateEnabled: boolean;
+          period: { startDate: string; endDate: string };
+          periodInviteeCount: number;
+          activeInviteeCount: number;
+          inactiveInviteeCount: number;
+          leaderboard: Array<{ inviterEmail: string; total: number; rewardAmount: number }>;
+        };
+        activityStatus: {
+          currentPeriod: { startDate: string; endDate: string };
+          settlementPeriod: { startDate: string; endDate: string } | null;
+          nextSettlementDate: string;
+        };
+      };
+      assert.equal(payload.summary.affiliateEnabled, true);
+      assert.deepEqual({
+        startDate: payload.summary.period.startDate,
+        endDate: payload.summary.period.endDate,
+      }, {
+        startDate: "2026-07-07",
+        endDate: "2026-07-10",
+      });
+      assert.equal(payload.summary.periodInviteeCount, 2);
+      assert.equal(payload.summary.activeInviteeCount, 1);
+      assert.equal(payload.summary.inactiveInviteeCount, 1);
+      assert.deepEqual(payload.summary.leaderboard.map((entry) => ({
+        inviterEmail: entry.inviterEmail,
+        total: entry.total,
+        rewardAmount: entry.rewardAmount,
+      })), [{ inviterEmail: "a@example.com", total: 2, rewardAmount: 12 }]);
+      assert.deepEqual(payload.activityStatus, {
+        currentPeriod: { startDate: "2026-07-07", endDate: "2026-07-10" },
+        settlementPeriod: null,
+        nextSettlementDate: "2026-07-10",
+      });
+    });
+  });
+});
+
 test("POST unknown API route returns JSON 404", async () => {
   await withServer(createHandler(testConfig()), async (apiBaseUrl) => {
     const response = await fetch(`${apiBaseUrl}/api/source/missing`, {
@@ -269,12 +362,32 @@ test("POST unknown API route returns JSON 404", async () => {
   });
 });
 
-test("GET /api/status reports worker as ready when database is configured", async () => {
+test("POST /api/source/rates returns 400 for missing local credentials", async () => {
+  await withServer(createHandler(testConfig()), async (apiBaseUrl) => {
+    const response = await fetch(`${apiBaseUrl}/api/source/rates`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        sourceSiteId: 11,
+        siteType: "sub2api",
+        baseUrl: "https://source.example.com",
+        authMode: "manual_token",
+        accessToken: "",
+        rtToken: "",
+        rechargeRatio: 1,
+      }),
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json() as { error: string }).error, /accessToken|rtToken/);
+  });
+});
+
+test("GET /api/status reports unconfigured bot as not configured", async () => {
   await withServer(createHandler(testConfig()), async (apiBaseUrl) => {
     const response = await fetch(`${apiBaseUrl}/api/status`);
     assert.equal(response.status, 200);
     const payload = await response.json() as { services: Array<{ name: string; state: string }> };
-    const worker = payload.services.find((service) => service.name === "worker");
-    assert.equal(worker?.state, "ready");
+    const bot = payload.services.find((service) => service.name === "bot");
+    assert.equal(bot?.state, "not_configured");
   });
 });

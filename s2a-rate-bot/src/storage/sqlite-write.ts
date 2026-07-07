@@ -23,10 +23,27 @@ export function saveTarget(database: DatabaseSync, settings: TargetSettings) {
 
 export function saveBot(database: DatabaseSync, settings: BotSettings) {
   execute(database, `
-    INSERT INTO bot_settings VALUES (1, :enabled, :wsUrl, :token, :targetGroupId, :mention, :botUserId, :updatedAt)
+    INSERT INTO bot_settings (
+      id, enabled, ws_url, token, target_group_id, mention_command_enabled,
+      command_settings_json, active_private_message_enabled, scheduled_stats_enabled,
+      invite_activity_start_date, invite_activity_active_reward_amount, invite_activity_inactive_reward_amount,
+      bot_user_id, updated_at
+    )
+    VALUES (
+      1, :enabled, :wsUrl, :token, :targetGroupId, :mention, :commandSettings,
+      :activePrivateMessage, :scheduledStats, :inviteActivityStartDate,
+      :inviteActivityActiveRewardAmount, :inviteActivityInactiveRewardAmount,
+      :botUserId, :updatedAt
+    )
     ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled, ws_url = excluded.ws_url,
       token = excluded.token, target_group_id = excluded.target_group_id,
       mention_command_enabled = excluded.mention_command_enabled,
+      command_settings_json = excluded.command_settings_json,
+      active_private_message_enabled = excluded.active_private_message_enabled,
+      scheduled_stats_enabled = excluded.scheduled_stats_enabled,
+      invite_activity_start_date = excluded.invite_activity_start_date,
+      invite_activity_active_reward_amount = excluded.invite_activity_active_reward_amount,
+      invite_activity_inactive_reward_amount = excluded.invite_activity_inactive_reward_amount,
       bot_user_id = excluded.bot_user_id, updated_at = excluded.updated_at
   `, botBindings(settings));
 }
@@ -150,6 +167,12 @@ function botBindings(settings: BotSettings): SqliteBindings {
     token: settings.token,
     targetGroupId: settings.targetGroupId,
     mention: flag(settings.mentionCommandEnabled),
+    commandSettings: JSON.stringify(settings.commandSettings),
+    activePrivateMessage: flag(settings.activePrivateMessageEnabled),
+    scheduledStats: flag(settings.scheduledStatsEnabled),
+    inviteActivityStartDate: settings.inviteActivityStartDate,
+    inviteActivityActiveRewardAmount: settings.inviteActivityActiveRewardAmount,
+    inviteActivityInactiveRewardAmount: settings.inviteActivityInactiveRewardAmount,
     botUserId: settings.botUserId,
     updatedAt: nowIso(),
   };

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 6;
 
 const CREATE_TABLES = [
   `CREATE TABLE IF NOT EXISTS schema_meta (
@@ -21,6 +21,12 @@ const CREATE_TABLES = [
     token TEXT NOT NULL,
     target_group_id TEXT NOT NULL,
     mention_command_enabled INTEGER NOT NULL CHECK (mention_command_enabled IN (0, 1)),
+    command_settings_json TEXT NOT NULL DEFAULT '{}',
+    active_private_message_enabled INTEGER NOT NULL DEFAULT 1 CHECK (active_private_message_enabled IN (0, 1)),
+    scheduled_stats_enabled INTEGER NOT NULL DEFAULT 1 CHECK (scheduled_stats_enabled IN (0, 1)),
+    invite_activity_start_date TEXT NOT NULL DEFAULT '',
+    invite_activity_active_reward_amount REAL,
+    invite_activity_inactive_reward_amount REAL,
     bot_user_id TEXT NOT NULL,
     updated_at TEXT NOT NULL
   ) STRICT`,
@@ -100,12 +106,49 @@ const CREATE_TABLES = [
     PRIMARY KEY (source_site_id, group_id),
     FOREIGN KEY (source_site_id) REFERENCES source_sites(id) ON DELETE CASCADE
   ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS qq_bot_user_bindings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    qq_user_id TEXT NOT NULL UNIQUE,
+    sub2_user_id INTEGER NOT NULL UNIQUE,
+    sub2_email TEXT NOT NULL,
+    sub2_snapshot_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS invite_reward_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_start_date TEXT NOT NULL,
+    period_end_date TEXT NOT NULL,
+    inviter_id INTEGER NOT NULL,
+    inviter_email TEXT NOT NULL,
+    inviter_username TEXT NOT NULL,
+    active_invitee_count INTEGER NOT NULL,
+    inactive_invitee_count INTEGER NOT NULL,
+    total_invitee_count INTEGER NOT NULL,
+    reward_amount REAL NOT NULL,
+    status TEXT NOT NULL,
+    redeem_code_id INTEGER,
+    redeem_code TEXT,
+    error TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    UNIQUE(period_start_date, inviter_id)
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS runtime_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    message TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  ) STRICT`,
 ];
 
 export function initializeSqliteSchema(database: DatabaseSync) {
   database.exec("PRAGMA foreign_keys = ON");
   database.exec("PRAGMA journal_mode = WAL");
   for (const statement of CREATE_TABLES) database.exec(statement);
+  migrateBotSettings(database);
   migrateGroupRules(database);
   database.prepare(`
     INSERT INTO schema_meta (key, value)
@@ -114,15 +157,25 @@ export function initializeSqliteSchema(database: DatabaseSync) {
   `).run(String(SCHEMA_VERSION));
 }
 
-function migrateGroupRules(database: DatabaseSync) {
-  const columns = tableColumns(database, "group_rules");
-  addMissingColumn(database, columns, "source_group_ids", "TEXT NOT NULL DEFAULT '[]'");
-  addMissingColumn(database, columns, "formula", "TEXT NOT NULL DEFAULT 'avg'");
-  addMissingColumn(database, columns, "multiplier", "REAL NOT NULL DEFAULT 1");
+function migrateBotSettings(database: DatabaseSync) {
+  const columns = tableColumns(database, "bot_settings");
+  addMissingColumn(database, columns, "bot_settings", "command_settings_json", "TEXT NOT NULL DEFAULT '{}'");
+  addMissingColumn(database, columns, "bot_settings", "active_private_message_enabled", "INTEGER NOT NULL DEFAULT 1 CHECK (active_private_message_enabled IN (0, 1))");
+  addMissingColumn(database, columns, "bot_settings", "scheduled_stats_enabled", "INTEGER NOT NULL DEFAULT 1 CHECK (scheduled_stats_enabled IN (0, 1))");
+  addMissingColumn(database, columns, "bot_settings", "invite_activity_start_date", "TEXT NOT NULL DEFAULT ''");
+  addMissingColumn(database, columns, "bot_settings", "invite_activity_active_reward_amount", "REAL");
+  addMissingColumn(database, columns, "bot_settings", "invite_activity_inactive_reward_amount", "REAL");
 }
 
-function addMissingColumn(database: DatabaseSync, columns: ReadonlySet<string>, name: string, definition: string) {
-  if (!columns.has(name)) database.exec(`ALTER TABLE group_rules ADD COLUMN ${name} ${definition}`);
+function migrateGroupRules(database: DatabaseSync) {
+  const columns = tableColumns(database, "group_rules");
+  addMissingColumn(database, columns, "group_rules", "source_group_ids", "TEXT NOT NULL DEFAULT '[]'");
+  addMissingColumn(database, columns, "group_rules", "formula", "TEXT NOT NULL DEFAULT 'avg'");
+  addMissingColumn(database, columns, "group_rules", "multiplier", "REAL NOT NULL DEFAULT 1");
+}
+
+function addMissingColumn(database: DatabaseSync, columns: ReadonlySet<string>, tableName: string, name: string, definition: string) {
+  if (!columns.has(name)) database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${name} ${definition}`);
 }
 
 function tableColumns(database: DatabaseSync, tableName: string) {

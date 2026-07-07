@@ -18,8 +18,29 @@ export async function runWorker() {
   let intervalSeconds = await workerIntervalSeconds(storage);
   try {
     console.log(`[worker] sub2 worker started, interval=${intervalSeconds}s, once=${runOnce ? "yes" : "no"}`);
+    await storage.recordRuntimeEvent({
+      service: "worker",
+      eventType: "started",
+      status: "running",
+      message: `worker started, interval=${intervalSeconds}s`,
+      metadata: { runOnce },
+    });
     do {
-      logSummary(await runSub2WorkerCycle({ storage }));
+      const summary = await runSub2WorkerCycle({ storage });
+      logSummary(summary);
+      await storage.recordRuntimeEvent({
+        service: "worker",
+        eventType: "cycle",
+        status: summary.errors.length > 0 ? "failed" : "success",
+        message: workerSummaryMessage(summary),
+        metadata: {
+          collectedSources: summary.collectedSources,
+          failedSources: summary.failedSources,
+          updatedGroups: summary.updatedGroups,
+          failedGroups: summary.failedGroups,
+          errors: summary.errors.slice(0, 5),
+        },
+      });
       intervalSeconds = await workerIntervalSeconds(storage);
       if (!runOnce && !stopping) await delay(intervalSeconds * 1000);
     } while (!runOnce && !stopping);
@@ -55,6 +76,15 @@ function logSummary(summary: Sub2WorkerSummary) {
     `groupFailed=${summary.failedGroups}`,
   ].join(", "));
   for (const error of summary.errors) console.error(`[worker] ${error}`);
+}
+
+function workerSummaryMessage(summary: Sub2WorkerSummary) {
+  return [
+    `collected=${summary.collectedSources}`,
+    `sourceFailed=${summary.failedSources}`,
+    `updatedGroups=${summary.updatedGroups}`,
+    `groupFailed=${summary.failedGroups}`,
+  ].join(", ");
 }
 
 function delay(ms: number) {

@@ -15,8 +15,8 @@
     <link rel="stylesheet" href="/cyberpunk.css" />
   </head>
   <body class="cyber-grid">
-    <div class="app-shell vercel-frame">
-      <header class="topbar">
+    <div class="app-shell vercel-frame page-shell">
+      <header class="topbar console-header">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">S2A</span>
           <div>
@@ -32,38 +32,66 @@
       </header>
 
       <main class="workspace">
-        <section class="status-matrix" aria-label="服务状态">
-          <article class="status-tile">
-            <span class="label">API</span>
-            <strong id="api-state">读取中</strong>
-            <small id="api-detail">等待状态接口返回</small>
-          </article>
-          <article class="status-tile">
-            <span class="label">Worker</span>
-            <strong id="worker-state">读取中</strong>
-            <small id="worker-detail">等待状态接口返回</small>
-          </article>
-          <article class="status-tile">
-            <span class="label">Bot</span>
-            <strong id="bot-state">读取中</strong>
-            <small id="bot-detail">等待状态接口返回</small>
-          </article>
-          <article class="status-tile balance-tile">
-            <span class="label">采集站余额</span>
-            <div class="balance-list" id="source-balance-list" role="list">
-              <span class="balance-empty">尚未读取采集站</span>
+        <section class="overview-panel panel" aria-label="运行概览">
+          <div class="overview-head">
+            <div>
+              <h2>运行概览</h2>
+              <p>API、Worker、Bot 和采集站余额集中展示，按需进入各功能区处理配置和规则。</p>
             </div>
-            <small id="source-balance-detail">添加采集站后展示每站余额</small>
-          </article>
+            <span class="pill">Live Console</span>
+          </div>
+          <div class="overview-layout">
+            <div class="overview-primary">
+              <section class="service-status-row" aria-label="服务状态">
+                <article class="service-status-indicator" data-service-status="api" data-tone="neutral">
+                  <span class="status-dot" aria-hidden="true"></span>
+                  <div>
+                    <span class="label">API</span>
+                    <strong id="api-status-state">读取中</strong>
+                    <small id="api-status-detail">等待状态接口返回</small>
+                  </div>
+                </article>
+                <article class="service-status-indicator" data-service-status="worker" data-tone="neutral">
+                  <span class="status-dot" aria-hidden="true"></span>
+                  <div>
+                    <span class="label">Worker</span>
+                    <strong id="worker-status-state">读取中</strong>
+                    <small id="worker-status-detail">等待状态接口返回</small>
+                  </div>
+                </article>
+                <article class="service-status-indicator" data-service-status="bot" data-tone="neutral">
+                  <span class="status-dot" aria-hidden="true"></span>
+                  <div>
+                    <span class="label">Bot</span>
+                    <strong id="bot-status-state">读取中</strong>
+                    <small id="bot-status-detail">等待状态接口返回</small>
+                  </div>
+                </article>
+              </section>
+
+              <section class="balance-row" aria-label="采集站余额">
+                <article class="status-tile balance-tile">
+                  <span class="label">采集站余额</span>
+                  <div class="balance-list" id="source-balance-list" role="list">
+                    <span class="balance-empty">尚未读取采集站</span>
+                  </div>
+                  <small id="source-balance-detail">添加采集站后展示每站余额</small>
+                </article>
+              </section>
+            </div>
+          </div>
+
+          <nav class="tabs main-nav" aria-label="主导航">
+            <button class="tab active" type="button" data-route="groups">分组</button>
+            <button class="tab" type="button" data-route="sources">采集站</button>
+            <button class="tab" type="button" data-route="accounts">账号调度</button>
+            <button class="tab" type="button" data-route="bot">Bot</button>
+            <button class="tab" type="button" data-route="runtime">运行日志</button>
+            <button class="tab" type="button" data-route="settings">设置</button>
+          </nav>
         </section>
 
-      <nav class="tabs main-nav" aria-label="主导航">
-        <button class="tab active" type="button" data-route="groups">分组</button>
-        <button class="tab" type="button" data-route="sources">采集站</button>
-        <button class="tab" type="button" data-route="accounts">账号调度</button>
-        <button class="tab" type="button" data-route="settings">设置</button>
-      </nav>
-
+        <div class="view-stack">
       <section class="view" id="settings-view" data-view="settings" aria-label="设置界面">
         <div class="settings-grid">
           <form class="panel" id="target-form" aria-label="目标站点设置">
@@ -81,42 +109,14 @@
             </label>
             <label>
               Admin API Key
-              <input name="adminApiKey" type="password" placeholder="用于本次请求" required />
+              <input name="adminApiKey" type="password" placeholder="用于本次请求" />
+            </label>
+            <label class="switch-row">
+              <input name="clearAdminApiKey" type="checkbox" />
+              <span>清除已保存 Admin API Key</span>
             </label>
             <button type="submit">读取目标分组</button>
             <pre class="result" id="target-result">目标站点配置会被分组页复用</pre>
-          </form>
-
-          <form class="panel" id="bot-settings-form" aria-label="机器人设置">
-            <div class="panel-heading">
-              <h2>机器人信息</h2>
-              <span class="pill neutral">NapCat</span>
-            </div>
-            <label class="switch-row">
-              <input name="botEnabled" type="checkbox" />
-              <span>启用机器人</span>
-            </label>
-            <label>
-              WebSocket 地址
-              <input name="botWsUrl" type="url" placeholder="ws://127.0.0.1:3001" />
-            </label>
-            <label>
-              Token
-              <input name="botToken" type="password" placeholder="NapCat access token" />
-            </label>
-            <label>
-              目标 QQ 群
-              <input name="botGroupId" type="text" placeholder="群号" />
-            </label>
-            <label>
-              机器人 QQ
-              <input name="botUserId" type="text" placeholder="机器人 QQ 号" />
-            </label>
-            <label class="switch-row">
-              <input name="mentionCommandEnabled" type="checkbox" checked />
-              <span>@Bot 倍率查询</span>
-            </label>
-            <button type="submit">保存机器人信息</button>
           </form>
 
           <form class="panel" id="proxy-settings-form" aria-label="代理设置">
@@ -179,6 +179,204 @@
           <article class="empty-state">先配置目标站点，再刷新账号调度数据。</article>
         </div>
         <pre class="result" id="accounts-result">尚未读取目标站账号</pre>
+      </section>
+
+      <section class="view" id="bot-view" data-view="bot" aria-label="Bot 界面">
+        <div class="collection-header">
+          <div>
+            <h2>Bot</h2>
+            <p>机器人连接、指令、主动私聊和定时统计分开配置。</p>
+          </div>
+        </div>
+        <section class="panel bot-capabilities" id="bot-capabilities" aria-label="机器人能力">
+          <div class="panel-heading">
+            <h2>能力入口</h2>
+            <span class="pill neutral" id="bot-overall-status">读取中</span>
+          </div>
+          <div class="bot-action-grid" id="bot-action-grid">
+            <button class="bot-action-button" id="open-bot-connection-settings" type="button" data-tone="warning">
+              <div>
+                <strong>连接设置</strong>
+                <small>启用状态、NapCat WebSocket、群号和 Bot QQ</small>
+              </div>
+              <span class="pill warning" data-bot-connection-status>待配置</span>
+            </button>
+            <button class="bot-action-button" id="open-bot-command-settings" type="button" data-tone="warning">
+              <div>
+                <strong>指令管理</strong>
+                <small>逐条控制 help、倍率、绑定、邀请等 @Bot 指令</small>
+              </div>
+              <span class="pill warning" data-bot-passive-status>待配置</span>
+            </button>
+            <button class="bot-action-button" id="open-bot-active-settings" type="button" data-tone="warning">
+              <div>
+                <strong>主动私聊</strong>
+                <small>邀请奖励兑换码和后续主动通知入口</small>
+              </div>
+              <span class="pill warning" data-bot-active-status>待配置</span>
+            </button>
+            <button class="bot-action-button" id="open-bot-stats-settings" type="button" data-tone="warning">
+              <div>
+                <strong>邀请活动</strong>
+                <small>活动开关、日期、奖励划分和当前邀请排行榜</small>
+              </div>
+              <span class="pill warning" data-bot-stats-status>待配置</span>
+            </button>
+          </div>
+          <div class="bot-config-summary" id="bot-config-summary">等待配置加载</div>
+        </section>
+        <p class="source-message" id="bot-message" role="status" aria-live="polite"></p>
+
+        <dialog class="dialog" id="bot-settings-dialog">
+          <form class="panel wide" id="bot-settings-form" aria-label="机器人连接设置">
+            <div class="panel-heading">
+              <h2>连接设置</h2>
+              <button class="ghost-button" id="close-bot-settings" type="button">关闭</button>
+            </div>
+            <label class="switch-row">
+              <input name="botEnabled" type="checkbox" />
+              <span>启用机器人</span>
+            </label>
+            <label>
+              WebSocket 地址
+              <input name="botWsUrl" type="url" placeholder="ws://127.0.0.1:3001" />
+            </label>
+            <label>
+              Token
+              <input name="botToken" type="password" placeholder="NapCat access token" />
+            </label>
+            <label class="switch-row">
+              <input name="clearBotToken" type="checkbox" />
+              <span>清除已保存 Token</span>
+            </label>
+            <label>
+              目标 QQ 群
+              <input name="botGroupId" type="text" placeholder="群号" />
+            </label>
+            <label>
+              机器人 QQ
+              <input name="botUserId" type="text" placeholder="机器人 QQ 号" />
+            </label>
+            <button type="submit">保存连接设置</button>
+          </form>
+        </dialog>
+
+        <dialog class="dialog" id="bot-command-dialog">
+          <form class="panel wide" id="bot-command-settings-form" aria-label="机器人指令设置">
+            <div class="panel-heading">
+              <h2>指令管理</h2>
+              <button class="ghost-button" id="close-bot-command-settings" type="button">关闭</button>
+            </div>
+            <label class="switch-row">
+              <input name="mentionCommandEnabled" type="checkbox" checked />
+              <span>@Bot 指令总开关</span>
+            </label>
+            <div class="command-toggle-list">
+              <label class="switch-row">
+                <input name="commandHelpEnabled" type="checkbox" checked />
+                <span>help / 帮助</span>
+              </label>
+              <label class="switch-row">
+                <input name="commandRateEnabled" type="checkbox" checked />
+                <span>分组 / 倍率 / 当前分组倍率</span>
+              </label>
+              <label class="switch-row">
+                <input name="commandBindEnabled" type="checkbox" checked />
+                <span>绑定 &lt;邮箱&gt;</span>
+              </label>
+              <label class="switch-row">
+                <input name="commandUnbindEnabled" type="checkbox" checked />
+                <span>解绑</span>
+              </label>
+              <label class="switch-row">
+                <input name="commandInviteHelpEnabled" type="checkbox" checked />
+                <span>邀请</span>
+              </label>
+              <label class="switch-row">
+                <input name="commandInviteMineEnabled" type="checkbox" checked />
+                <span>我的邀请</span>
+              </label>
+              <label class="switch-row">
+                <input name="commandInviteLeaderboardEnabled" type="checkbox" checked />
+                <span>邀请排行</span>
+              </label>
+            </div>
+            <button type="submit">保存指令设置</button>
+          </form>
+        </dialog>
+
+        <dialog class="dialog" id="bot-active-dialog">
+          <form class="panel wide" id="bot-active-settings-form" aria-label="机器人主动私聊设置">
+            <div class="panel-heading">
+              <h2>主动私聊</h2>
+              <button class="ghost-button" id="close-bot-active-settings" type="button">关闭</button>
+            </div>
+            <label class="switch-row">
+              <input name="activePrivateMessageEnabled" type="checkbox" checked />
+              <span>启用主动私聊消息</span>
+            </label>
+            <p class="bot-dialog-note">当前用于邀请奖励兑换码私聊发送。</p>
+            <button type="submit">保存主动私聊设置</button>
+          </form>
+        </dialog>
+
+        <dialog class="dialog" id="bot-stats-dialog">
+          <form class="panel wide" id="bot-stats-settings-form" aria-label="机器人邀请活动设置">
+            <div class="panel-heading">
+              <h2>邀请活动</h2>
+              <button class="ghost-button" id="close-bot-stats-settings" type="button">关闭</button>
+            </div>
+            <label class="switch-row">
+              <input name="scheduledStatsEnabled" type="checkbox" checked />
+              <span>启用邀请活动</span>
+            </label>
+            <div class="invite-activity-grid">
+              <label>
+                活动开始日期
+                <input name="inviteActivityStartDate" type="date" />
+              </label>
+              <label>
+                活跃邀请奖励
+                <input name="inviteActivityActiveRewardAmount" type="number" min="0" step="0.01" placeholder="10" />
+              </label>
+              <label>
+                非活跃邀请奖励
+                <input name="inviteActivityInactiveRewardAmount" type="number" min="0" step="0.01" placeholder="2" />
+              </label>
+            </div>
+            <p class="bot-dialog-note">邀请活动开启后每 3 天结算一次，开始日期用于确定首个活动周期。</p>
+            <div class="panel-heading compact">
+              <h2>当前邀请排行榜</h2>
+              <button class="ghost-button" id="load-invite-activity" type="button">刷新排行榜</button>
+            </div>
+            <div class="invite-activity-status" id="invite-activity-status">
+              <article class="empty-state">刷新排行榜后展示当前周期和结算周期。</article>
+            </div>
+            <div class="invite-leaderboard" id="invite-activity-leaderboard">
+              <article class="empty-state">保存目标站配置后可刷新当前邀请排行榜。</article>
+            </div>
+            <button type="submit">保存邀请活动设置</button>
+          </form>
+        </dialog>
+      </section>
+
+      <section class="view" id="runtime-view" data-view="runtime" aria-label="运行日志界面">
+        <div class="collection-header">
+          <div>
+            <h2>运行日志</h2>
+            <p>查看 API、Worker 和 Bot 最近运行事件，定位配置、连接和定时任务异常。</p>
+          </div>
+          <button id="refresh-runtime-events" type="button">刷新运行日志</button>
+        </div>
+        <section class="panel runtime-panel" aria-label="运行日志">
+          <div class="panel-heading compact">
+            <h2>最近事件</h2>
+            <span class="pill neutral">Runtime</span>
+          </div>
+          <div class="runtime-events" id="runtime-events">
+            <article class="empty-state">暂无运行事件。</article>
+          </div>
+        </section>
       </section>
 
       <section class="view" id="sources-view" data-view="sources" aria-label="采集站界面">
@@ -268,6 +466,7 @@
           </form>
         </dialog>
       </section>
+        </div>
       </main>
     </div>
 
