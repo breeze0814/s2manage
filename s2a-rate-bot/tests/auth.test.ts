@@ -88,7 +88,7 @@ test("login validates the password without exposing which credential failed", as
 test("tampered session tokens are treated as unauthenticated", async () => {
   await withAuthService(async ({ auth }) => {
     const token = await auth.setup({ email: "admin@example.com", password: "secret-123" });
-    const tampered = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
+    const tampered = tamperSignature(token);
 
     assert.deepEqual(await auth.status(tampered), {
       initialized: true,
@@ -97,6 +97,14 @@ test("tampered session tokens are treated as unauthenticated", async () => {
     });
   });
 });
+
+function tamperSignature(token: string) {
+  const segments = token.split(".");
+  if (segments.length !== 3 || !segments[2]) throw new Error("测试会话 Token 格式无效");
+  const signature = segments[2];
+  const first = signature[0] === "a" ? "b" : "a";
+  return `${segments[0]}.${segments[1]}.${first}${signature.slice(1)}`;
+}
 
 test("session cookie options prevent script access and cross-site submission", async () => {
   const { session } = await loadAuthModules();
