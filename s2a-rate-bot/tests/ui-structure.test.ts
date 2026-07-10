@@ -71,6 +71,19 @@ test("responsive shell avoids horizontal page overflow", () => {
   assert.match(shell, /md:grid-cols-4/);
 });
 
+test("warm stone themes expose semantic tokens before hydration", () => {
+  const styles = source("src/app/globals.css");
+  const tailwind = source("tailwind.config.ts");
+  const layout = source("src/app/layout.tsx");
+
+  assert.match(styles, /--background:\s*240 235 227/);
+  assert.match(styles, /\.dark\s*\{[\s\S]*--background:\s*12 10 9/);
+  assert.match(styles, /--primary:\s*249 156 0/);
+  assert.match(tailwind, /surface:\s*"rgb\(var\(--surface\) \/ <alpha-value>\)"/);
+  assert.match(layout, /localStorage\.getItem\("s2a-rate-theme"\)/);
+  assert.match(layout, /prefers-color-scheme:\s*dark/);
+});
+
 test("subproject owns its ESLint configuration", () => {
   const configSource = source(".eslintrc.json");
   const config = JSON.parse(configSource) as { root?: boolean };

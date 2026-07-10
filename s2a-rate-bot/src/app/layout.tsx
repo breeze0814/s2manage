@@ -9,9 +9,19 @@ export const metadata: Metadata = {
   description: "Sub2API 倍率采集与调度管理端",
 };
 
+const THEME_SCRIPT = `
+(() => {
+  const stored = localStorage.getItem("s2a-rate-theme");
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const dark = stored === "dark" || (stored !== "light" && systemDark);
+  document.documentElement.classList.toggle("dark", dark);
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+})();`;
+
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} /></head>
       <body>
         <AuthDialog />
         <AppShell>{children}</AppShell>
