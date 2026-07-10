@@ -58,3 +58,6 @@ S2A-Manager-ubuntu-deploy*.zip
 /release-dist/
 /.release-stage/
 /.release-worker/
+
+# isolated development worktrees
+/.worktrees/
