@@ -19,18 +19,18 @@ export function GroupRuleCard({ group, sites, rates, pending, onSave, onPreview,
   const siteNames = useMemo(() => new Map(sites.map((site) => [site.id, site.name])), [sites]);
   const update = <K extends keyof RuleDraft>(key: K, value: RuleDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   return (
-    <article className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="space-y-5 rounded-xl border border-border bg-surface p-5 shadow-sm">
       <GroupHeader group={group} enabled={draft.enabled} onEnabled={(value) => update("enabled", value)} />
       <RuleFields draft={draft} update={update} />
       <BindingSelector rates={rates} names={siteNames} selected={draft.bindings} onChange={(bindings) => update("bindings", bindings)} />
-      {group.rule.lastError ? <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{group.rule.lastError}</p> : null}
+      {group.rule.lastError ? <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-300">{group.rule.lastError}</p> : null}
       <RuleActions groupId={group.id} pending={pending} enabled={draft.enabled} onSave={() => onSave(group.id, draft)} onPreview={() => onPreview(group.id)} onApply={() => onApply(group.id)} />
     </article>
   );
 }
 
 function GroupHeader({ group, enabled, onEnabled }: Readonly<{ group: TargetGroupView; enabled: boolean; onEnabled: (value: boolean) => void }>) {
-  return <div className="flex items-start justify-between gap-4"><div><h2 className="font-semibold">{group.name}</h2><p className="mt-1 text-sm text-slate-600">当前倍率 <span className="font-mono">{formatRate(group.rate_multiplier)}</span> · ID {group.id}</p></div><div className="flex items-center gap-2 text-sm"><span>{enabled ? "已启动" : "已暂停"}</span><Switch.Root checked={enabled} onCheckedChange={onEnabled} className="h-6 w-11 rounded-full bg-slate-300 p-0.5 data-[state=checked]:bg-slate-900"><Switch.Thumb className="block size-5 rounded-full bg-white shadow transition-transform data-[state=checked]:translate-x-5" /></Switch.Root></div></div>;
+  return <div className="flex items-start justify-between gap-4"><div><h2 className="font-semibold">{group.name}</h2><p className="mt-1 text-sm text-muted">当前倍率 <span className="font-mono">{formatRate(group.rate_multiplier)}</span> · ID {group.id}</p></div><div className="flex items-center gap-2 text-sm"><span>{enabled ? "已启动" : "已暂停"}</span><Switch.Root checked={enabled} onCheckedChange={onEnabled} className="h-6 w-11 rounded-full bg-border-strong p-0.5 data-[state=checked]:bg-primary"><Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" /></Switch.Root></div></div>;
 }
 
 function RuleFields({ draft, update }: Readonly<{ draft: RuleDraft; update: UpdateDraft }>) {
@@ -39,7 +39,7 @@ function RuleFields({ draft, update }: Readonly<{ draft: RuleDraft; update: Upda
 
 function BindingSelector({ rates, names, selected, onChange }: Readonly<{ rates: readonly SourceRateOption[]; names: ReadonlyMap<number, string>; selected: readonly SourceBinding[]; onChange: (bindings: SourceBinding[]) => void }>) {
   const selectedKeys = new Set(selected.map(bindingKey));
-  return <fieldset className="space-y-3"><legend className="text-sm font-medium text-slate-700">绑定采集源分组</legend><div className="grid max-h-56 gap-2 overflow-y-auto rounded-lg border border-slate-200 p-3 sm:grid-cols-2">{rates.length === 0 ? <p className="text-sm text-slate-500">尚无采集倍率，请先刷新采集站。</p> : rates.map((rate) => { const binding = { sourceSiteId: rate.sourceSiteId, sourceGroupId: rate.groupId }; const checked = selectedKeys.has(bindingKey(binding)); return <label key={bindingKey(binding)} className="flex items-start gap-2 rounded-lg p-2 hover:bg-slate-50"><input type="checkbox" checked={checked} onChange={() => onChange(toggleBinding(selected, binding, checked))} /><span className="text-sm"><strong>{rate.groupName}</strong><span className="block text-xs text-slate-500">{names.get(rate.sourceSiteId) ?? `#${rate.sourceSiteId}`} · {rate.effectiveRate}</span></span></label>; })}</div></fieldset>;
+  return <fieldset className="space-y-3"><legend className="text-sm font-medium text-foreground">绑定采集源分组</legend><div className="grid max-h-56 gap-2 overflow-y-auto rounded-lg border border-border p-3 sm:grid-cols-2">{rates.length === 0 ? <p className="text-sm text-muted">尚无采集倍率，请先刷新采集站。</p> : rates.map((rate) => { const binding = { sourceSiteId: rate.sourceSiteId, sourceGroupId: rate.groupId }; const checked = selectedKeys.has(bindingKey(binding)); return <label key={bindingKey(binding)} className="flex items-start gap-2 rounded-lg p-2 hover:bg-surface-muted"><input type="checkbox" checked={checked} onChange={() => onChange(toggleBinding(selected, binding, checked))} /><span className="text-sm"><strong>{rate.groupName}</strong><span className="block text-xs text-muted">{names.get(rate.sourceSiteId) ?? `#${rate.sourceSiteId}`} · {rate.effectiveRate}</span></span></label>; })}</div></fieldset>;
 }
 
 function RuleActions({ groupId, pending, enabled, onSave, onPreview, onApply }: Readonly<{ groupId: number; pending: string; enabled: boolean; onSave: () => void; onPreview: () => void; onApply: () => void }>) {
@@ -47,10 +47,10 @@ function RuleActions({ groupId, pending, enabled, onSave, onPreview, onApply }: 
   return <div className="grid gap-2 sm:grid-cols-3"><Button label="保存规则" icon={<Save className="size-4" />} pending={pending === `save:${groupId}`} disabled={busy} onClick={onSave} /><Button label="计算预览" icon={<Calculator className="size-4" />} pending={pending === `preview:${groupId}`} disabled={busy || !enabled} onClick={onPreview} /><Button label="立即应用" icon={<Play className="size-4" />} pending={pending === `apply:${groupId}`} disabled={busy || !enabled} onClick={onApply} primary /></div>;
 }
 
-function Button({ label, icon, pending, primary, ...button }: Readonly<{ label: string; icon: React.ReactNode; pending: boolean; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>>) { return <button type="button" {...button} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium disabled:opacity-50 ${primary ? "bg-slate-900 text-white" : "border border-slate-300 bg-white"}`}>{pending ? <Loader2 className="size-4 animate-spin" /> : icon}{label}</button>; }
-function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) { return <label className="block space-y-2 text-sm font-medium text-slate-700"><span>{label}</span>{children}</label>; }
+function Button({ label, icon, pending, primary, ...button }: Readonly<{ label: string; icon: React.ReactNode; pending: boolean; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>>) { return <button type="button" {...button} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium disabled:opacity-50 ${primary ? "bg-primary text-primary-foreground" : "border border-border-strong bg-surface"}`}>{pending ? <Loader2 className="size-4 animate-spin" /> : icon}{label}</button>; }
+function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) { return <label className="block space-y-2 text-sm font-medium text-foreground"><span>{label}</span>{children}</label>; }
 function NumberField({ value, onChange }: Readonly<{ value: string; onChange: (value: string) => void }>) { return <input required type="number" step="any" value={value} onChange={(event) => onChange(event.target.value)} className={controlClass()} />; }
-function controlClass() { return "min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:ring-2"; }
+function controlClass() { return "min-h-11 w-full rounded-lg border border-border-strong px-3 text-sm outline-none focus:ring-2"; }
 function formatRate(value: number | null | undefined) { return value === null || value === undefined ? "-" : String(value); }
 function bindingKey(binding: SourceBinding) { return `${binding.sourceSiteId}:${binding.sourceGroupId}`; }
 function toggleBinding(current: readonly SourceBinding[], binding: SourceBinding, checked: boolean) { return checked ? current.filter((item) => bindingKey(item) !== bindingKey(binding)) : [...current, binding]; }

@@ -96,6 +96,28 @@ test("application shell exposes an accessible persisted theme toggle", () => {
   assert.match(toggle, /Moon/);
 });
 
+test("components use semantic theme colors instead of slate utilities", () => {
+  const paths = [
+    "src/components/app-shell.tsx",
+    "src/components/auth-dialog.tsx",
+    "src/components/settings-form.tsx",
+    "src/components/worker-status-panel.tsx",
+    "src/components/accounts/accounts-dashboard.tsx",
+    "src/components/groups/group-rule-card.tsx",
+    "src/components/groups/groups-dashboard.tsx",
+    "src/components/sources/source-rates-table.tsx",
+    "src/components/sources/source-site-dialog.tsx",
+    "src/components/sources/source-site-table.tsx",
+    "src/components/sources/sources-dashboard.tsx",
+  ];
+  const components = paths.map(source).join("\n");
+
+  assert.doesNotMatch(components, /(?:bg|text|border|ring)-slate-/);
+  assert.match(components, /bg-surface/);
+  assert.match(components, /text-muted/);
+  assert.match(components, /border-border/);
+});
+
 test("subproject owns its ESLint configuration", () => {
   const configSource = source(".eslintrc.json");
   const config = JSON.parse(configSource) as { root?: boolean };

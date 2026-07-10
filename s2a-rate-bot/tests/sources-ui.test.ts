@@ -32,6 +32,9 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(table, /data-refresh-site/);
   assert.match(table, /data-edit-site/);
   assert.match(table, /data-delete-site/);
+  assert.match(dialog, /bg-stone-950\/60/);
+  assert.match(dialog, /bg-primary/);
+  assert.match(table, /bg-surface/);
 });
 
 test("aggregated source rate table exposes site, group, platform and rate columns", () => {

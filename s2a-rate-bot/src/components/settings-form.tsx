@@ -45,7 +45,7 @@ export function SettingsForm() {
     <section className="space-y-5">
       <header>
         <h1 className="text-xl font-semibold tracking-tight">全局配置</h1>
-        <p className="mt-1 text-sm text-slate-600">管理目标站、全局代理以及 Worker 运行参数。</p>
+        <p className="mt-1 text-sm text-muted">管理目标站、全局代理以及 Worker 运行参数。</p>
       </header>
       <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void saveSettings({ form, setForm, setPending, setFeedback }); }}>
         <TargetFields form={form} update={update} />
@@ -75,10 +75,10 @@ function TargetFields({ form, update }: SettingsFieldsProps) {
 function ProxyFields({ form, update }: SettingsFieldsProps) {
   return (
     <SettingsCard title="全局代理" description="启用后，目标站和采集站请求统一使用此代理。">
-      <div className="flex min-h-11 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3">
-        <span className="text-sm font-medium text-slate-700">启用代理</span>
-        <Switch.Root checked={form.proxyEnabled} onCheckedChange={(value) => update("proxyEnabled", value)} className="h-6 w-11 rounded-full bg-slate-300 p-0.5 data-[state=checked]:bg-slate-900">
-          <Switch.Thumb className="block size-5 rounded-full bg-white shadow transition-transform data-[state=checked]:translate-x-5" />
+      <div className="flex min-h-11 items-center justify-between gap-4 rounded-lg border border-border px-3">
+        <span className="text-sm font-medium text-foreground">启用代理</span>
+        <Switch.Root checked={form.proxyEnabled} onCheckedChange={(value) => update("proxyEnabled", value)} className="h-6 w-11 rounded-full bg-border-strong p-0.5 data-[state=checked]:bg-primary">
+          <Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" />
         </Switch.Root>
       </div>
       <Field label="代理地址" hint="支持 http:// 和 https://。">
@@ -103,8 +103,8 @@ function WorkerFields({ form, update }: SettingsFieldsProps) {
 
 function SettingsCard({ title, description, children }: Readonly<{ title: string; description: string; children: React.ReactNode }>) {
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-slate-600">{description}</p></div>
+    <div className="space-y-4 rounded-xl border border-border bg-surface p-5 shadow-sm">
+      <div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-muted">{description}</p></div>
       {children}
     </div>
   );
@@ -112,27 +112,27 @@ function SettingsCard({ title, description, children }: Readonly<{ title: string
 
 function Field({ label, hint, children }: Readonly<{ label: string; hint?: string; children: React.ReactNode }>) {
   return (
-    <label className="block space-y-2 text-sm font-medium text-slate-700">
-      <span>{label}</span>{children}{hint ? <span className="block text-xs font-normal text-slate-500">{hint}</span> : null}
+    <label className="block space-y-2 text-sm font-medium text-foreground">
+      <span>{label}</span>{children}{hint ? <span className="block text-xs font-normal text-muted">{hint}</span> : null}
     </label>
   );
 }
 
 function TextInput(input: Readonly<{ value: string; onChange: (value: string) => void; type?: string; placeholder?: string; autoComplete?: string; disabled?: boolean }>) {
-  return <input {...input} onChange={(event) => input.onChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 outline-none ring-slate-900 focus:ring-2 disabled:bg-slate-100" />;
+  return <input {...input} onChange={(event) => input.onChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-border-strong px-3 outline-none ring-primary focus:ring-2 disabled:bg-surface-muted" />;
 }
 
 function NumberInput({ value, onChange }: Readonly<{ value: string; onChange: (value: string) => void }>) {
-  return <input type="number" min="1" step="1" required value={value} onChange={(event) => onChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 outline-none ring-slate-900 focus:ring-2" />;
+  return <input type="number" min="1" step="1" required value={value} onChange={(event) => onChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-border-strong px-3 outline-none ring-primary focus:ring-2" />;
 }
 
 function ActionBar({ pending, onTest }: Readonly<{ pending: "save" | "test" | null; onTest: () => void }>) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-      <button type="button" onClick={onTest} disabled={pending !== null} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium disabled:opacity-50">
+      <button type="button" onClick={onTest} disabled={pending !== null} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium disabled:opacity-50">
         {pending === "test" ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}测试目标站
       </button>
-      <button type="submit" disabled={pending !== null} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-50">
+      <button type="submit" disabled={pending !== null} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">
         {pending === "save" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}保存配置
       </button>
     </div>
@@ -141,11 +141,11 @@ function ActionBar({ pending, onTest }: Readonly<{ pending: "save" | "test" | nu
 
 function FeedbackMessage({ feedback }: Readonly<{ feedback: Feedback }>) {
   if (!feedback.message) return null;
-  return <p role="status" className={feedback.tone === "error" ? "text-sm text-red-600" : "text-sm text-emerald-700"}>{feedback.message}</p>;
+  return <p role="status" className={feedback.tone === "error" ? "text-sm text-red-600 dark:text-red-400" : "text-sm text-emerald-700 dark:text-emerald-300"}>{feedback.message}</p>;
 }
 
 function LoadingSettings() {
-  return <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 className="size-4 animate-spin" />正在读取配置...</div>;
+  return <div className="flex items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" />正在读取配置...</div>;
 }
 
 async function loadSettings(input: StateActions) {

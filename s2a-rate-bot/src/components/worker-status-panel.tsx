@@ -23,14 +23,14 @@ export function WorkerStatusPanel() {
   const [error, setError] = useState("");
   useEffect(() => { void loadWorkerStatus({ setRun, setLoading, setError }); }, []);
   return (
-    <section className="space-y-3 rounded-lg bg-slate-50 p-4" aria-labelledby="worker-status-title">
+    <section className="space-y-3 rounded-lg bg-surface-muted p-4" aria-labelledby="worker-status-title">
       <div className="flex items-center justify-between gap-3">
-        <div><h3 id="worker-status-title" className="text-sm font-semibold text-slate-800">最近运行</h3><p className="text-xs text-slate-500">来自 Worker 持久化运行摘要。</p></div>
-        <button type="button" aria-label="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setError })} disabled={loading} className="flex size-11 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-50">
+        <div><h3 id="worker-status-title" className="text-sm font-semibold text-foreground">最近运行</h3><p className="text-xs text-muted">来自 Worker 持久化运行摘要。</p></div>
+        <button type="button" aria-label="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setError })} disabled={loading} className="flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface disabled:opacity-50">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
         </button>
       </div>
-      {error ? <p role="alert" className="text-sm text-red-700">读取失败：{error}</p> : loading ? <p className="text-sm text-slate-600">正在读取 Worker 状态...</p> : run ? <RunSummary run={run} /> : <p className="text-sm text-slate-600">尚无 Worker 运行记录。</p>}
+      {error ? <p role="alert" className="text-sm text-red-700 dark:text-red-300">读取失败：{error}</p> : loading ? <p className="text-sm text-muted">正在读取 Worker 状态...</p> : run ? <RunSummary run={run} /> : <p className="text-sm text-muted">尚无 Worker 运行记录。</p>}
     </section>
   );
 }
@@ -38,7 +38,7 @@ export function WorkerStatusPanel() {
 function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
   return (
     <div className="space-y-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2"><StatusBadge status={run.status} /><span className="text-xs text-slate-500">开始 {formatTime(run.startedAt)} · 完成 {formatTime(run.finishedAt)}</span></div>
+      <div className="flex flex-wrap items-center gap-2"><StatusBadge status={run.status} /><span className="text-xs text-muted">开始 {formatTime(run.startedAt)} · 完成 {formatTime(run.finishedAt)}</span></div>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Metric label="采集成功" value={run.collectedSources} />
         <Metric label="采集跳过" value={run.skippedSources} />
@@ -47,18 +47,18 @@ function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
         <Metric label="规则跳过" value={run.skippedGroups} />
         <Metric label="规则失败" value={run.failedGroups} />
       </dl>
-      {run.errors.length ? <ul className="space-y-1 text-xs text-red-700">{run.errors.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}</ul> : null}
+      {run.errors.length ? <ul className="space-y-1 text-xs text-red-700 dark:text-red-300">{run.errors.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}</ul> : null}
     </div>
   );
 }
 
 function Metric({ label, value }: Readonly<{ label: string; value: number }>) {
-  return <div className="rounded-md border border-slate-200 bg-white px-3 py-2"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 font-medium tabular-nums text-slate-800">{value}</dd></div>;
+  return <div className="rounded-md border border-border bg-surface px-3 py-2"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-medium tabular-nums text-foreground">{value}</dd></div>;
 }
 
 function StatusBadge({ status }: Readonly<{ status: WorkerRun["status"] }>) {
   const labels = { running: "运行中", success: "成功", partial: "部分失败", failed: "失败" } as const;
-  const tones = { running: "bg-blue-100 text-blue-800", success: "bg-emerald-100 text-emerald-800", partial: "bg-amber-100 text-amber-800", failed: "bg-red-100 text-red-800" } as const;
+  const tones = { running: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300", success: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300", partial: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", failed: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300" } as const;
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${tones[status]}`}>{labels[status]}</span>;
 }
 
