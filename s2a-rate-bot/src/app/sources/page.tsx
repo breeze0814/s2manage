@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "../../components/page-placeholder";
+import { SourcesDashboard } from "../../components/sources/sources-dashboard";
 
 export default function SourcesPage() {
-  return <PagePlaceholder title="倍率采集" description="管理 Sub2API 与 New API 采集站。" />;
+  return <SourcesDashboard />;
 }

@@ -2,7 +2,6 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { Loader2, LockKeyhole } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 
 type AuthMode = "loading" | "setup" | "login" | "error" | "ready";
@@ -93,7 +92,6 @@ function CredentialsForm({ mode, onAuthenticated }: Readonly<{
   mode: Exclude<AuthMode, "loading" | "error" | "ready">;
   onAuthenticated: () => void;
 }>) {
-  const router = useRouter();
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -114,7 +112,7 @@ function CredentialsForm({ mode, onAuthenticated }: Readonly<{
       return;
     }
     onAuthenticated();
-    router.refresh();
+    window.location.reload();
   }
 
   return (
