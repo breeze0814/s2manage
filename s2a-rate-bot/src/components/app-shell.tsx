@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Gauge, RadioTower, Settings, Users } from "lucide-react";
+import { ThemeToggle } from "./theme-toggle";
 
 const navigation = [
   { href: "/groups", label: "分组倍率", icon: Gauge },
@@ -16,17 +17,18 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
 
   return (
-    <div className="min-h-dvh">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+    <div className="min-h-dvh text-foreground">
+      <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <p className="text-lg font-semibold tracking-tight">S2A Rate Bot</p>
-              <p className="text-sm text-slate-500">倍率采集与自动调度</p>
+              <p className="text-sm text-muted">倍率采集与自动调度</p>
             </div>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
-              Worker 未连接
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full border border-border bg-surface-muted px-3 py-1 text-xs text-muted">Worker 未连接</span>
+              <ThemeToggle />
+            </div>
           </div>
           <nav aria-label="主导航" className="grid grid-cols-2 gap-2 md:grid-cols-4">
             {navigation.map((item) => {
@@ -39,8 +41,8 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
                   aria-current={active ? "page" : undefined}
                   className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${
                     active
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
+                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                      : "border-border bg-surface/80 text-muted hover:border-border-strong hover:bg-surface hover:text-foreground"
                   }`}
                 >
                   <Icon className="size-4" aria-hidden="true" />

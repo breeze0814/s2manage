@@ -84,6 +84,18 @@ test("warm stone themes expose semantic tokens before hydration", () => {
   assert.match(layout, /prefers-color-scheme:\s*dark/);
 });
 
+test("application shell exposes an accessible persisted theme toggle", () => {
+  const shell = source("src/components/app-shell.tsx");
+  const toggle = source("src/components/theme-toggle.tsx");
+
+  assert.match(shell, /ThemeToggle/);
+  assert.match(toggle, /aria-label="切换明暗主题"/);
+  assert.match(toggle, /localStorage\.setItem\(THEME_KEY/);
+  assert.match(toggle, /document\.documentElement\.classList\.toggle\("dark"/);
+  assert.match(toggle, /Sun/);
+  assert.match(toggle, /Moon/);
+});
+
 test("subproject owns its ESLint configuration", () => {
   const configSource = source(".eslintrc.json");
   const config = JSON.parse(configSource) as { root?: boolean };
