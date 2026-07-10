@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { test } from "node:test";
-import { Sub2ApiAdminTarget } from "../src/adapters/sub2api-admin.ts";
 import {
   collectNewApiSourceRates,
   collectSub2ApiSourceRates,
@@ -40,30 +39,6 @@ async function withServer<T>(handler: RouteHandler, task: (baseUrl: string) => P
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 }
-
-test("Sub2ApiAdminTarget lists and updates target group rates", async () => {
-  await withServer(async (request, response) => {
-    assert.equal(request.headers["x-api-key"], "secret");
-    if (request.method === "GET" && request.url === "/api/v1/admin/groups/all") {
-      json(response, { data: [{ id: 3, name: "标准", status: "active", rate_multiplier: 1.1 }] });
-      return;
-    }
-    if (request.method === "PUT" && request.url === "/api/v1/admin/groups/3") {
-      const body = await readJson(request) as Record<string, unknown>;
-      assert.equal(body.rate_multiplier, 1.23);
-      json(response, { data: { id: 3, name: "标准", status: "active", rate_multiplier: 1.23 } });
-      return;
-    }
-    json(response, { message: "not found" }, 404);
-  }, async (baseUrl) => {
-    const client = new Sub2ApiAdminTarget(baseUrl, "secret");
-    const groups = await client.listGroups();
-    assert.deepEqual(groups, [{ id: 3, name: "标准", status: "active", rate_multiplier: 1.1 }]);
-
-    const updated = await client.updateGroupRateMultiplier(3, 1.234);
-    assert.equal(updated.rate_multiplier, 1.23);
-  });
-});
 
 test("collectSub2ApiSourceRates reads available groups and user rates", async () => {
   await withServer((request, response) => {

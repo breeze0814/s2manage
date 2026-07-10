@@ -3,6 +3,7 @@
 import * as Switch from "@radix-ui/react-switch";
 import { Loader2, PlugZap, Save } from "lucide-react";
 import { useEffect, useState } from "react";
+import { WorkerStatusPanel } from "./worker-status-panel";
 
 type SettingsFormState = {
   targetName: string;
@@ -95,7 +96,7 @@ function WorkerFields({ form, update }: SettingsFieldsProps) {
         <Field label="请求超时（秒）"><NumberInput value={form.workerTimeoutSeconds} onChange={(value) => update("workerTimeoutSeconds", value)} /></Field>
         <Field label="最大并发数"><NumberInput value={form.workerConcurrency} onChange={(value) => update("workerConcurrency", value)} /></Field>
       </div>
-      <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">尚无 Worker 运行记录。</p>
+      <WorkerStatusPanel />
     </SettingsCard>
   );
 }

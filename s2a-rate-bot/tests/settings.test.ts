@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -123,8 +123,15 @@ test("settings API, target test API, and settings form are present", () => {
     "src/app/api/settings/route.ts",
     "src/app/api/settings/test-target/route.ts",
     "src/components/settings-form.tsx",
+    "src/components/worker-status-panel.tsx",
   ];
   for (const path of paths) {
     assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
   }
+  const form = readFileSync(new URL("src/components/settings-form.tsx", PROJECT_ROOT), "utf8");
+  const status = readFileSync(new URL("src/components/worker-status-panel.tsx", PROJECT_ROOT), "utf8");
+  assert.match(form, /WorkerStatusPanel/);
+  assert.match(status, /\/api\/worker\/status/);
+  assert.match(status, /最近运行/);
+  assert.match(status, /collectedSources/);
 });

@@ -17,8 +17,3 @@ export function ratesEqual(left: number, right: number) {
   if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
   return normalizeRateMultiplier(left) === normalizeRateMultiplier(right);
 }
-
-export function formatRateMultiplier(value: number) {
-  if (!Number.isFinite(value)) return "-";
-  return normalizeRateMultiplier(value).toFixed(RATE_DECIMAL_PLACES).replace(/\.?0+$/, "");
-}
