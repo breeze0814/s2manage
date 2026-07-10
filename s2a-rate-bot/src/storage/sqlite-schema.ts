@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const CREATE_TABLES = [
   `CREATE TABLE IF NOT EXISTS schema_meta (
@@ -70,6 +70,26 @@ const CREATE_TABLES = [
     collected_at TEXT NOT NULL,
     PRIMARY KEY (site_id, group_id),
     FOREIGN KEY (site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS target_group_rules (
+    group_id INTEGER PRIMARY KEY,
+    group_name TEXT NOT NULL,
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    rule_version INTEGER NOT NULL,
+    rule_type TEXT NOT NULL,
+    parameters_json TEXT NOT NULL,
+    current_rate REAL,
+    last_applied_at TEXT,
+    last_error TEXT,
+    updated_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS target_group_bindings (
+    group_id INTEGER NOT NULL,
+    source_site_id INTEGER NOT NULL,
+    source_group_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, source_site_id, source_group_id),
+    FOREIGN KEY (group_id) REFERENCES target_group_rules(group_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
   ) STRICT`,
   `CREATE TABLE IF NOT EXISTS target_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
