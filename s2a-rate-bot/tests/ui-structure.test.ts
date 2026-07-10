@@ -133,3 +133,12 @@ test("subproject ignores generated Next.js and dependency artifacts", () => {
   assert.match(ignore, /\.next\//);
   assert.match(ignore, /data\/\*\.db/);
 });
+
+test("development and production builds use isolated Next.js output directories", () => {
+  const config = source("next.config.mjs");
+  const ignore = source(".gitignore");
+
+  assert.match(config, /process\.env\.NODE_ENV === "development"/);
+  assert.match(config, /distDir:\s*development \? "\.next-dev" : "\.next"/);
+  assert.match(ignore, /\.next-dev\//);
+});
