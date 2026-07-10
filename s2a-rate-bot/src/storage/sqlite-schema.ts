@@ -1,11 +1,18 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const CREATE_TABLES = [
   `CREATE TABLE IF NOT EXISTS schema_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS admin_users (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   ) STRICT`,
   `CREATE TABLE IF NOT EXISTS target_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),

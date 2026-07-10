@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { AuthDialog } from "../components/auth-dialog";
 import { AppShell } from "../components/app-shell";
 import "./globals.css";
 
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="zh-CN">
       <body>
+        <AuthDialog />
         <AppShell>{children}</AppShell>
       </body>
     </html>
