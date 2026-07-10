@@ -1,51 +1,22 @@
-import { readRuntimeConfig } from "../shared/config.ts";
-import type { AppStorage } from "../storage/app-config.ts";
-import { createSqliteAppStorage } from "../storage/sqlite-app-storage.ts";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { runSub2WorkerCycle, type Sub2WorkerSummary } from "./sub2-cycle.ts";
+import { getRuntimeWorkerService } from "../server/worker/runtime.ts";
+import type { WorkerCycleResult } from "../server/worker/service.ts";
 
 let stopping = false;
 let wakeDelay: (() => void) | null = null;
 
 export async function runWorker() {
-  const config = readRuntimeConfig();
-  if (!config.databaseUrl) {
-    throw new Error("DATABASE_URL is required before the rate worker can run");
-  }
-  const storage = createSqliteAppStorage(config.databaseUrl);
+  const worker = getRuntimeWorkerService();
   const runOnce = process.env.S2A_WORKER_ONCE === "1";
-  let intervalSeconds = await workerIntervalSeconds(storage);
   try {
-    console.log(`[worker] sub2 worker started, interval=${intervalSeconds}s, once=${runOnce ? "yes" : "no"}`);
-    await storage.recordRuntimeEvent({
-      service: "worker",
-      eventType: "started",
-      status: "running",
-      message: `worker started, interval=${intervalSeconds}s`,
-      metadata: { runOnce },
-    });
+    console.log(`[worker] started, once=${runOnce ? "yes" : "no"}`);
     do {
-      const summary = await runSub2WorkerCycle({ storage });
-      logSummary(summary);
-      await storage.recordRuntimeEvent({
-        service: "worker",
-        eventType: "cycle",
-        status: summary.errors.length > 0 ? "failed" : "success",
-        message: workerSummaryMessage(summary),
-        metadata: {
-          collectedSources: summary.collectedSources,
-          failedSources: summary.failedSources,
-          updatedGroups: summary.updatedGroups,
-          failedGroups: summary.failedGroups,
-          errors: summary.errors.slice(0, 5),
-        },
-      });
-      intervalSeconds = await workerIntervalSeconds(storage);
-      if (!runOnce && !stopping) await delay(intervalSeconds * 1000);
+      logSummary(await worker.runCycle());
+      if (!runOnce && !stopping) await delay((await worker.intervalSeconds()) * 1_000);
     } while (!runOnce && !stopping);
   } finally {
-    storage.close();
+    worker.close();
   }
 }
 
@@ -58,45 +29,31 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   });
 }
 
-export async function workerIntervalSeconds(storage: AppStorage) {
-  const config = await storage.getAppConfig();
-  const interval = Number(config.worker.intervalSeconds);
-  if (!Number.isInteger(interval) || interval <= 0) {
-    throw new Error(`Invalid worker intervalSeconds: ${String(config.worker.intervalSeconds)}`);
+function logSummary(summary: WorkerCycleResult) {
+  if (summary.status === "skipped") {
+    console.warn(`[worker] cycle skipped: ${summary.reason}`);
+    return;
   }
-  return interval;
-}
-
-function logSummary(summary: Sub2WorkerSummary) {
   console.log([
-    `[worker] cycle completed`,
+    `[worker] cycle ${summary.status}`,
     `collected=${summary.collectedSources}`,
     `sourceFailed=${summary.failedSources}`,
-    `updatedGroups=${summary.updatedGroups}`,
+    `appliedGroups=${summary.appliedGroups}`,
     `groupFailed=${summary.failedGroups}`,
   ].join(", "));
   for (const error of summary.errors) console.error(`[worker] ${error}`);
 }
 
-function workerSummaryMessage(summary: Sub2WorkerSummary) {
-  return [
-    `collected=${summary.collectedSources}`,
-    `sourceFailed=${summary.failedSources}`,
-    `updatedGroups=${summary.updatedGroups}`,
-    `groupFailed=${summary.failedGroups}`,
-  ].join(", ");
-}
-
 function delay(ms: number) {
-  return new Promise<void>((resolve) => {
+  return new Promise<void>((resolveDelay) => {
     const timer = setTimeout(() => {
       wakeDelay = null;
-      resolve();
+      resolveDelay();
     }, ms);
     wakeDelay = () => {
       clearTimeout(timer);
       wakeDelay = null;
-      resolve();
+      resolveDelay();
     };
   });
 }
