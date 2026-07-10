@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const CREATE_TABLES = [
   `CREATE TABLE IF NOT EXISTS schema_meta (
@@ -90,6 +90,19 @@ const CREATE_TABLES = [
     PRIMARY KEY (group_id, source_site_id, source_group_id),
     FOREIGN KEY (group_id) REFERENCES target_group_rules(group_id) ON DELETE CASCADE,
     FOREIGN KEY (source_site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS worker_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status TEXT NOT NULL,
+    collected_sources INTEGER NOT NULL,
+    skipped_sources INTEGER NOT NULL,
+    failed_sources INTEGER NOT NULL,
+    applied_groups INTEGER NOT NULL,
+    skipped_groups INTEGER NOT NULL,
+    failed_groups INTEGER NOT NULL,
+    errors_json TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT
   ) STRICT`,
   `CREATE TABLE IF NOT EXISTS target_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
