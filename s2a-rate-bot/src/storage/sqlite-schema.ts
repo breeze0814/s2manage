@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const CREATE_TABLES = [
   `CREATE TABLE IF NOT EXISTS schema_meta (
@@ -12,6 +12,18 @@ const CREATE_TABLES = [
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS app_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    target_name TEXT NOT NULL,
+    target_base_url TEXT NOT NULL,
+    target_admin_key_enc TEXT NOT NULL,
+    proxy_enabled INTEGER NOT NULL CHECK (proxy_enabled IN (0, 1)),
+    proxy_url TEXT NOT NULL,
+    worker_interval_seconds INTEGER NOT NULL,
+    worker_timeout_seconds INTEGER NOT NULL,
+    worker_concurrency INTEGER NOT NULL,
     updated_at TEXT NOT NULL
   ) STRICT`,
   `CREATE TABLE IF NOT EXISTS target_settings (

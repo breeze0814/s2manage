@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { getRuntimeAuthService } from "./runtime.ts";
@@ -29,4 +30,19 @@ export function authErrorResponse(error: unknown, status: number) {
 
 export function runtimeAuth() {
   return getRuntimeAuthService();
+}
+
+export async function requireAuthenticatedRequest(request: NextRequest) {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const status = await runtimeAuth().status(token);
+  if (!status.authenticated) throw new AuthRequiredError();
+  return status;
+}
+
+export class AuthRequiredError extends Error {
+  readonly status = 401;
+
+  constructor() {
+    super("未登录或登录已失效");
+  }
 }

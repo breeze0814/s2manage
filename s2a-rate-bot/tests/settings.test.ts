@@ -1,0 +1,130 @@
+import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { test } from "node:test";
+import * as httpClient from "../src/adapters/http-client.ts";
+
+const PROJECT_ROOT = new URL("../", import.meta.url);
+const APP_SECRET = "settings-secret-with-at-least-24-characters";
+
+async function loadSettingsModules() {
+  const paths = [
+    "src/server/crypto.ts",
+    "src/server/settings/service.ts",
+    "src/server/settings/store.ts",
+  ];
+  for (const path of paths) {
+    assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
+  }
+  const [crypto, service, store] = await Promise.all([
+    import("../src/server/crypto.ts"),
+    import("../src/server/settings/service.ts"),
+    import("../src/server/settings/store.ts"),
+  ]);
+  return { crypto, service, store };
+}
+
+async function withTempDatabase<T>(task: (databaseUrl: string, databasePath: string) => Promise<T>) {
+  const directory = await mkdtemp(join(tmpdir(), "s2a-rate-settings-"));
+  const databasePath = join(directory, "app.db");
+  try {
+    return await task(`file:${databasePath}`, databasePath);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function settingsInput() {
+  return {
+    target: { name: "Main", baseUrl: "https://target.example.com", adminApiKey: "target-admin-secret" },
+    proxy: { enabled: true, proxyUrl: "http://127.0.0.1:7890" },
+    worker: { intervalSeconds: 600, timeoutSeconds: 25, concurrency: 3 },
+  } as const;
+}
+
+test("settings service encrypts the target Admin Key at rest", async () => {
+  await withTempDatabase(async (databaseUrl, databasePath) => {
+    const modules = await loadSettingsModules();
+    const store = modules.store.createSqliteSettingsStore(databaseUrl);
+    const service = modules.service.createSettingsService({
+      store,
+      cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET),
+    });
+    try {
+      await service.save(settingsInput());
+      assert.deepEqual(await service.get(), settingsInput());
+    } finally {
+      store.close();
+    }
+
+    const database = new DatabaseSync(databasePath);
+    const row = database.prepare("SELECT target_admin_key_enc FROM app_settings WHERE id = 1").get() as { target_admin_key_enc: string };
+    database.close();
+    assert.notEqual(row.target_admin_key_enc, "target-admin-secret");
+    assert.match(row.target_admin_key_enc, /^enc:v1:/);
+  });
+});
+
+test("enabled proxy requires an explicit proxy URL", async () => {
+  await withTempDatabase(async (databaseUrl) => {
+    const modules = await loadSettingsModules();
+    const store = modules.store.createSqliteSettingsStore(databaseUrl);
+    const service = modules.service.createSettingsService({
+      store,
+      cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET),
+    });
+    const input = { ...settingsInput(), proxy: { enabled: true, proxyUrl: "" } };
+
+    await assert.rejects(service.save(input), /启用代理时必须填写代理地址/);
+    store.close();
+  });
+});
+
+test("worker configuration rejects non-positive scheduling values", async () => {
+  await withTempDatabase(async (databaseUrl) => {
+    const modules = await loadSettingsModules();
+    const store = modules.store.createSqliteSettingsStore(databaseUrl);
+    const service = modules.service.createSettingsService({
+      store,
+      cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET),
+    });
+    const input = { ...settingsInput(), worker: { intervalSeconds: 0, timeoutSeconds: 0, concurrency: 0 } };
+
+    await assert.rejects(service.save(input));
+    store.close();
+  });
+});
+
+test("shared HTTP client applies the configured request timeout", async () => {
+  assert.equal(typeof httpClient.createJsonHttpClient, "function");
+  const server = createServer((_request, response) => {
+    setTimeout(() => response.end(JSON.stringify({ ok: true })), 80);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("test server did not bind");
+  try {
+    const client = httpClient.createJsonHttpClient({ timeoutMs: 10, proxyUrl: null });
+    await assert.rejects(
+      client.request({ url: `http://127.0.0.1:${address.port}`, method: "GET", headers: {} }),
+      /abort|timeout/i,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("settings API, target test API, and settings form are present", () => {
+  const paths = [
+    "src/app/api/settings/route.ts",
+    "src/app/api/settings/test-target/route.ts",
+    "src/components/settings-form.tsx",
+  ];
+  for (const path of paths) {
+    assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
+  }
+});
