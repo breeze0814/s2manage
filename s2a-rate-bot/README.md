@@ -19,11 +19,12 @@
 
 ## 环境变量
 
-复制 `.env.example` 为 `.env.local`，供 Next.js Web 进程读取；至少设置 `APP_SECRET`：
+复制 `.env.example` 为 `.env`，供 Next.js Web、Worker 和 PM2 共同读取；至少设置 `APP_SECRET`：
 
 ```bash
 APP_SECRET=replace-with-a-random-secret
 DATABASE_URL=file:./data/s2a-rate-bot.db
+PORT=18074
 ```
 
 `APP_SECRET` 同时用于会话签名和敏感配置加密。生产环境可使用 `openssl rand -hex 32` 生成随机值；更换该值后，已有密文配置无法解密，需要重新录入。
@@ -39,6 +40,18 @@ npm run dev
 
 管理端默认地址为 `http://127.0.0.1:18074`。首次访问时，登录对话框会切换到管理员初始化流程。
 
+可通过 `PORT` 手动指定 Web 端口，例如：
+
+```bash
+PORT=19000 npm run dev
+```
+
+PowerShell：
+
+```powershell
+$env:PORT='19000'; npm run dev
+```
+
 初始化后依次完成：
 
 1. 在“全局配置”中保存目标站、代理和 Worker 参数。
@@ -48,7 +61,7 @@ npm run dev
 
 ## Worker
 
-Worker 是独立常驻进程，与 Next.js Web 进程共享同一个 SQLite 数据库和环境变量。`tsx` 不会自动读取 Next.js 的 `.env.local`，启动 Worker 的 Shell 或进程管理器必须显式注入 `APP_SECRET` 和 `DATABASE_URL`：
+Worker 是独立常驻进程，与 Next.js Web 进程共享同一个 SQLite 数据库和 `.env` 配置：
 
 ```bash
 npm run worker
@@ -85,6 +98,38 @@ npm run worker
 ```
 
 Web 与 Worker 必须使用相同的 `APP_SECRET` 和 `DATABASE_URL`。部署时应持久化 `data/` 目录，并在备份 SQLite 前停止写入进程或使用 SQLite 在线备份机制。
+
+### PM2 部署
+
+项目提供 Web 与 Worker 双进程 PM2 配置。生产服务器准备 `.env` 后执行：
+
+```bash
+npm ci
+npm run build
+npm install -g pm2
+npm run pm2:start
+pm2 save
+pm2 startup
+```
+
+PM2 默认使用端口 `18074`。临时指定端口：
+
+```bash
+PORT=19000 npm run pm2:start
+```
+
+也可以把 `PORT=19000` 写入项目 `.env`，然后正常执行 `npm run pm2:start`。
+
+常用管理命令：
+
+```bash
+npm run pm2:reload
+npm run pm2:stop
+pm2 status
+pm2 logs
+```
+
+`pm2:start` 会安装并配置 `pm2-logrotate`：单个 PM2 输出日志达到约 `2 MB` 时轮转，保留 5 份并压缩。系统业务日志 `external-api.log` 和 `worker.log` 同样在约 `2 MB` 时自动轮转，并保留最近 5 份归档。
 
 ## 验证命令
 

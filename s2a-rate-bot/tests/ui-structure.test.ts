@@ -19,9 +19,9 @@ test("package exposes a Next.js application toolchain", () => {
     dependencies?: Record<string, string>;
   };
 
-  assert.equal(pkg.scripts?.dev, "next dev -p 18074");
+  assert.equal(pkg.scripts?.dev, "node scripts/start-next.cjs dev");
   assert.equal(pkg.scripts?.build, "next build");
-  assert.equal(pkg.scripts?.start, "next start -p 18074");
+  assert.equal(pkg.scripts?.start, "node scripts/start-next.cjs start");
   assert.ok(pkg.dependencies?.next);
   assert.ok(pkg.dependencies?.react);
   assert.ok(pkg.dependencies?.["react-dom"]);
