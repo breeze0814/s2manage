@@ -10,7 +10,7 @@ export type CollectionStore = {
   readonly get: (id: number) => CollectionSiteStored | null;
   readonly list: () => CollectionSiteStored[];
   readonly delete: (id: number) => void;
-  readonly recordSuccess: (siteId: number, overview: CollectionOverview, startedAt: string) => void;
+  readonly recordSuccess: (siteId: number, overview: CollectionOverview, startedAt: string, credentials?: EncryptedCredentials) => void;
   readonly recordFailure: (siteId: number, error: string, startedAt: string) => void;
   readonly rates: (siteId?: number) => SourceRateSnapshot[];
   readonly close: () => void;
@@ -18,6 +18,7 @@ export type CollectionStore = {
 
 type StatusFields = "accountLabel" | "balance" | "lastRunAt" | "lastSuccessAt" | "lastStatus" | "lastError" | "consecutiveFailures";
 type SiteWrite = Omit<CollectionSiteStored, "id" | StatusFields>;
+export type EncryptedCredentials = { readonly accessTokenEnc?: string; readonly refreshTokenEnc?: string };
 
 export function createSqliteCollectionStore(databaseUrl: string): CollectionStore {
   const path = sqlitePath(databaseUrl);
@@ -34,7 +35,7 @@ function collectionStore(database: DatabaseSync): CollectionStore {
     get: (id) => readSite(database, id),
     list: () => listSites(database),
     delete: (id) => deleteSite(database, id),
-    recordSuccess: (siteId, overview, startedAt) => recordSuccess(database, siteId, overview, startedAt),
+    recordSuccess: (siteId, overview, startedAt, credentials) => recordSuccess(database, siteId, overview, startedAt, credentials),
     recordFailure: (siteId, error, startedAt) => recordFailure(database, siteId, error, startedAt),
     rates: (siteId) => readRates(database, siteId),
     close: () => database.close(),
@@ -91,12 +92,15 @@ function deleteSite(database: DatabaseSync, id: number) {
   if (result.changes !== 1) throw new Error(`采集站不存在: ${id}`);
 }
 
-function recordSuccess(database: DatabaseSync, siteId: number, overview: CollectionOverview, startedAt: string) {
+function recordSuccess(database: DatabaseSync, siteId: number, overview: CollectionOverview, startedAt: string, credentials?: EncryptedCredentials) {
   const finishedAt = nowIso();
   transaction(database, () => {
     database.prepare(`UPDATE collection_sites SET account_label=:label, balance=:balance,
       last_run_at=:finishedAt, last_success_at=:finishedAt, last_status='success', last_error=NULL,
-      consecutive_failures=0, updated_at=:finishedAt WHERE id=:siteId`).run({ siteId, label: overview.account.label, balance: overview.account.balance, finishedAt });
+      consecutive_failures=0, access_token_enc=COALESCE(:accessTokenEnc, access_token_enc),
+      refresh_token_enc=COALESCE(:refreshTokenEnc, refresh_token_enc), updated_at=:finishedAt
+      WHERE id=:siteId`).run({ siteId, label: overview.account.label, balance: overview.account.balance,
+      accessTokenEnc: credentials?.accessTokenEnc ?? null, refreshTokenEnc: credentials?.refreshTokenEnc ?? null, finishedAt });
     replaceRates(database, siteId, overview.rates);
     insertRun(database, { siteId, status: "success", error: null, groupCount: overview.rates.length, startedAt, finishedAt });
   });

@@ -5,8 +5,10 @@ import type { TargetGroupStore } from "./store.ts";
 import type { RuleParameters, SourceBinding, TargetGroup, TargetGroupClient, TargetRule } from "./types.ts";
 
 const parametersSchema = z.object({
-  offset: z.number().finite(),
-  multiplier: z.number().finite(),
+  offset: z.number().finite("偏移必须是有效数字"),
+  minimum: z.number({ invalid_type_error: "计算最小值必须是有效数字" })
+    .finite("计算最小值必须是有效数字")
+    .nonnegative("计算最小值必须大于或等于 0"),
   formula: z.string().trim().min(1),
 });
 const bindingSchema = z.object({ sourceSiteId: z.number().int().positive(), sourceGroupId: z.string().trim().min(1) });
@@ -27,6 +29,8 @@ export type TargetGroupView = TargetGroup & {
 
 export type TargetGroupService = {
   readonly list: () => Promise<TargetGroupView[]>;
+  readonly refreshAll: () => Promise<TargetGroupView[]>;
+  readonly refresh: (groupId: number) => Promise<TargetGroupView>;
   readonly saveRule: (groupId: number, input: unknown) => Promise<TargetGroupView>;
   readonly preview: (groupId: number) => Promise<ReturnType<typeof resolveRateUpdate>>;
   readonly apply: (groupId: number) => Promise<ReturnType<typeof resolveRateUpdate>>;
@@ -39,6 +43,8 @@ export function createTargetGroupService(input: {
 }): TargetGroupService {
   return {
     list: () => listGroups(input),
+    refreshAll: () => refreshAllGroups(input),
+    refresh: (groupId) => refreshGroup(input, groupId),
     saveRule: (groupId, raw) => saveRule(input, groupId, raw),
     preview: (groupId) => previewRule(input, groupId),
     apply: (groupId) => applyRule(input, groupId),
@@ -46,13 +52,23 @@ export function createTargetGroupService(input: {
 }
 
 async function listGroups(input: TargetDependencies) {
-  const groups = await input.client.listGroups();
-  return groups.map((group) => groupView(input.store, group));
+  return input.store.listGroups().map((group) => groupView(input.store, group));
+}
+
+async function refreshAllGroups(input: TargetDependencies) {
+  input.store.replaceGroups(await input.client.listGroups());
+  return listGroups(input);
+}
+
+async function refreshGroup(input: TargetDependencies, groupId: number) {
+  const group = await remoteGroup(input.client, groupId);
+  input.store.saveGroup(group);
+  return groupView(input.store, group);
 }
 
 async function saveRule(input: TargetDependencies, groupId: number, raw: unknown) {
   const parsed = targetRuleSchema.parse(raw);
-  const group = await remoteGroup(input.client, groupId);
+  const group = localGroup(input.store, groupId);
   const rule: TargetRule = {
     targetGroupId: group.id, targetGroupName: group.name, enabled: parsed.enabled,
     ruleVersion: 1, ruleType: parsed.ruleType, parameters: parsed.parameters,
@@ -63,7 +79,7 @@ async function saveRule(input: TargetDependencies, groupId: number, raw: unknown
 }
 
 async function previewRule(input: TargetDependencies, groupId: number) {
-  const group = await remoteGroup(input.client, groupId);
+  const group = localGroup(input.store, groupId);
   const rule = input.store.getRule(groupId);
   if (!rule) throw new Error("目标分组尚未配置倍率规则");
   const sourceRates = await boundRates(input, groupId);
@@ -79,6 +95,7 @@ async function applyRule(input: TargetDependencies, groupId: number) {
     const decision = await previewRule(input, groupId);
     if (decision.action === "skip") return decision;
     const updated = await input.client.updateGroupRate(groupId, decision.nextRate);
+    input.store.saveGroup(updated);
     input.store.recordApplied(groupId, updated.rate_multiplier ?? decision.nextRate);
     return decision;
   } catch (error) {
@@ -105,6 +122,12 @@ async function remoteGroup(client: TargetGroupClient, groupId: number) {
   return group;
 }
 
+function localGroup(store: TargetGroupStore, groupId: number) {
+  const group = store.getGroup(groupId);
+  if (!group) throw new Error(`本地目标分组不存在: ${groupId}，请先刷新`);
+  return group;
+}
+
 function groupView(store: TargetGroupStore, group: TargetGroup): TargetGroupView {
   return { ...group, rule: store.getRule(group.id) ?? defaultRule(group), bindings: store.bindings(group.id) };
 }
@@ -113,6 +136,6 @@ function defaultRule(group: TargetGroup): TargetRule {
   return { targetGroupId: group.id, targetGroupName: group.name, enabled: false, ruleVersion: 1, ruleType: "first", parameters: defaultParameters(), currentRate: group.rate_multiplier ?? null, lastAppliedAt: null, lastError: null };
 }
 
-function defaultParameters(): RuleParameters { return { offset: 0, multiplier: 1, formula: "avg" }; }
+function defaultParameters(): RuleParameters { return { offset: 0, minimum: 0, formula: "avg" }; }
 function dedupeBindings(bindings: readonly SourceBinding[]) { return [...new Map(bindings.map((binding) => [`${binding.sourceSiteId}:${binding.sourceGroupId}`, binding])).values()]; }
 type TargetDependencies = Parameters<typeof createTargetGroupService>[0];

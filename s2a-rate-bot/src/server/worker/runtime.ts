@@ -3,6 +3,7 @@ import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { getRuntimeTargetGroupService } from "../target-groups/runtime.ts";
 import { createWorkerService } from "./service.ts";
 import { createSqliteWorkerRunStore } from "./store.ts";
+import { writeWorkerLog } from "../logging/business-logger.ts";
 
 const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 type RuntimeWorkerService = ReturnType<typeof buildRuntimeWorkerService>;
@@ -29,9 +30,16 @@ function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
   });
   return {
     ...worker,
+    runCycle: async () => loggedWorkerCycle(worker.runCycle),
     intervalSeconds: async () => (await settings.get()).worker.intervalSeconds,
     close: () => runs.close(),
   };
+}
+
+async function loggedWorkerCycle(runCycle: () => ReturnType<ReturnType<typeof createWorkerService>["runCycle"]>) {
+  const result = await runCycle();
+  await writeWorkerLog(result.status === "skipped" ? { event: "cycle_skipped", ...result } : { event: "cycle_completed", ...result });
+  return result;
 }
 
 function workerSettings(settings: Awaited<ReturnType<ReturnType<typeof getRuntimeSettingsService>["get"]>>) {

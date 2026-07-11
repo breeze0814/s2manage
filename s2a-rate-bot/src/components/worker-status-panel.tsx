@@ -2,6 +2,7 @@
 
 import { Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Tag, type TagTone } from "./ui/tag";
 
 type WorkerRun = {
   readonly id: number;
@@ -23,10 +24,10 @@ export function WorkerStatusPanel() {
   const [error, setError] = useState("");
   useEffect(() => { void loadWorkerStatus({ setRun, setLoading, setError }); }, []);
   return (
-    <section className="space-y-3 rounded-lg bg-surface-muted p-4" aria-labelledby="worker-status-title">
+    <section className="space-y-4 rounded-xl border border-border bg-surface-muted/60 p-4" aria-labelledby="worker-status-title">
       <div className="flex items-center justify-between gap-3">
         <div><h3 id="worker-status-title" className="text-sm font-semibold text-foreground">最近运行</h3><p className="text-xs text-muted">来自 Worker 持久化运行摘要。</p></div>
-        <button type="button" aria-label="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setError })} disabled={loading} className="flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface disabled:opacity-50">
+        <button type="button" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setError })} disabled={loading} className="icon-button">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
         </button>
       </div>
@@ -53,13 +54,13 @@ function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
 }
 
 function Metric({ label, value }: Readonly<{ label: string; value: number }>) {
-  return <div className="rounded-md border border-border bg-surface px-3 py-2"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-medium tabular-nums text-foreground">{value}</dd></div>;
+  return <div className="rounded-lg border border-border bg-surface px-3 py-2.5"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value}</dd></div>;
 }
 
 function StatusBadge({ status }: Readonly<{ status: WorkerRun["status"] }>) {
   const labels = { running: "运行中", success: "成功", partial: "部分失败", failed: "失败" } as const;
-  const tones = { running: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300", success: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300", partial: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", failed: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300" } as const;
-  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${tones[status]}`}>{labels[status]}</span>;
+  const tones: Record<WorkerRun["status"], TagTone> = { running: "info", success: "success", partial: "warning", failed: "danger" };
+  return <Tag tone={tones[status]}>{labels[status]}</Tag>;
 }
 
 async function loadWorkerStatus(actions: StatusActions) {

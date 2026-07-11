@@ -27,12 +27,14 @@ test("package exposes a Next.js application toolchain", () => {
   assert.ok(pkg.dependencies?.["react-dom"]);
 });
 
-test("App Router contains the four approved top-level pages", () => {
+test("App Router contains the system top-level pages", () => {
   const pages = [
+    "src/app/page.tsx",
     "src/app/groups/page.tsx",
     "src/app/sources/page.tsx",
     "src/app/accounts/page.tsx",
     "src/app/settings/page.tsx",
+    "src/app/logs/page.tsx",
   ];
 
   for (const page of pages) {
@@ -40,18 +42,25 @@ test("App Router contains the four approved top-level pages", () => {
   }
 });
 
-test("application shell uses route-backed top navigation", () => {
+test("application shell uses route-backed top navigation and a settings dialog action", () => {
   const shell = source("src/components/app-shell.tsx");
+  const settingsDialog = source("src/components/settings-dialog.tsx");
 
   assert.match(shell, /usePathname/);
   assert.match(shell, /href:\s*"\/groups"/);
+  assert.match(shell, /href:\s*"\/"/);
   assert.match(shell, /href:\s*"\/sources"/);
   assert.match(shell, /href:\s*"\/accounts"/);
-  assert.match(shell, /href:\s*"\/settings"/);
+  assert.match(shell, /href:\s*"\/logs"/);
+  assert.doesNotMatch(shell, /href:\s*"\/settings"/);
   assert.match(shell, /分组倍率/);
   assert.match(shell, /倍率采集/);
   assert.match(shell, /账号调度/);
-  assert.match(shell, /全局配置/);
+  assert.match(shell, /系统日志/);
+  assert.match(shell, /SettingsDialog/);
+  assert.match(settingsDialog, /打开全局配置/);
+  assert.match(settingsDialog, /@radix-ui\/react-dialog/);
+  assert.match(settingsDialog, /SettingsForm presentation="dialog"/);
 });
 
 test("root layout mounts the application shell and global styles", () => {
@@ -62,13 +71,21 @@ test("root layout mounts the application shell and global styles", () => {
   assert.match(layout, /lang="zh-CN"/);
 });
 
-test("responsive shell avoids horizontal page overflow", () => {
+test("responsive shell uses a Vercel-style top navigation without horizontal page overflow", () => {
   const styles = source("src/app/globals.css");
   const shell = source("src/components/app-shell.tsx");
 
   assert.match(styles, /overflow-x:\s*hidden/);
-  assert.match(shell, /grid-cols-2/);
-  assert.match(shell, /md:grid-cols-4/);
+  assert.match(shell, /sticky top-0/);
+  assert.match(shell, /grid-cols-\[minmax\(0,1fr\)_auto_minmax\(0,1fr\)\]/);
+  assert.match(shell, /justify-self-start/);
+  assert.match(shell, /justify-self-center/);
+  assert.match(shell, /justify-self-end/);
+  assert.ok((shell.match(/max-w-7xl/g) ?? []).length >= 2);
+  assert.match(shell, /md:grid/);
+  assert.match(shell, /md:hidden/);
+  assert.match(shell, /overflow-x-auto/);
+  assert.doesNotMatch(shell, /fixed inset-x-0 bottom-0/);
 });
 
 test("warm stone themes expose semantic tokens before hydration", () => {
@@ -82,6 +99,7 @@ test("warm stone themes expose semantic tokens before hydration", () => {
   assert.match(tailwind, /surface:\s*"rgb\(var\(--surface\) \/ <alpha-value>\)"/);
   assert.match(layout, /localStorage\.getItem\("s2a-rate-theme"\)/);
   assert.match(layout, /prefers-color-scheme:\s*dark/);
+  assert.match(styles, /page-description[\s\S]*text-foreground\/65/);
 });
 
 test("application shell exposes an accessible persisted theme toggle", () => {
@@ -89,6 +107,8 @@ test("application shell exposes an accessible persisted theme toggle", () => {
   const toggle = source("src/components/theme-toggle.tsx");
 
   assert.match(shell, /ThemeToggle/);
+  assert.match(shell, /Worker 已连接/);
+  assert.match(shell, /\/api\/worker\/status/);
   assert.match(toggle, /aria-label="切换明暗主题"/);
   assert.match(toggle, /localStorage\.setItem\(THEME_KEY/);
   assert.match(toggle, /document\.documentElement\.classList\.toggle\("dark"/);
@@ -100,10 +120,12 @@ test("components use semantic theme colors instead of slate utilities", () => {
   const paths = [
     "src/components/app-shell.tsx",
     "src/components/auth-dialog.tsx",
+    "src/components/settings-dialog.tsx",
     "src/components/settings-form.tsx",
     "src/components/worker-status-panel.tsx",
     "src/components/accounts/accounts-dashboard.tsx",
-    "src/components/groups/group-rule-card.tsx",
+    "src/components/groups/group-rule-table.tsx",
+    "src/components/groups/group-rule-dialog.tsx",
     "src/components/groups/groups-dashboard.tsx",
     "src/components/sources/source-rates-table.tsx",
     "src/components/sources/source-site-dialog.tsx",
@@ -116,6 +138,9 @@ test("components use semantic theme colors instead of slate utilities", () => {
   assert.match(components, /bg-surface/);
   assert.match(components, /text-muted/);
   assert.match(components, /border-border/);
+  for (const dataComponent of ["src/components/accounts/accounts-dashboard.tsx", "src/components/groups/group-rule-table.tsx", "src/components/sources/source-rates-table.tsx", "src/components/sources/source-site-table.tsx"]) {
+    assert.doesNotMatch(source(dataComponent), /text-primary/, `${dataComponent} should not use low-contrast orange for data text`);
+  }
 });
 
 test("subproject owns its ESLint configuration", () => {
@@ -132,6 +157,34 @@ test("subproject ignores generated Next.js and dependency artifacts", () => {
   assert.match(ignore, /node_modules\//);
   assert.match(ignore, /\.next\//);
   assert.match(ignore, /data\/\*\.db/);
+});
+
+test("forms use compact semantic number controls and lists share tag styling", () => {
+  const compactInput = source("src/components/ui/compact-number-input.tsx");
+  const tag = source("src/components/ui/tag.tsx");
+  const forms = [
+    "src/components/settings-form.tsx",
+    "src/components/sources/source-site-dialog.tsx",
+    "src/components/groups/group-rule-dialog.tsx",
+  ].map(source).join("\n");
+
+  assert.match(compactInput, /sm:w-\[7ch\]/);
+  assert.match(compactInput, /sm:w-\[9ch\]/);
+  assert.match(compactInput, /sm:w-\[11ch\]/);
+  assert.match(compactInput, /sm:w-fit/);
+  assert.match(compactInput, /border-l border-border/);
+  assert.match(compactInput, /text-base/);
+  assert.match(compactInput, /sm:text-sm/);
+  assert.match(compactInput, /tabular-nums/);
+  assert.match(forms, /CompactNumberInput/);
+  assert.match(forms, /suffix="秒"/);
+  assert.match(forms, /suffix="倍"/);
+  assert.match(tag, /TagTone/);
+  assert.match(tag, /whitespace-nowrap/);
+  assert.match(tag, /overflow-hidden/);
+  assert.match(tag, /text-xs/);
+  assert.match(tag, /rounded-md border/);
+  assert.match(source("src/app/globals.css"), /text-base[\s\S]*sm:text-sm/);
 });
 
 test("development and production builds use isolated Next.js output directories", () => {

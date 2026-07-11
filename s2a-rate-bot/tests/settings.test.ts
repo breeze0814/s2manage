@@ -40,7 +40,7 @@ async function withTempDatabase<T>(task: (databaseUrl: string, databasePath: str
 
 function settingsInput() {
   return {
-    target: { name: "Main", baseUrl: "https://target.example.com", adminApiKey: "target-admin-secret" },
+    target: { name: "Main", baseUrl: "https://target.example.com", adminApiKey: "target-admin-secret", rechargeRatio: 1 },
     proxy: { enabled: true, proxyUrl: "http://127.0.0.1:7890" },
     worker: { intervalSeconds: 600, timeoutSeconds: 25, concurrency: 3 },
   } as const;
@@ -66,6 +66,36 @@ test("settings service encrypts the target Admin Key at rest", async () => {
     database.close();
     assert.notEqual(row.target_admin_key_enc, "target-admin-secret");
     assert.match(row.target_admin_key_enc, /^enc:v1:/);
+  });
+});
+
+test("existing settings database gains a target recharge ratio without losing data", async () => {
+  await withTempDatabase(async (databaseUrl, databasePath) => {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
+      INSERT INTO schema_meta VALUES ('schema_version', '10');
+      CREATE TABLE app_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1), target_name TEXT NOT NULL,
+        target_base_url TEXT NOT NULL, target_admin_key_enc TEXT NOT NULL,
+        proxy_enabled INTEGER NOT NULL, proxy_url TEXT NOT NULL,
+        worker_interval_seconds INTEGER NOT NULL, worker_timeout_seconds INTEGER NOT NULL,
+        worker_concurrency INTEGER NOT NULL, updated_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO app_settings VALUES (1, 'Existing', 'https://existing.example.com',
+        'encrypted', 0, '', 600, 25, 3, '2026-01-01T00:00:00.000Z');
+    `);
+    database.close();
+
+    const modules = await loadSettingsModules();
+    const store = modules.store.createSqliteSettingsStore(databaseUrl);
+    try {
+      const stored = store.get();
+      assert.equal(stored?.targetName, "Existing");
+      assert.equal(stored?.targetRechargeRatio, 1);
+    } finally {
+      store.close();
+    }
   });
 });
 
@@ -122,6 +152,7 @@ test("settings API, target test API, and settings form are present", () => {
   const paths = [
     "src/app/api/settings/route.ts",
     "src/app/api/settings/test-target/route.ts",
+    "src/components/settings-dialog.tsx",
     "src/components/settings-form.tsx",
     "src/components/worker-status-panel.tsx",
   ];
@@ -129,8 +160,17 @@ test("settings API, target test API, and settings form are present", () => {
     assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
   }
   const form = readFileSync(new URL("src/components/settings-form.tsx", PROJECT_ROOT), "utf8");
+  const targetTest = readFileSync(new URL("src/app/api/settings/test-target/route.ts", PROJECT_ROOT), "utf8");
+  const dialog = readFileSync(new URL("src/components/settings-dialog.tsx", PROJECT_ROOT), "utf8");
   const status = readFileSync(new URL("src/components/worker-status-panel.tsx", PROJECT_ROOT), "utf8");
+  assert.match(dialog, /SettingsForm/);
+  assert.match(dialog, /打开全局配置/);
+  assert.match(form, /presentation/);
   assert.match(form, /WorkerStatusPanel/);
+  assert.match(form, /targetRechargeRatio/);
+  assert.match(form, /充值倍率/);
+  assert.match(targetTest, /refreshAll/);
+  assert.match(targetTest, /已同步/);
   assert.match(status, /\/api\/worker\/status/);
   assert.match(status, /最近运行/);
   assert.match(status, /collectedSources/);

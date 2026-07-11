@@ -54,6 +54,8 @@ Worker 是独立常驻进程，与 Next.js Web 进程共享同一个 SQLite 数�
 npm run worker
 ```
 
+Worker 启动脚本会从项目根目录的 `.env` 加载 `APP_SECRET`、`DATABASE_URL` 等运行配置。
+
 每轮运行会重新读取全局 Worker 间隔和并发数。收到 `SIGINT` 或 `SIGTERM` 后，进程会结束当前周期或等待并安全退出。
 
 临时执行单轮诊断：

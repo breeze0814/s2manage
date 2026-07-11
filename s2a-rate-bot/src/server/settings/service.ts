@@ -6,6 +6,7 @@ export const targetSettingsSchema = z.object({
   name: z.string().trim().min(1, "目标站名称不能为空"),
   baseUrl: z.string().trim().url("目标站地址无效").transform((value) => value.replace(/\/+$/, "")),
   adminApiKey: z.string().trim().min(1, "Admin Key 不能为空"),
+  rechargeRatio: z.number().finite().positive("目标站充值倍率必须大于 0"),
 });
 
 const proxySettingsSchema = z.object({
@@ -62,6 +63,7 @@ function settingsSnapshot(input: SettingsDependencies): SettingsSnapshot {
       name: stored.targetName,
       baseUrl: stored.targetBaseUrl,
       adminApiKey: input.cipher.decrypt(stored.targetAdminKeyEnc),
+      rechargeRatio: stored.targetRechargeRatio,
     },
     proxy: { enabled: stored.proxyEnabled, proxyUrl: stored.proxyUrl },
     worker: {
@@ -78,6 +80,7 @@ function saveSettings(input: SettingsDependencies, raw: unknown) {
     targetName: settings.target.name,
     targetBaseUrl: settings.target.baseUrl,
     targetAdminKeyEnc: input.cipher.encrypt(settings.target.adminApiKey),
+    targetRechargeRatio: settings.target.rechargeRatio,
     proxyEnabled: settings.proxy.enabled,
     proxyUrl: settings.proxy.proxyUrl,
     workerIntervalSeconds: settings.worker.intervalSeconds,

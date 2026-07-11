@@ -65,13 +65,21 @@ async function refreshSite(input: CollectionDependencies, id: number) {
   const startedAt = new Date().toISOString();
   try {
     const overview = await input.collector.collect({ site, ...options });
-    input.store.recordSuccess(id, overview, startedAt);
+    input.store.recordSuccess(id, overview, startedAt, encryptedCredentials(overview, input.cipher));
     return siteView(requiredSite(input.store, id), input.cipher);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     input.store.recordFailure(id, message, startedAt);
     throw error;
   }
+}
+
+function encryptedCredentials(overview: Awaited<ReturnType<CollectionCollector["collect"]>>, cipher: SecretCipher) {
+  if (!overview.credentials) return undefined;
+  return {
+    accessTokenEnc: cipher.encrypt(overview.credentials.accessToken),
+    refreshTokenEnc: overview.credentials.refreshToken ? cipher.encrypt(overview.credentials.refreshToken) : undefined,
+  };
 }
 
 async function refreshAllSites(input: CollectionDependencies) {

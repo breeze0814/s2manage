@@ -1,5 +1,14 @@
+import { z } from "zod";
 import type { JsonHttpClient } from "../../adapters/http-client.ts";
 import type { TargetGroup, TargetGroupClient } from "./types.ts";
+
+const targetGroupSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  name: z.string().trim().min(1),
+  platform: z.string().trim().nullable().optional(),
+  status: z.string().nullable().optional(),
+  rate_multiplier: z.coerce.number().finite().nullable().optional(),
+}).passthrough();
 
 export function createSub2TargetGroupClient(input: {
   readonly baseUrl: string;
@@ -16,13 +25,15 @@ export function createSub2TargetGroupClient(input: {
 
 function unwrapGroups(value: unknown): TargetGroup[] {
   const data = unwrap(value);
-  return Array.isArray(data) ? data as TargetGroup[] : [];
+  if (!Array.isArray(data)) throw new Error("目标站分组列表响应无效");
+  return data.map((group) => targetGroupSchema.parse(group));
 }
 
 function unwrapGroup(value: unknown): TargetGroup {
   const data = unwrap(value);
-  if (!data || typeof data !== "object" || !("id" in data)) throw new Error("目标站分组更新响应无效");
-  return data as TargetGroup;
+  const result = targetGroupSchema.safeParse(data);
+  if (!result.success) throw new Error("目标站分组更新响应无效", { cause: result.error });
+  return result.data;
 }
 
 function unwrap(value: unknown) {

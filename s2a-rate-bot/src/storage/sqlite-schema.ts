@@ -1,6 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 8;
+const MINIMUM_PARAMETER_SCHEMA_VERSION = 9;
+const LOCAL_SNAPSHOT_SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = LOCAL_SNAPSHOT_SCHEMA_VERSION;
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -23,6 +25,7 @@ const CREATE_TABLES = [
     target_name TEXT NOT NULL,
     target_base_url TEXT NOT NULL,
     target_admin_key_enc TEXT NOT NULL,
+    target_recharge_ratio REAL NOT NULL DEFAULT 1,
     proxy_enabled INTEGER NOT NULL CHECK (proxy_enabled IN (0, 1)),
     proxy_url TEXT NOT NULL,
     worker_interval_seconds INTEGER NOT NULL,
@@ -75,6 +78,25 @@ const CREATE_TABLES = [
     PRIMARY KEY (site_id, group_id),
     FOREIGN KEY (site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
   ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS target_account_snapshots (
+    account_id INTEGER PRIMARY KEY,
+    account_name TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    status TEXT NOT NULL,
+    schedulable INTEGER NOT NULL CHECK (schedulable IN (0, 1)),
+    rate_multiplier REAL,
+    priority INTEGER,
+    group_ids_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS target_group_snapshots (
+    group_id INTEGER PRIMARY KEY,
+    group_name TEXT NOT NULL,
+    platform TEXT,
+    status TEXT,
+    rate_multiplier REAL,
+    updated_at TEXT NOT NULL
+  ) STRICT`,
   `CREATE TABLE IF NOT EXISTS target_group_rules (
     group_id INTEGER PRIMARY KEY,
     group_name TEXT NOT NULL,
@@ -114,13 +136,44 @@ export function initializeSqliteSchema(database: DatabaseSync) {
   database.exec("PRAGMA foreign_keys = ON");
   database.exec("PRAGMA journal_mode = WAL");
   database.exec(CREATE_TABLES[0]);
-  if (schemaVersion(database) < SCHEMA_VERSION) dropLegacyTables(database);
+  const previousVersion = schemaVersion(database);
+  if (previousVersion < SCHEMA_VERSION) dropLegacyTables(database);
   for (const statement of CREATE_TABLES.slice(1)) database.exec(statement);
+  migrateSchema(database, previousVersion);
   database.prepare(`
     INSERT INTO schema_meta (key, value)
     VALUES ('schema_version', ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(String(SCHEMA_VERSION));
+}
+
+function migrateSchema(database: DatabaseSync, previousVersion: number) {
+  ensureTargetRechargeRatio(database);
+  ensureTargetGroupPlatform(database);
+  if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {
+    database.exec(`UPDATE target_group_rules
+      SET parameters_json = json_set(parameters_json, '$.minimum', 0)
+      WHERE json_type(parameters_json, '$.minimum') IS NULL`);
+  }
+  if (previousVersion < LOCAL_SNAPSHOT_SCHEMA_VERSION) seedGroupSnapshots(database);
+}
+
+function ensureTargetRechargeRatio(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(app_settings)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "target_recharge_ratio")) return;
+  database.exec("ALTER TABLE app_settings ADD COLUMN target_recharge_ratio REAL NOT NULL DEFAULT 1");
+}
+
+function ensureTargetGroupPlatform(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(target_group_snapshots)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "platform")) return;
+  database.exec("ALTER TABLE target_group_snapshots ADD COLUMN platform TEXT");
+}
+
+function seedGroupSnapshots(database: DatabaseSync) {
+  database.exec(`INSERT OR IGNORE INTO target_group_snapshots
+    (group_id, group_name, status, rate_multiplier, updated_at)
+    SELECT group_id, group_name, NULL, current_rate, updated_at FROM target_group_rules`);
 }
 
 function schemaVersion(database: DatabaseSync) {

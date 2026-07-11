@@ -6,7 +6,7 @@ export type RateRule = {
   readonly enabled: boolean;
   readonly mode: RateRuleMode;
   readonly offset: number;
-  readonly multiplier?: number;
+  readonly minimum?: number;
   readonly formula?: string;
 };
 
@@ -70,20 +70,24 @@ export function evaluateRateRule(input: {
   const rates = validSourceRates(input.sourceRates);
   if (rates.length === 0) throw new Error("没有可用于计算的采集源倍率");
   const base = baseRuleRate(input.rule, rates);
-  const nextRate = normalizeRateMultiplier(base * ruleMultiplier(input.rule) + input.rule.offset);
+  const adjusted = base + input.rule.offset;
+  const nextRate = normalizeRateMultiplier(Math.max(adjusted, ruleMinimum(input.rule)));
   assertAllowedRate(nextRate);
   return nextRate;
 }
 
 function baseRuleRate(rule: RateRule, rates: readonly number[]) {
   const base = baseRate(rule.mode, rates);
-  return rule.mode === "avg_formula" ? evaluateAverageFormula(rule.formula ?? "avg", base) : base;
+  const formulaAverage = normalizeRateMultiplier(base);
+  return rule.mode === "avg_formula" ? evaluateAverageFormula(rule.formula ?? "avg", formulaAverage) : base;
 }
 
-function ruleMultiplier(rule: RateRule) {
-  const multiplier = rule.multiplier ?? 1;
-  if (!Number.isFinite(multiplier)) throw new Error("规则放大倍数必须是有效数字");
-  return multiplier;
+function ruleMinimum(rule: RateRule) {
+  const minimum = rule.minimum ?? 0;
+  if (!Number.isFinite(minimum) || minimum < 0) {
+    throw new Error("计算最小值必须是大于或等于 0 的有效数字");
+  }
+  return minimum;
 }
 
 function evaluateAverageFormula(formula: string, avg: number) {

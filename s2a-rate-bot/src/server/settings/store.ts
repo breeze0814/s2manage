@@ -6,6 +6,7 @@ export type StoredSettings = {
   readonly targetName: string;
   readonly targetBaseUrl: string;
   readonly targetAdminKeyEnc: string;
+  readonly targetRechargeRatio: number;
   readonly proxyEnabled: boolean;
   readonly proxyUrl: string;
   readonly workerIntervalSeconds: number;
@@ -34,6 +35,7 @@ function readSettings(database: DatabaseSync): StoredSettings | null {
     targetName: String(row.target_name),
     targetBaseUrl: String(row.target_base_url),
     targetAdminKeyEnc: String(row.target_admin_key_enc),
+    targetRechargeRatio: Number(row.target_recharge_ratio),
     proxyEnabled: Number(row.proxy_enabled) === 1,
     proxyUrl: String(row.proxy_url),
     workerIntervalSeconds: Number(row.worker_interval_seconds),
@@ -44,11 +46,15 @@ function readSettings(database: DatabaseSync): StoredSettings | null {
 
 function saveSettings(database: DatabaseSync, settings: StoredSettings) {
   database.prepare(`
-    INSERT INTO app_settings VALUES (1, :targetName, :targetBaseUrl, :targetAdminKeyEnc,
+    INSERT INTO app_settings (id, target_name, target_base_url, target_admin_key_enc,
+      target_recharge_ratio, proxy_enabled, proxy_url, worker_interval_seconds,
+      worker_timeout_seconds, worker_concurrency, updated_at)
+    VALUES (1, :targetName, :targetBaseUrl, :targetAdminKeyEnc, :targetRechargeRatio,
       :proxyEnabled, :proxyUrl, :workerIntervalSeconds, :workerTimeoutSeconds,
       :workerConcurrency, :updatedAt)
     ON CONFLICT(id) DO UPDATE SET target_name = excluded.target_name,
       target_base_url = excluded.target_base_url, target_admin_key_enc = excluded.target_admin_key_enc,
+      target_recharge_ratio = excluded.target_recharge_ratio,
       proxy_enabled = excluded.proxy_enabled, proxy_url = excluded.proxy_url,
       worker_interval_seconds = excluded.worker_interval_seconds,
       worker_timeout_seconds = excluded.worker_timeout_seconds,

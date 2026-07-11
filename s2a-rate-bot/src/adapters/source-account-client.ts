@@ -18,7 +18,7 @@ export async function getSub2ApiSourceAccount(input: SourceRateRequest): Promise
   return {
     sourceSiteId: input.sourceSiteId,
     label: stringValue(record.email || record.username || record.id || "Sub2API"),
-    balance: finiteNumber(record.balance),
+    balance: finiteNumber(record.balance, "账户余额"),
   };
 }
 
@@ -28,7 +28,7 @@ export async function getNewApiSourceAccount(input: SourceRateRequest): Promise<
   const record = asRecord(payload);
   if (record.success !== true) throw new Error(stringValue(record.message) || "获取账户信息失败");
   const data = asRecord(record.data);
-  const quota = finiteNumber(data.quota);
+  const quota = finiteNumber(data.quota, "账户额度");
   return {
     sourceSiteId: input.sourceSiteId,
     label: stringValue(data.username || data.email || data.id || "NewAPI"),
@@ -49,7 +49,10 @@ function requestAccount(url: string, accessToken: string, input: SourceRateReque
 function expectCodeZeroRecord(payload: unknown, fallback: string) {
   const record = asRecord(payload);
   if (Number(record.code ?? 0) !== 0) throw new Error(stringValue(record.message) || fallback);
-  return asRecord(record.data);
+  if (!record.data || typeof record.data !== "object" || Array.isArray(record.data)) {
+    throw new Error(`${fallback}：响应缺少 data 对象`);
+  }
+  return record.data as JsonRecord;
 }
 
 function apiV1Url(baseUrl: string, path: string) {
@@ -70,8 +73,9 @@ function stringValue(value: unknown) {
   return value === null || value === undefined ? "" : String(value);
 }
 
-function finiteNumber(value: unknown) {
+function finiteNumber(value: unknown, field: string) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
+  if (!Number.isFinite(numeric)) throw new Error(`${field}不是有效数字`);
+  return numeric;
 }

@@ -45,7 +45,7 @@ async function createContext(databaseUrl: string, databasePath: string, collecto
     store,
     cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET),
     collector,
-    requestOptions: async () => ({ timeoutMs: 25_000, proxyUrl: null }),
+    requestOptions: async () => ({ timeoutMs: 25_000, proxyUrl: null, targetRechargeRatio: 1 }),
   });
   return { ...modules, store, service, databasePath };
 }
@@ -102,6 +102,26 @@ test("successful refresh persists balance, rates, and a success run", async () =
   });
 });
 
+test("successful refresh encrypts API credentials returned by the collector", async () => {
+  const collector = {
+    collect: async ({ site }: { site: { id: number } }) => ({
+      ...successOverview(site.id),
+      credentials: { accessToken: "fresh-access-token", refreshToken: "fresh-refresh-token" },
+    }),
+  };
+  await withCollection(collector, async ({ service, databasePath, crypto }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+    const database = new DatabaseSync(databasePath);
+    const row = database.prepare("SELECT access_token_enc, refresh_token_enc FROM collection_sites WHERE id = ?").get(site.id) as { access_token_enc: string; refresh_token_enc: string };
+    database.close();
+    const cipher = crypto.createAesGcmSecretCipher(APP_SECRET);
+    assert.equal(cipher.decrypt(row.access_token_enc), "fresh-access-token");
+    assert.equal(cipher.decrypt(row.refresh_token_enc), "fresh-refresh-token");
+    assert.doesNotMatch(row.access_token_enc, /fresh-access-token/);
+  });
+});
+
 test("failed refresh records the error and increments consecutive failures", async () => {
   await withCollection({ collect: async () => { throw new Error("remote unavailable"); } }, async ({ service }) => {
     const site = await service.create(sourceInput());
@@ -111,6 +131,26 @@ test("failed refresh records the error and increments consecutive failures", asy
     assert.equal(failed.lastStatus, "failed");
     assert.equal(failed.lastError, "remote unavailable");
     assert.equal(failed.consecutiveFailures, 1);
+  });
+});
+
+test("failed API refresh preserves the last persisted balance and rates", async () => {
+  let shouldFail = false;
+  const collector: CollectionCollector = {
+    collect: async ({ site }) => {
+      if (shouldFail) throw new Error("malformed API response");
+      return successOverview(site.id);
+    },
+  };
+  await withCollection(collector, async ({ service }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+    shouldFail = true;
+
+    await assert.rejects(service.refresh(site.id), /malformed API response/);
+    const [stored] = await service.list();
+    assert.equal(stored.balance, 12.5);
+    assert.deepEqual((await service.rates(site.id)).map((rate) => rate.groupId), ["vip"]);
   });
 });
 

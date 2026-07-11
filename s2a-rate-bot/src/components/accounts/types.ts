@@ -8,3 +8,9 @@ export type TargetAccountView = {
   readonly priority: number | null;
   readonly groupIds: readonly number[];
 };
+
+export type AccountGroupOption = {
+  readonly id: number;
+  readonly name: string;
+  readonly rate_multiplier?: number | null;
+};

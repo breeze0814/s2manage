@@ -3,13 +3,14 @@ export type SourceBinding = { readonly sourceSiteId: number; readonly sourceGrou
 export type TargetGroupView = {
   readonly id: number;
   readonly name: string;
+  readonly platform?: string | null;
   readonly status?: string | null;
   readonly rate_multiplier?: number | null;
   readonly rule: {
     readonly enabled: boolean;
     readonly ruleVersion: 1;
     readonly ruleType: RuleType;
-    readonly parameters: { readonly offset: number; readonly multiplier: number; readonly formula: string };
+    readonly parameters: { readonly offset: number; readonly minimum: number; readonly formula: string };
     readonly lastAppliedAt: string | null;
     readonly lastError: string | null;
   };
@@ -22,6 +23,7 @@ export type SourceRateOption = {
   readonly groupId: string;
   readonly groupName: string;
   readonly platform?: string;
+  readonly rawRate: number | null;
   readonly effectiveRate: number;
 };
 
@@ -30,7 +32,7 @@ export type RuleDraft = {
   readonly ruleVersion: 1;
   readonly ruleType: RuleType;
   readonly offset: string;
-  readonly multiplier: string;
+  readonly minimum: string;
   readonly formula: string;
   readonly bindings: readonly SourceBinding[];
 };

@@ -113,7 +113,10 @@ test("overlapping worker cycles are rejected explicitly", async () => {
 
 test("worker entry and status route use the generic worker service", () => {
   const entry = readFileSync(new URL("src/worker/main.ts", ROOT), "utf8");
+  const status = readFileSync(new URL("src/app/api/worker/status/route.ts", ROOT), "utf8");
   assert.match(entry, /getRuntimeWorkerService/);
+  assert.match(entry, /writeWorkerHeartbeat/);
+  assert.match(status, /workerConnectionStatus/);
   assert.doesNotMatch(entry, /siteType\s*===\s*["']sub2api/);
   assert.equal(existsSync(new URL("src/app/api/worker/status/route.ts", ROOT)), true);
 });

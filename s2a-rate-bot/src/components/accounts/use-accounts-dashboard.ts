@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { TargetAccountView } from "./types";
+import type { AccountGroupOption, TargetAccountView } from "./types";
 
 export function useAccountsDashboard() {
   const [accounts, setAccounts] = useState<TargetAccountView[]>([]);
+  const [groups, setGroups] = useState<AccountGroupOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
-  useEffect(() => { void refreshAccounts({ setAccounts, setLoading, setMessage }, false); }, []);
+  useEffect(() => { void refreshAccounts({ setAccounts, setGroups, setLoading, setMessage }, false); }, []);
   return {
     accounts,
+    groups,
     loading,
     pendingId,
     message,
-    refresh: () => void refreshAccounts({ setAccounts, setLoading, setMessage }, true),
+    refresh: () => void refreshAccounts({ setAccounts, setGroups, setLoading, setMessage }, true),
     setSchedulable: (account: TargetAccountView) => void updateSchedulable({ account, setAccounts, setPendingId, setMessage }),
   };
 }
@@ -22,8 +24,10 @@ export function useAccountsDashboard() {
 async function refreshAccounts(actions: LoadActions, announce: boolean) {
   actions.setLoading(true);
   try {
-    actions.setAccounts(await loadAccounts());
-    if (announce) actions.setMessage("已从目标站刷新账号状态");
+    const data = await loadDashboard(announce);
+    actions.setAccounts(data.accounts);
+    actions.setGroups(data.groups);
+    if (announce) actions.setMessage("已从目标站刷新账号并写入本地快照");
   } catch (error) {
     actions.setMessage(errorMessage(error));
   } finally {
@@ -52,6 +56,18 @@ async function loadAccounts() {
   return (await api<{ accounts: TargetAccountView[] }>("/api/accounts")).accounts;
 }
 
+async function loadDashboard(refreshRemote = false) {
+  const [accounts, groups] = await Promise.all([
+    refreshRemote ? refreshAccountSnapshots() : loadAccounts(),
+    api<{ groups: AccountGroupOption[] }>("/api/groups"),
+  ]);
+  return { accounts, groups: groups.groups };
+}
+
+async function refreshAccountSnapshots() {
+  return (await api<{ accounts: TargetAccountView[] }>("/api/accounts/refresh", { method: "POST" })).accounts;
+}
+
 async function api<T = unknown>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init });
   const text = await response.text();
@@ -62,5 +78,6 @@ async function api<T = unknown>(url: string, init?: RequestInit): Promise<T> {
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 type SetAccounts = React.Dispatch<React.SetStateAction<TargetAccountView[]>>;
-type LoadActions = { readonly setAccounts: SetAccounts; readonly setLoading: (value: boolean) => void; readonly setMessage: (value: string) => void };
+type SetGroups = React.Dispatch<React.SetStateAction<AccountGroupOption[]>>;
+type LoadActions = { readonly setAccounts: SetAccounts; readonly setGroups: SetGroups; readonly setLoading: (value: boolean) => void; readonly setMessage: (value: string) => void };
 type UpdateActions = { readonly account: TargetAccountView; readonly setAccounts: SetAccounts; readonly setPendingId: (value: number | null) => void; readonly setMessage: (value: string) => void };

@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { createJsonHttpClient } from "../src/adapters/http-client.ts";
 
 const ROOT = new URL("../", import.meta.url);
+const TARGET_ACCOUNT_TEST_PORT_START = 18221;
+let nextTargetAccountTestPort = TARGET_ACCOUNT_TEST_PORT_START;
 
 async function accountClient(baseUrl: string) {
   const path = new URL("src/server/target-accounts/client.ts", ROOT);
@@ -43,10 +48,35 @@ test("failed schedulable updates leave remote state unchanged and successful upd
   });
 });
 
+test("account service reads SQLite until an explicit remote refresh", async () => {
+  const remote = createAccountRemote();
+  await withServer(remote.handler, async (baseUrl) => {
+    const directory = await mkdtemp(join(tmpdir(), "s2a-target-accounts-"));
+    const [serviceModule, storeModule] = await Promise.all([
+      import("../src/server/target-accounts/service.ts"),
+      import("../src/server/target-accounts/store.ts"),
+    ]);
+    const store = storeModule.createSqliteTargetAccountStore(`file:${join(directory, "app.db")}`);
+    const service = serviceModule.createTargetAccountService({ client: await accountClient(baseUrl), store });
+    try {
+      assert.deepEqual(await service.list(), []);
+      assert.equal(remote.getRequests(), 0);
+      assert.equal((await service.refresh())[0]?.name, "OpenAI A");
+      assert.equal((await service.list())[0]?.name, "OpenAI A");
+      assert.equal(remote.getRequests(), 1);
+    } finally {
+      store.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 test("account routes and dashboard expose remote refresh and schedulable controls", () => {
   const files = [
     "src/app/api/accounts/route.ts",
     "src/app/api/accounts/[id]/schedulable/route.ts",
+    "src/app/api/accounts/refresh/route.ts",
+    "src/server/target-accounts/store.ts",
     "src/components/accounts/accounts-dashboard.tsx",
     "src/components/accounts/use-accounts-dashboard.ts",
   ];
@@ -57,6 +87,14 @@ test("account routes and dashboard expose remote refresh and schedulable control
   assert.match(hook, /\/api\/accounts/);
   assert.match(hook, /schedulable/);
   assert.match(hook, /loadAccounts/);
+  assert.match(hook, /\/api\/accounts\/refresh/);
+  assert.match(hook, /\/api\/groups/);
+  assert.match(hook, /Promise\.all/);
+  const dashboard = readFileSync(new URL("src/components/accounts/accounts-dashboard.tsx", ROOT), "utf8");
+  assert.match(dashboard, /GroupTag/);
+  assert.match(dashboard, /rate_multiplier/);
+  assert.match(dashboard, /AccountOverview/);
+  assert.match(dashboard, /参与 \{scheduled\}/);
 });
 
 function createAccountRemote() {
@@ -93,7 +131,8 @@ function account(schedulable: boolean) {
 
 async function withServer<T>(handler: (request: IncomingMessage, response: ServerResponse) => void, task: (baseUrl: string) => Promise<T>) {
   const server = createServer(handler);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = nextTargetAccountTestPort++;
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("test server did not bind");
   try { return await task(`http://127.0.0.1:${address.port}`); }

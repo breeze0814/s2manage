@@ -31,11 +31,16 @@ async function withTargetService<T>(task: (context: Awaited<ReturnType<typeof ta
 
 async function targetContext(databaseUrl: string) {
   const modules = await loadModules();
-  let groups = [{ id: 7, name: "Target VIP", status: "active", rate_multiplier: 1 }];
+  let groups = [{ id: 7, name: "Target VIP", platform: "anthropic", status: "active", rate_multiplier: 1 }];
   const updates: Array<{ groupId: number; rate: number }> = [];
   let listCalls = 0;
+  let listError: Error | null = null;
   const client = {
-    listGroups: async () => { listCalls += 1; return groups; },
+    listGroups: async () => {
+      listCalls += 1;
+      if (listError) throw listError;
+      return groups;
+    },
     updateGroupRate: async (groupId: number, rate: number) => {
       updates.push({ groupId, rate });
       groups = groups.map((group) => group.id === groupId ? { ...group, rate_multiplier: rate } : group);
@@ -45,11 +50,16 @@ async function targetContext(databaseUrl: string) {
   const store = modules.store.createSqliteTargetGroupStore(databaseUrl);
   seedSourceSites(databaseUrl);
   const sourceRates = async () => [
-    { sourceSiteId: 1, groupId: "vip", groupName: "VIP", rawRate: 2, effectiveRate: 2, collectedAt: new Date() },
-    { sourceSiteId: 2, groupId: "pro", groupName: "Pro", rawRate: 4, effectiveRate: 4, collectedAt: new Date() },
+    { sourceSiteId: 1, groupId: "vip", groupName: "VIP", platform: "anthropic", rawRate: 2, effectiveRate: 2, collectedAt: new Date() },
+    { sourceSiteId: 2, groupId: "pro", groupName: "Pro", platform: "openai", rawRate: 4, effectiveRate: 4, collectedAt: new Date() },
   ];
   const service = modules.service.createTargetGroupService({ store, client, sourceRates });
-  return { ...modules, store, service, updates, setGroups: (value: typeof groups) => { groups = value; }, listCalls: () => listCalls };
+  return {
+    ...modules, store, service, updates,
+    setGroups: (value: typeof groups) => { groups = value; },
+    setListError: (value: Error | null) => { listError = value; },
+    listCalls: () => listCalls,
+  };
 }
 
 function seedSourceSites(databaseUrl: string) {
@@ -69,7 +79,7 @@ function ruleInput() {
     enabled: true,
     ruleVersion: 1,
     ruleType: "average",
-    parameters: { offset: 0.1, multiplier: 1, formula: "avg" },
+    parameters: { offset: 0.1, minimum: 2.5, formula: "avg" },
     bindings: [
       { sourceSiteId: 1, sourceGroupId: "vip" },
       { sourceSiteId: 2, sourceGroupId: "pro" },
@@ -77,29 +87,57 @@ function ruleInput() {
   } as const;
 }
 
-test("target group list is fetched from the remote client on every refresh", async () => {
+test("target group page reads SQLite until an explicit remote refresh", async () => {
   await withTargetService(async ({ service, setGroups, listCalls }) => {
-    assert.equal((await service.list())[0].name, "Target VIP");
-    setGroups([{ id: 7, name: "Remote Renamed", status: "active", rate_multiplier: 1 }]);
+    assert.deepEqual(await service.list(), []);
+    assert.equal(listCalls(), 0);
+    assert.equal((await service.refreshAll())[0].name, "Target VIP");
+    setGroups([{ id: 7, name: "Remote Renamed", platform: "anthropic", status: "active", rate_multiplier: 1 }]);
 
-    assert.equal((await service.list())[0].name, "Remote Renamed");
+    assert.equal((await service.list())[0].name, "Target VIP");
+    assert.equal((await service.list())[0].platform, "anthropic");
+    assert.equal((await service.refresh(7)).name, "Remote Renamed");
     assert.equal(listCalls(), 2);
   });
 });
 
+test("failed target group API refresh preserves the last persisted snapshot", async () => {
+  await withTargetService(async ({ service, setListError }) => {
+    await service.refreshAll();
+    setListError(new Error("invalid remote group payload"));
+
+    await assert.rejects(service.refreshAll(), /invalid remote group payload/);
+    assert.equal((await service.list())[0]?.name, "Target VIP");
+  });
+});
+
+test("target group client rejects malformed API data instead of treating it as empty", async () => {
+  const { createSub2TargetGroupClient } = await import("../src/server/target-groups/client.ts");
+  const client = createSub2TargetGroupClient({
+    baseUrl: "https://target.example.com",
+    adminApiKey: "key",
+    http: { request: async <T>() => ({ data: { invalid: true } }) as T },
+  });
+
+  await assert.rejects(client.listGroups(), /目标站分组列表响应无效/);
+});
+
 test("versioned rule and independent source bindings persist with the target group", async () => {
   await withTargetService(async ({ service }) => {
+    await service.refreshAll();
     await service.saveRule(7, ruleInput());
 
     const [group] = await service.list();
     assert.equal(group.rule.ruleVersion, 1);
     assert.equal(group.rule.ruleType, "average");
+    assert.equal(group.rule.parameters.minimum, 2.5);
     assert.deepEqual(group.bindings, ruleInput().bindings);
   });
 });
 
 test("preview and apply use bound collected rates and update only when changed", async () => {
   await withTargetService(async ({ service, updates }) => {
+    await service.refreshAll();
     await service.saveRule(7, ruleInput());
 
     const preview = await service.preview(7);
@@ -118,8 +156,16 @@ test("preview and apply use bound collected rates and update only when changed",
 test("unsupported rule versions and missing bindings fail explicitly", async () => {
   await withTargetService(async ({ service }) => {
     await assert.rejects(service.saveRule(7, { ...ruleInput(), ruleVersion: 2 }), /不支持的倍率规则版本/);
+    await service.refreshAll();
     await service.saveRule(7, { ...ruleInput(), bindings: [{ sourceSiteId: 1, sourceGroupId: "missing" }] });
     await assert.rejects(service.preview(7), /采集源分组不存在/);
+  });
+});
+
+test("invalid calculation minimum fails API validation explicitly", async () => {
+  await withTargetService(async ({ service }) => {
+    await assert.rejects(service.saveRule(7, { ...ruleInput(), parameters: { ...ruleInput().parameters, minimum: -1 } }), /计算最小值必须大于或等于 0/);
+    await assert.rejects(service.saveRule(7, { ...ruleInput(), parameters: { ...ruleInput().parameters, minimum: Number.NaN } }), /计算最小值必须是有效数字/);
   });
 });
 
@@ -129,11 +175,50 @@ test("target group routes and dashboard expose remote refresh, rule version and 
     "src/app/api/groups/[id]/rule/route.ts",
     "src/app/api/groups/[id]/preview/route.ts",
     "src/app/api/groups/[id]/apply/route.ts",
+    "src/app/api/groups/refresh/route.ts",
+    "src/app/api/groups/[id]/refresh/route.ts",
     "src/components/groups/groups-dashboard.tsx",
+    "src/components/groups/group-rule-table.tsx",
+    "src/components/groups/group-rule-dialog.tsx",
   ];
   for (const path of paths) assert.equal(existsSync(new URL(path, ROOT)), true, `${path} should exist`);
   const dashboard = readFileSync(new URL("src/components/groups/groups-dashboard.tsx", ROOT), "utf8");
-  assert.match(dashboard, /刷新目标站分组/);
-  assert.match(dashboard, /ruleVersion/);
-  assert.match(dashboard, /sourceGroupId/);
+  const table = readFileSync(new URL("src/components/groups/group-rule-table.tsx", ROOT), "utf8");
+  const dialog = readFileSync(new URL("src/components/groups/group-rule-dialog.tsx", ROOT), "utf8");
+  assert.match(dashboard, /刷新目标站全部分组/);
+  assert.match(dashboard, /规则版本 v1/);
+  assert.match(dashboard, /按采集分组绑定/);
+  assert.doesNotMatch(dashboard, /sourceSiteId \+ sourceGroupId/);
+  assert.match(dialog, /绑定采集分组/);
+  assert.match(dialog, /samePlatform/);
+  assert.match(dialog, /没有相同平台的采集倍率/);
+  assert.match(dialog, /min-h-10/);
+  assert.match(dialog, /first:border-t-0/);
+  assert.doesNotMatch(dialog, /sm:grid-cols-2/);
+  assert.match(dialog, /原 ×\{formatRate\(rate\.rawRate\)\}/);
+  assert.match(dialog, /有效 ×\{formatRate\(rate\.effectiveRate\)\}/);
+  assert.match(dialog, /预览倍率/);
+  assert.match(dialog, /选择采集分组/);
+  assert.match(dialog, /配置与预览/);
+  assert.match(dialog, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(260px,0\.7fr\)\]/);
+  assert.match(dialog, /<aside className="space-y-3">/);
+  assert.match(dialog, /calculatePreview/);
+  assert.match(dialog, /evaluateRateRule/);
+  assert.match(dialog, /不会保存或应用/);
+  assert.match(dialog, /计算最小值/);
+  assert.match(dialog, /自定义公式/);
+  assert.match(dialog, /<Select ariaLabel="规则类型"/);
+  assert.doesNotMatch(dialog, /<select/);
+  assert.doesNotMatch(dialog, /乘数/);
+  assert.doesNotMatch(dialog, /suffix="倍率"/);
+  assert.match(dialog, /@radix-ui\/react-dialog/);
+  assert.match(table, /<table/);
+  assert.match(table, /<thead/);
+  assert.match(table, /<tbody/);
+  assert.match(table, /下限/);
+  assert.match(table, /PlatformLabel/);
+  assert.match(table, /group\.bindings\.map/);
+  assert.match(table, /flex-col items-start/);
+  assert.doesNotMatch(table, /bindings\.slice/);
+  assert.match(table, /刷新此分组/);
 });

@@ -1,6 +1,7 @@
 export type TargetGroup = {
   readonly id: number;
   readonly name: string;
+  readonly platform?: string | null;
   readonly status?: string | null;
   readonly rate_multiplier?: number | null;
 };
@@ -8,7 +9,7 @@ export type TargetGroup = {
 export type RuleType = "first" | "average" | "min" | "max" | "avg_formula";
 export type RuleParameters = {
   readonly offset: number;
-  readonly multiplier: number;
+  readonly minimum: number;
   readonly formula: string;
 };
 

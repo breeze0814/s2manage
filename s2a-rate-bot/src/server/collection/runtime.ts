@@ -23,8 +23,10 @@ export function getRuntimeCollectionService(env: NodeJS.ProcessEnv = process.env
 }
 
 function requestOptions(settings: Awaited<ReturnType<ReturnType<typeof getRuntimeSettingsService>["get"]>>) {
+  if (!settings.target) throw new Error("请先配置目标站及其充值倍率");
   return {
     timeoutMs: settings.worker.timeoutSeconds * 1_000,
     proxyUrl: settings.proxy.enabled ? settings.proxy.proxyUrl : null,
+    targetRechargeRatio: settings.target.rechargeRatio,
   };
 }

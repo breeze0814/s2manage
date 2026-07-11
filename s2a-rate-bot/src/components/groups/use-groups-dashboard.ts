@@ -14,6 +14,7 @@ export function useGroupsDashboard() {
   return {
     groups, sites, rates, loading, pending, message,
     refresh: () => void refreshGroups({ setGroups, setLoading, setMessage }),
+    refreshOne: (groupId: number) => void refreshGroup({ groupId, setGroups, setPending, setMessage }),
     save: (groupId: number, draft: RuleDraft) => void saveRule({ groupId, draft, setGroups, setPending, setMessage }),
     preview: (groupId: number) => void executeAction({ groupId, action: "preview", setPending, setMessage, setGroups }),
     apply: (groupId: number) => void executeAction({ groupId, action: "apply", setPending, setMessage, setGroups }),
@@ -38,8 +39,8 @@ async function loadAll(input: LoadActions) {
 async function refreshGroups(input: Pick<LoadActions, "setGroups" | "setLoading" | "setMessage">) {
   input.setLoading(true);
   try {
-    input.setGroups((await api<{ groups: TargetGroupView[] }>("/api/groups")).groups);
-    input.setMessage("已刷新目标站分组，数据直接来自远端 API");
+    input.setGroups((await api<{ groups: TargetGroupView[] }>("/api/groups/refresh", { method: "POST" })).groups);
+    input.setMessage("已从目标站刷新全部分组并写入本地快照");
   } catch (error) {
     input.setMessage(errorMessage(error));
   } finally {
@@ -74,7 +75,29 @@ async function executeAction(input: ExecuteActions) {
 }
 
 function rulePayload(draft: RuleDraft) {
-  return { enabled: draft.enabled, ruleVersion: 1, ruleType: draft.ruleType, parameters: { offset: Number(draft.offset), multiplier: Number(draft.multiplier), formula: draft.formula }, bindings: draft.bindings.map((binding) => ({ sourceSiteId: binding.sourceSiteId, sourceGroupId: binding.sourceGroupId })) };
+  const minimum = finiteNumber(draft.minimum, "计算最小值");
+  if (minimum < 0) throw new Error("计算最小值必须大于或等于 0");
+  return { enabled: draft.enabled, ruleVersion: 1, ruleType: draft.ruleType, parameters: { offset: finiteNumber(draft.offset, "偏移"), minimum, formula: draft.formula }, bindings: draft.bindings.map((binding) => ({ sourceSiteId: binding.sourceSiteId, sourceGroupId: binding.sourceGroupId })) };
+}
+
+async function refreshGroup(input: RefreshGroupActions) {
+  input.setPending(`refresh:${input.groupId}`);
+  try {
+    const body = await api<{ group: TargetGroupView }>(`/api/groups/${input.groupId}/refresh`, { method: "POST" });
+    input.setGroups((groups) => groups.map((group) => group.id === input.groupId ? body.group : group));
+    input.setMessage(`已刷新分组「${body.group.name}」并写入本地快照`);
+  } catch (error) {
+    input.setMessage(errorMessage(error));
+  } finally {
+    input.setPending("");
+  }
+}
+
+function finiteNumber(value: string, label: string) {
+  if (value.trim() === "") throw new Error(`${label}不能为空`);
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) throw new Error(`${label}必须是有效数字`);
+  return numeric;
 }
 
 function decisionMessage(action: string, decision: { action: string; nextRate: number | null; reason?: string }) {
@@ -88,3 +111,4 @@ type SetGroups = React.Dispatch<React.SetStateAction<TargetGroupView[]>>;
 type LoadActions = { setGroups: SetGroups; setSites: React.Dispatch<React.SetStateAction<SourceSiteOption[]>>; setRates: React.Dispatch<React.SetStateAction<SourceRateOption[]>>; setLoading: (value: boolean) => void; setMessage: (value: string) => void };
 type SaveActions = { groupId: number; draft: RuleDraft; setGroups: SetGroups; setPending: (value: string) => void; setMessage: (value: string) => void };
 type ExecuteActions = { groupId: number; action: "preview" | "apply"; setGroups: SetGroups; setPending: (value: string) => void; setMessage: (value: string) => void };
+type RefreshGroupActions = { groupId: number; setGroups: SetGroups; setPending: (value: string) => void; setMessage: (value: string) => void };

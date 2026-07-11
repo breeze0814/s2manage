@@ -1,4 +1,5 @@
 import { fetch, ProxyAgent, type RequestInit } from "undici";
+import { writeExternalApiLog } from "../server/logging/business-logger.ts";
 
 type JsonBody = Record<string, unknown>;
 
@@ -28,10 +29,31 @@ export function createJsonHttpClient(options: {
 const DEFAULT_TIMEOUT_MS = 25_000;
 
 export async function requestJson<T = unknown>(input: JsonRequest): Promise<T> {
-  const result = await fetchText(input);
-  if (!result.ok) throw new Error(`HTTP ${result.status}: ${result.text.slice(0, 300)}`);
-  return (result.text.trim() ? JSON.parse(result.text) : {}) as T;
+  const startedAt = Date.now();
+  try {
+    const result = await fetchText(input);
+    if (!result.ok) throw new HttpResponseError(result.status, result.text);
+    await logExternalRequest(input, startedAt, result.status);
+    return (result.text.trim() ? JSON.parse(result.text) : {}) as T;
+  } catch (error) {
+    await logExternalRequest(input, startedAt, error instanceof HttpResponseError ? error.status : null, error);
+    throw error;
+  }
 }
+
+class HttpResponseError extends Error {
+  constructor(readonly status: number, text: string) { super(`HTTP ${status}: ${text.slice(0, 300)}`); }
+}
+
+async function logExternalRequest(input: JsonRequest, startedAt: number, status: number | null, error?: unknown) {
+  await writeExternalApiLog({
+    timestamp: new Date().toISOString(), method: input.method, url: safeRequestUrl(input.url), status,
+    durationMs: Date.now() - startedAt, outcome: error ? "failed" : "success",
+    ...(error ? { error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500) } : {}),
+  });
+}
+
+function safeRequestUrl(value: string) { const url = new URL(value); return `${url.origin}${url.pathname}`; }
 
 async function fetchText(input: JsonRequest) {
   const controller = new AbortController();

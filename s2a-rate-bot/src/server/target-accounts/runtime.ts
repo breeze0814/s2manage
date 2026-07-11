@@ -2,14 +2,19 @@ import { createJsonHttpClient } from "../../adapters/http-client.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createSub2TargetAccountClient } from "./client.ts";
 import { createTargetAccountService, type TargetAccountService } from "./service.ts";
+import { createSqliteTargetAccountStore } from "./store.ts";
 import type { TargetAccountClient } from "./types.ts";
 
+const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const globalAccounts = globalThis as typeof globalThis & { s2aTargetAccountService?: TargetAccountService };
 
 export function getRuntimeTargetAccountService(env: NodeJS.ProcessEnv = process.env) {
   if (env === process.env && globalAccounts.s2aTargetAccountService) return globalAccounts.s2aTargetAccountService;
   const settings = getRuntimeSettingsService(env);
-  const service = createTargetAccountService(dynamicClient(settings));
+  const service = createTargetAccountService({
+    client: dynamicClient(settings),
+    store: createSqliteTargetAccountStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL),
+  });
   if (env === process.env) globalAccounts.s2aTargetAccountService = service;
   return service;
 }

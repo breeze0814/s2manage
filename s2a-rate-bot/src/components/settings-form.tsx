@@ -3,12 +3,14 @@
 import * as Switch from "@radix-ui/react-switch";
 import { Loader2, PlugZap, Save } from "lucide-react";
 import { useEffect, useState } from "react";
+import { CompactNumberInput } from "./ui/compact-number-input";
 import { WorkerStatusPanel } from "./worker-status-panel";
 
 type SettingsFormState = {
   targetName: string;
   targetBaseUrl: string;
   adminApiKey: string;
+  targetRechargeRatio: string;
   hasAdminApiKey: boolean;
   proxyEnabled: boolean;
   proxyUrl: string;
@@ -22,6 +24,7 @@ const EMPTY_FORM: SettingsFormState = {
   targetName: "",
   targetBaseUrl: "",
   adminApiKey: "",
+  targetRechargeRatio: "1",
   hasAdminApiKey: false,
   proxyEnabled: false,
   proxyUrl: "",
@@ -30,7 +33,7 @@ const EMPTY_FORM: SettingsFormState = {
   workerConcurrency: "3",
 };
 
-export function SettingsForm() {
+export function SettingsForm({ presentation = "page" }: Readonly<{ presentation?: "page" | "dialog" }>) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<"save" | "test" | null>(null);
@@ -40,17 +43,25 @@ export function SettingsForm() {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  if (loading) return <LoadingSettings />;
+  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void saveSettings({ form, setForm, setPending, setFeedback });
+  };
+  if (loading) return <LoadingSettings presentation={presentation} />;
+  const fields = <div className="grid items-start gap-5 xl:grid-cols-2"><div className="space-y-5"><TargetFields form={form} update={update} /><ProxyFields form={form} update={update} /></div><WorkerFields form={form} update={update} /></div>;
+  if (presentation === "dialog") {
+    return (
+      <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6">{fields}<FeedbackMessage feedback={feedback} /></div>
+        <ActionBar compact pending={pending} onTest={() => { void testTarget({ setPending, setFeedback }); }} />
+      </form>
+    );
+  }
   return (
-    <section className="space-y-5">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">全局配置</h1>
-        <p className="mt-1 text-sm text-muted">管理目标站、全局代理以及 Worker 运行参数。</p>
-      </header>
-      <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void saveSettings({ form, setForm, setPending, setFeedback }); }}>
-        <TargetFields form={form} update={update} />
-        <ProxyFields form={form} update={update} />
-        <WorkerFields form={form} update={update} />
+    <section className="page-stack">
+      <header><h1 className="page-heading">全局配置</h1><p className="page-description">集中管理目标站、网络代理与 Worker 运行参数。</p></header>
+      <form className="space-y-5" onSubmit={submit}>
+        {fields}
         <FeedbackMessage feedback={feedback} />
         <ActionBar pending={pending} onTest={() => { void testTarget({ setPending, setFeedback }); }} />
       </form>
@@ -68,6 +79,9 @@ function TargetFields({ form, update }: SettingsFieldsProps) {
       <Field label="Admin Key" hint={form.hasAdminApiKey ? "已安全保存，留空表示不修改。" : "首次保存必须填写。"}>
         <TextInput type="password" value={form.adminApiKey} onChange={(value) => update("adminApiKey", value)} autoComplete="new-password" />
       </Field>
+      <Field label="充值倍率" hint="用于把采集站分组倍率映射为本站倍率。">
+        <CompactNumberInput required min="0.0001" step="any" suffix="倍" value={form.targetRechargeRatio} onChange={(value) => update("targetRechargeRatio", value)} />
+      </Field>
     </SettingsCard>
   );
 }
@@ -75,9 +89,9 @@ function TargetFields({ form, update }: SettingsFieldsProps) {
 function ProxyFields({ form, update }: SettingsFieldsProps) {
   return (
     <SettingsCard title="全局代理" description="启用后，目标站和采集站请求统一使用此代理。">
-      <div className="flex min-h-11 items-center justify-between gap-4 rounded-lg border border-border px-3">
+      <div className="flex min-h-12 items-center justify-between gap-4 rounded-xl border border-border bg-surface-muted/50 px-3">
         <span className="text-sm font-medium text-foreground">启用代理</span>
-        <Switch.Root checked={form.proxyEnabled} onCheckedChange={(value) => update("proxyEnabled", value)} className="h-6 w-11 rounded-full bg-border-strong p-0.5 data-[state=checked]:bg-primary">
+        <Switch.Root aria-label="启用全局代理" checked={form.proxyEnabled} onCheckedChange={(value) => update("proxyEnabled", value)} className="h-6 w-11 rounded-full bg-border-strong p-0.5 transition-colors data-[state=checked]:bg-primary">
           <Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" />
         </Switch.Root>
       </div>
@@ -91,10 +105,10 @@ function ProxyFields({ form, update }: SettingsFieldsProps) {
 function WorkerFields({ form, update }: SettingsFieldsProps) {
   return (
     <SettingsCard title="Worker" description="配置任务周期、单次请求超时和最大并发数。">
-      <div className="grid gap-4 md:grid-cols-3">
-        <Field label="运行间隔（秒）"><NumberInput value={form.workerIntervalSeconds} onChange={(value) => update("workerIntervalSeconds", value)} /></Field>
-        <Field label="请求超时（秒）"><NumberInput value={form.workerTimeoutSeconds} onChange={(value) => update("workerTimeoutSeconds", value)} /></Field>
-        <Field label="最大并发数"><NumberInput value={form.workerConcurrency} onChange={(value) => update("workerConcurrency", value)} /></Field>
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+        <Field label="运行间隔"><CompactNumberInput required min="1" step="1" suffix="秒" width="medium" value={form.workerIntervalSeconds} onChange={(value) => update("workerIntervalSeconds", value)} /></Field>
+        <Field label="请求超时"><CompactNumberInput required min="1" step="1" suffix="秒" value={form.workerTimeoutSeconds} onChange={(value) => update("workerTimeoutSeconds", value)} /></Field>
+        <Field label="最大并发"><CompactNumberInput required min="1" step="1" suffix="路" width="narrow" value={form.workerConcurrency} onChange={(value) => update("workerConcurrency", value)} /></Field>
       </div>
       <WorkerStatusPanel />
     </SettingsCard>
@@ -103,10 +117,10 @@ function WorkerFields({ form, update }: SettingsFieldsProps) {
 
 function SettingsCard({ title, description, children }: Readonly<{ title: string; description: string; children: React.ReactNode }>) {
   return (
-    <div className="space-y-4 rounded-xl border border-border bg-surface p-5 shadow-sm">
-      <div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-muted">{description}</p></div>
-      {children}
-    </div>
+    <section className="panel overflow-hidden">
+      <div className="border-b border-border bg-surface-muted/40 px-4 py-4 sm:px-5"><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm leading-6 text-muted">{description}</p></div>
+      <div className="space-y-4 p-4 sm:p-5">{children}</div>
+    </section>
   );
 }
 
@@ -119,20 +133,19 @@ function Field({ label, hint, children }: Readonly<{ label: string; hint?: strin
 }
 
 function TextInput(input: Readonly<{ value: string; onChange: (value: string) => void; type?: string; placeholder?: string; autoComplete?: string; disabled?: boolean }>) {
-  return <input {...input} onChange={(event) => input.onChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-border-strong px-3 outline-none ring-primary focus:ring-2 disabled:bg-surface-muted" />;
+  return <input {...input} onChange={(event) => input.onChange(event.target.value)} className="form-control" />;
 }
 
-function NumberInput({ value, onChange }: Readonly<{ value: string; onChange: (value: string) => void }>) {
-  return <input type="number" min="1" step="1" required value={value} onChange={(event) => onChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-border-strong px-3 outline-none ring-primary focus:ring-2" />;
-}
-
-function ActionBar({ pending, onTest }: Readonly<{ pending: "save" | "test" | null; onTest: () => void }>) {
+function ActionBar({ pending, onTest, compact = false }: Readonly<{ pending: "save" | "test" | null; onTest: () => void; compact?: boolean }>) {
+  const layout = compact
+    ? "flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:justify-end sm:px-6"
+    : "sticky bottom-20 z-20 flex flex-col gap-2 rounded-2xl border border-border bg-surface/95 p-3 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end lg:bottom-4";
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-      <button type="button" onClick={onTest} disabled={pending !== null} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium disabled:opacity-50">
+    <div className={layout}>
+      <button type="button" onClick={onTest} disabled={pending !== null} className="secondary-button">
         {pending === "test" ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}测试目标站
       </button>
-      <button type="submit" disabled={pending !== null} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">
+      <button type="submit" disabled={pending !== null} className="primary-button">
         {pending === "save" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}保存配置
       </button>
     </div>
@@ -141,11 +154,13 @@ function ActionBar({ pending, onTest }: Readonly<{ pending: "save" | "test" | nu
 
 function FeedbackMessage({ feedback }: Readonly<{ feedback: Feedback }>) {
   if (!feedback.message) return null;
-  return <p role="status" className={feedback.tone === "error" ? "text-sm text-red-600 dark:text-red-400" : "text-sm text-emerald-700 dark:text-emerald-300"}>{feedback.message}</p>;
+  const tone = feedback.tone === "error" ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+  return <p role="status" aria-live="polite" className={`rounded-xl border px-4 py-3 text-sm ${tone}`}>{feedback.message}</p>;
 }
 
-function LoadingSettings() {
-  return <div className="flex items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" />正在读取配置...</div>;
+function LoadingSettings({ presentation }: Readonly<{ presentation: "page" | "dialog" }>) {
+  const layout = presentation === "dialog" ? "min-h-64 justify-center" : "";
+  return <div className={`flex items-center gap-2 text-sm text-muted ${layout}`}><Loader2 className="size-4 animate-spin" />正在读取配置...</div>;
 }
 
 async function loadSettings(input: StateActions) {
@@ -192,7 +207,7 @@ async function testTarget(input: Pick<SaveActions, "setPending" | "setFeedback">
 
 function settingsPayload(form: SettingsFormState) {
   return {
-    target: { name: form.targetName, baseUrl: form.targetBaseUrl, adminApiKey: form.adminApiKey },
+    target: { name: form.targetName, baseUrl: form.targetBaseUrl, adminApiKey: form.adminApiKey, rechargeRatio: Number(form.targetRechargeRatio) },
     proxy: { enabled: form.proxyEnabled, proxyUrl: form.proxyUrl },
     worker: {
       intervalSeconds: Number(form.workerIntervalSeconds),
@@ -207,6 +222,7 @@ function formFromResponse(data: SettingsResponse): SettingsFormState {
     targetName: data.target?.name ?? "",
     targetBaseUrl: data.target?.baseUrl ?? "",
     adminApiKey: "",
+    targetRechargeRatio: String(data.target?.rechargeRatio ?? 1),
     hasAdminApiKey: data.hasAdminApiKey,
     proxyEnabled: data.proxy.enabled,
     proxyUrl: data.proxy.proxyUrl,
@@ -228,4 +244,4 @@ function errorMessage(error: unknown) {
 type SettingsFieldsProps = { form: SettingsFormState; update: <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => void };
 type StateActions = { setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setLoading: (value: boolean) => void; setFeedback: (value: Feedback) => void };
 type SaveActions = { form: SettingsFormState; setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setPending: (value: "save" | "test" | null) => void; setFeedback: (value: Feedback) => void };
-type SettingsResponse = { target: { name: string; baseUrl: string } | null; hasAdminApiKey: boolean; proxy: { enabled: boolean; proxyUrl: string }; worker: { intervalSeconds: number; timeoutSeconds: number; concurrency: number } };
+type SettingsResponse = { target: { name: string; baseUrl: string; rechargeRatio: number } | null; hasAdminApiKey: boolean; proxy: { enabled: boolean; proxyUrl: string }; worker: { intervalSeconds: number; timeoutSeconds: number; concurrency: number } };

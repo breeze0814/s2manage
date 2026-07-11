@@ -1,5 +1,6 @@
 import type { SourceAccountSnapshot } from "../../adapters/source-account-client.ts";
 import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
+import type { SourceAuthSession } from "../../adapters/source-rate-client.ts";
 
 export type CollectionSiteType = "sub2api" | "newapi";
 export type CollectionAuthMode = "password" | "manual_token";
@@ -48,6 +49,7 @@ export type CollectionSiteView = Omit<CollectionSiteRuntime, "password" | "acces
 export type CollectionOverview = {
   readonly account: SourceAccountSnapshot;
   readonly rates: readonly SourceRateSnapshot[];
+  readonly credentials?: SourceAuthSession;
 };
 
 export type CollectionCollector = {
@@ -55,10 +57,12 @@ export type CollectionCollector = {
     readonly site: CollectionSiteRuntime;
     readonly timeoutMs: number;
     readonly proxyUrl: string | null;
+    readonly targetRechargeRatio: number;
   }) => Promise<CollectionOverview>;
 };
 
 export type CollectionRequestOptions = {
   readonly timeoutMs: number;
   readonly proxyUrl: string | null;
+  readonly targetRechargeRatio: number;
 };

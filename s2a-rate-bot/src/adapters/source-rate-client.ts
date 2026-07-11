@@ -8,6 +8,7 @@ export type SourceRateRequest = {
   readonly accessToken?: string;
   readonly auth?: SourceAuth;
   readonly rechargeRatio: number;
+  readonly targetRechargeRatio: number;
   readonly timeoutMs?: number;
   readonly proxyUrl?: string | null;
 };
@@ -23,6 +24,11 @@ export type SourceAuth =
     readonly username: string;
     readonly password: string;
   };
+
+export type SourceAuthSession = {
+  readonly accessToken: string;
+  readonly refreshToken?: string;
+};
 
 type JsonRecord = Record<string, unknown>;
 type SourceSnapshotInput = {
@@ -73,11 +79,15 @@ export async function collectNewApiSourceRates(input: SourceRateRequest) {
 }
 
 export async function resolveSub2ApiAccessToken(input: SourceRateRequest) {
+  return (await resolveSub2ApiAuthSession(input)).accessToken;
+}
+
+export async function resolveSub2ApiAuthSession(input: SourceRateRequest): Promise<SourceAuthSession> {
   const auth = normalizeAuth(input);
   if (auth.mode === "manual_token") {
     const accessToken = auth.accessToken.trim();
-    if (accessToken) return accessToken;
-    return refreshSub2ApiAccessToken(input, auth.rtToken ?? "");
+    if (accessToken) return { accessToken, refreshToken: optionalToken(auth.rtToken) };
+    return refreshSub2ApiAuthSession(input, auth.rtToken ?? "");
   }
   const payload = await postJson({
     url: apiV1Url(input.baseUrl, "/auth/login"),
@@ -88,16 +98,20 @@ export async function resolveSub2ApiAccessToken(input: SourceRateRequest) {
   const data = expectCodeZeroRecord(payload, "登录失败");
   const token = stringValue(data.access_token);
   if (!token) throw new Error("登录响应缺少 access_token");
-  return token;
+  return { accessToken: token, refreshToken: optionalToken(data.refresh_token) };
 }
 
 export async function resolveNewApiAccessToken(input: SourceRateRequest) {
+  return (await resolveNewApiAuthSession(input)).accessToken;
+}
+
+export async function resolveNewApiAuthSession(input: SourceRateRequest): Promise<SourceAuthSession> {
   const auth = normalizeAuth(input);
   if (auth.mode === "manual_token") {
     const accessToken = auth.accessToken.trim();
     if (!accessToken && auth.rtToken?.trim()) throw new Error("NewAPI 不支持 rtToken 刷新，请填写 accessToken 或使用账号密码");
     if (!accessToken) throw new Error("采集站 accessToken 不能为空");
-    return accessToken;
+    return { accessToken };
   }
   const payload = await postJson({
     url: `${trimBaseUrl(input.baseUrl)}/api/user/login`,
@@ -110,7 +124,7 @@ export async function resolveNewApiAccessToken(input: SourceRateRequest) {
   const data = asRecord(record.data);
   const token = stringValue(data.token || data.access_token);
   if (!token) throw new Error("登录响应缺少 token");
-  return token;
+  return { accessToken: token, refreshToken: optionalToken(data.refresh_token) };
 }
 
 function normalizeAuth(input: SourceRateRequest): SourceAuth {
@@ -118,7 +132,7 @@ function normalizeAuth(input: SourceRateRequest): SourceAuth {
   return { mode: "manual_token", accessToken: input.accessToken ?? "" };
 }
 
-async function refreshSub2ApiAccessToken(input: SourceRateRequest, rtToken: string) {
+async function refreshSub2ApiAuthSession(input: SourceRateRequest, rtToken: string): Promise<SourceAuthSession> {
   const refreshToken = rtToken.trim();
   if (!refreshToken) throw new Error("采集站 accessToken 或 rtToken 不能为空");
   const payload = await postJson({
@@ -130,7 +144,7 @@ async function refreshSub2ApiAccessToken(input: SourceRateRequest, rtToken: stri
   const data = expectCodeZeroRecord(payload, "刷新 token 失败");
   const token = stringValue(data.access_token);
   if (!token) throw new Error("刷新响应缺少 access_token");
-  return token;
+  return { accessToken: token, refreshToken: optionalToken(data.refresh_token) ?? refreshToken };
 }
 
 async function postJson(input: {
@@ -188,14 +202,15 @@ function normalizeNewApiGroups(
 
 function sourceSnapshot(input: SourceSnapshotInput): SourceRateSnapshot {
   if (input.rawRate === null) throw new Error(`分组 ${input.groupId} 缺少有效倍率`);
-  const ratio = input.request.rechargeRatio > 0 ? input.request.rechargeRatio : 1;
   return {
     sourceSiteId: input.request.sourceSiteId,
     groupId: input.groupId,
     groupName: input.groupName,
     platform: input.platform,
     rawRate: input.rawRate,
-    effectiveRate: normalizeRateMultiplier(input.rawRate / ratio),
+    effectiveRate: normalizeRateMultiplier(
+      input.rawRate * input.request.targetRechargeRatio / input.request.rechargeRatio,
+    ),
     collectedAt: new Date(),
   };
 }
@@ -203,13 +218,17 @@ function sourceSnapshot(input: SourceSnapshotInput): SourceRateSnapshot {
 function expectCodeZeroArray(payload: unknown, fallback: string) {
   const record = asRecord(payload);
   if (Number(record.code ?? 0) !== 0) throw new Error(stringValue(record.message) || fallback);
-  return Array.isArray(record.data) ? record.data : [];
+  if (!Array.isArray(record.data)) throw new Error(`${fallback}：响应缺少 data 数组`);
+  return record.data;
 }
 
 function expectCodeZeroRecord(payload: unknown, fallback: string) {
   const record = asRecord(payload);
   if (Number(record.code ?? 0) !== 0) throw new Error(stringValue(record.message) || fallback);
-  return asRecord(record.data);
+  if (!record.data || typeof record.data !== "object" || Array.isArray(record.data)) {
+    throw new Error(`${fallback}：响应缺少 data 对象`);
+  }
+  return record.data as JsonRecord;
 }
 
 function authHeaders(accessToken: string) {
@@ -234,4 +253,9 @@ function asRecord(value: unknown): JsonRecord {
 
 function stringValue(value: unknown) {
   return value === null || value === undefined ? "" : String(value);
+}
+
+function optionalToken(value: unknown) {
+  const token = stringValue(value).trim();
+  return token || undefined;
 }

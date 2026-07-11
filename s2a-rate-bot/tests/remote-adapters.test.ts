@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   collectNewApiSourceRates,
   collectSub2ApiSourceRates,
+  resolveSub2ApiAuthSession,
 } from "../src/adapters/source-rate-client.ts";
 import {
   getNewApiSourceAccount,
@@ -11,6 +12,8 @@ import {
 } from "../src/adapters/source-account-client.ts";
 
 type RouteHandler = (request: IncomingMessage, response: ServerResponse) => void;
+const REMOTE_ADAPTER_TEST_PORT_START = 18181;
+let nextRemoteAdapterTestPort = REMOTE_ADAPTER_TEST_PORT_START;
 
 function json(response: ServerResponse, payload: unknown, statusCode = 200) {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
@@ -28,7 +31,8 @@ async function readJson(request: IncomingMessage) {
 
 async function withServer<T>(handler: RouteHandler, task: (baseUrl: string) => Promise<T>) {
   const server = createServer(handler);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = nextRemoteAdapterTestPort++;
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
   const address = server.address();
   if (typeof address !== "object" || address === null) {
     throw new Error("test server did not bind to a TCP port");
@@ -64,6 +68,7 @@ test("collectSub2ApiSourceRates reads available groups and user rates", async ()
       baseUrl,
       accessToken: "token-a",
       rechargeRatio: 2,
+      targetRechargeRatio: 1,
     });
 
     assert.deepEqual(rates.map((rate) => ({
@@ -94,6 +99,7 @@ test("getSub2ApiSourceAccount reads source station balance", async () => {
       baseUrl,
       accessToken: "token-a",
       rechargeRatio: 1,
+      targetRechargeRatio: 1,
     });
 
     assert.deepEqual(account, {
@@ -132,6 +138,7 @@ test("collectSub2ApiSourceRates logs in with email and password", async () => {
         password: "secret-pass",
       },
       rechargeRatio: 1,
+      targetRechargeRatio: 1,
     });
 
     assert.equal(rates[0]?.effectiveRate, 1.2);
@@ -166,9 +173,47 @@ test("collectSub2ApiSourceRates refreshes access token with rtToken", async () =
         rtToken: "refresh-token-a",
       },
       rechargeRatio: 1,
+      targetRechargeRatio: 1,
     });
 
     assert.equal(rates[0]?.effectiveRate, 1.4);
+  });
+});
+
+test("target recharge ratio maps group rates from the source recharge ratio", async () => {
+  await withServer((request, response) => {
+    if (request.url === "/api/pricing") {
+      json(response, { success: true, group_ratio: { default: 1 }, usable_group: { default: "默认" } });
+      return;
+    }
+    json(response, { message: "not found" }, 404);
+  }, async (baseUrl) => {
+    const rates = await collectNewApiSourceRates({
+      sourceSiteId: 11,
+      baseUrl,
+      accessToken: "new-token",
+      rechargeRatio: 1,
+      targetRechargeRatio: 10,
+    });
+
+    assert.equal(rates[0]?.effectiveRate, 10);
+  });
+});
+
+test("Sub2API authentication retains rotated access and refresh tokens", async () => {
+  await withServer(async (request, response) => {
+    assert.equal(request.url, "/api/v1/auth/refresh");
+    assert.deepEqual(await readJson(request), { refresh_token: "refresh-token-a" });
+    json(response, { code: 0, data: { access_token: "access-token-b", refresh_token: "refresh-token-b" } });
+  }, async (baseUrl) => {
+    const session = await resolveSub2ApiAuthSession({
+      sourceSiteId: 14,
+      baseUrl,
+      auth: { mode: "manual_token", accessToken: "", rtToken: "refresh-token-a" },
+      rechargeRatio: 1,
+      targetRechargeRatio: 1,
+    });
+    assert.deepEqual(session, { accessToken: "access-token-b", refreshToken: "refresh-token-b" });
   });
 });
 
@@ -190,6 +235,7 @@ test("collectNewApiSourceRates reads pricing group ratios", async () => {
       baseUrl,
       accessToken: "new-token",
       rechargeRatio: 1,
+      targetRechargeRatio: 1,
     });
 
     assert.deepEqual(rates.map((rate) => ({
@@ -219,6 +265,7 @@ test("getNewApiSourceAccount reads NewAPI quota as balance", async () => {
       baseUrl,
       accessToken: "new-token",
       rechargeRatio: 1,
+      targetRechargeRatio: 1,
     });
 
     assert.deepEqual(account, {
@@ -257,6 +304,7 @@ test("collectNewApiSourceRates logs in with username and password", async () => 
         password: "new-pass",
       },
       rechargeRatio: 2,
+      targetRechargeRatio: 1,
     });
 
     assert.equal(rates[0]?.effectiveRate, 0.8);
