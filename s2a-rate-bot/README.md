@@ -106,7 +106,6 @@ Web 与 Worker 必须使用相同的 `APP_SECRET` 和 `DATABASE_URL`。部署时
 ```bash
 npm ci
 npm run build
-npm install -g pm2
 npm run pm2:start
 pm2 save
 pm2 startup
@@ -130,6 +129,19 @@ pm2 logs
 ```
 
 `pm2:start` 会安装并配置 `pm2-logrotate`：单个 PM2 输出日志达到约 `2 MB` 时轮转，保留 5 份并压缩。系统业务日志 `external-api.log` 和 `worker.log` 同样在约 `2 MB` 时自动轮转，并保留最近 5 份归档。
+
+PM2 已作为项目依赖安装，命令会直接使用 `node_modules/.bin/pm2`，不要求服务器全局安装 PM2。
+
+### 自动部署脚本
+
+项目根目录提供 `deploy.sh`，会依次拉取最新代码、安装依赖、构建项目，并启动或平滑重载 PM2 的 Web 与 Worker 进程：
+
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+
+执行前必须准备好项目根目录的 `.env`。脚本使用 `git pull --ff-only`，存在无法快进的提交或其他命令执行失败时会立即终止，并保留明确的错误输出。
 
 ## 验证命令
 

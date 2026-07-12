@@ -102,6 +102,19 @@ test("successful refresh persists balance, rates, and a success run", async () =
   });
 });
 
+test("New API token authentication requires an access token", async () => {
+  await withCollection(successCollector(), async ({ service }) => {
+    await assert.rejects(service.create(sourceInput({
+      siteType: "newapi",
+      authMode: "manual_token",
+      username: "",
+      password: "",
+      accessToken: "",
+      refreshToken: "unsupported-refresh-token",
+    })), /New API Token 认证需要 Access Token/);
+  });
+});
+
 test("successful refresh encrypts API credentials returned by the collector", async () => {
   const collector = {
     collect: async ({ site }: { site: { id: number } }) => ({
@@ -119,6 +132,52 @@ test("successful refresh encrypts API credentials returned by the collector", as
     assert.equal(cipher.decrypt(row.access_token_enc), "fresh-access-token");
     assert.equal(cipher.decrypt(row.refresh_token_enc), "fresh-refresh-token");
     assert.doesNotMatch(row.access_token_enc, /fresh-access-token/);
+  });
+});
+
+test("successful refresh records added updated and deleted group rates", async () => {
+  let collection = 0;
+  const collector = {
+    collect: async ({ site }: { site: { id: number } }) => {
+      collection += 1;
+      const rates = collection === 1
+        ? [sourceRate(site.id, "vip", "VIP", 2), sourceRate(site.id, "legacy", "Legacy", 3)]
+        : [sourceRate(site.id, "vip", "VIP", 2.5), sourceRate(site.id, "new", "New", 1.2)];
+      return { account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5 }, rates };
+    },
+  };
+  await withCollection(collector, async ({ service }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+    await service.refresh(site.id);
+
+    const changes = await service.changes();
+    assert.deepEqual(changes.slice(0, 3).map((change) => [
+      change.groupId, change.changeType, change.oldRate, change.newRate,
+    ]), [
+      ["legacy", "deleted", 3, null],
+      ["new", "added", null, 1.2],
+      ["vip", "updated", 2, 2.5],
+    ]);
+    assert.equal(changes.every((change) => change.sourceSiteName === "Sub2 Source"), true);
+  });
+});
+
+test("manual group platform overrides persist across refreshes", async () => {
+  await withCollection(successCollector(), async ({ service }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+
+    const overridden = await service.setRatePlatform(site.id, "vip", "anthropic");
+    assert.equal(overridden.platform, "anthropic");
+    assert.equal(overridden.platformOverride, "anthropic");
+
+    await service.refresh(site.id);
+    assert.equal((await service.rates(site.id))[0]?.platform, "anthropic");
+
+    const automatic = await service.setRatePlatform(site.id, "vip", null);
+    assert.equal(automatic.platform, "openai");
+    assert.equal(automatic.platformOverride, null);
   });
 });
 
@@ -179,6 +238,7 @@ test("collection API routes are present", () => {
     "src/app/api/sources/[id]/route.ts",
     "src/app/api/sources/[id]/refresh/route.ts",
     "src/app/api/sources/refresh-all/route.ts",
+    "src/app/api/sources/changes/route.ts",
   ];
   for (const path of paths) {
     assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
@@ -194,6 +254,10 @@ function successOverview(siteId: number) {
     account: { sourceSiteId: siteId, label: "source@example.com", balance: 12.5 },
     rates: [{ sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai", rawRate: 2, effectiveRate: 2, collectedAt: new Date() }],
   };
+}
+
+function sourceRate(siteId: number, groupId: string, groupName: string, effectiveRate: number) {
+  return { sourceSiteId: siteId, groupId, groupName, platform: "openai", rawRate: effectiveRate, effectiveRate, collectedAt: new Date() };
 }
 
 type CollectionCollector = {

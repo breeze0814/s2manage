@@ -14,6 +14,8 @@
   --border-strong: 214 211 209;
   --primary: 249 156 0;
   --primary-foreground: 28 25 23;
+  --rate: 29 78 216;
+  --balance: 4 120 87;
   --shadow: 28 25 23;
   font-family: "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
@@ -30,6 +32,8 @@
   --border-strong: 87 83 78;
   --primary: 249 156 0;
   --primary-foreground: 28 25 23;
+  --rate: 147 197 253;
+  --balance: 110 231 183;
   --shadow: 0 0 0;
 }
 
@@ -97,6 +101,29 @@ textarea::placeholder {
   background: rgb(var(--primary) / 0.28);
 }
 
+@keyframes dialog-content-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes dialog-content-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+}
+
+.dialog-content-motion {
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+}
+
+.dialog-content-motion[data-state="open"] {
+  animation: dialog-content-in 180ms ease-out;
+}
+
+.dialog-content-motion[data-state="closed"] {
+  animation: dialog-content-out 140ms ease-in;
+}
+
 @layer components {
   .page-stack {
     @apply space-y-6;
@@ -138,6 +165,14 @@ textarea::placeholder {
     @apply inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-primary bg-primary text-primary-foreground shadow-sm transition-[filter,box-shadow] duration-200 hover:brightness-95 active:brightness-90 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .compact-icon-button {
+    @apply inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border-strong bg-surface text-muted transition-colors duration-200 hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .compact-icon-button-primary {
+    @apply inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground shadow-sm transition-[filter,box-shadow] duration-200 hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
   .table-shell {
     @apply overflow-hidden rounded-xl border border-border bg-surface;
   }
@@ -168,6 +203,8 @@ textarea::placeholder {
   *::before,
   *::after {
     scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

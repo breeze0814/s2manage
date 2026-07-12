@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type AuthMode = "loading" | "setup" | "login" | "error" | "ready";
 type AuthStatus = { initialized: boolean; authenticated: boolean };
@@ -38,7 +39,7 @@ function BlockingDialog({ mode, onAuthenticated }: Readonly<{
           aria-describedby="auth-description"
           onEscapeKeyDown={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => event.preventDefault()}
-          className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface p-5 shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:p-7"
+          className="dialog-content-motion fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] rounded-2xl border border-border bg-surface p-5 shadow-2xl sm:p-7"
         >
           <AuthHeader mode={mode} />
           <AuthBody mode={mode} onAuthenticated={onAuthenticated} />
@@ -92,34 +93,36 @@ function CredentialsForm({ mode, onAuthenticated }: Readonly<{
   mode: Exclude<AuthMode, "loading" | "error" | "ready">;
   onAuthenticated: () => void;
 }>) {
-  const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
     setPending(true);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch(`/api/auth/${mode}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
-    });
-    setPending(false);
-    if (!response.ok) {
-      const body = await response.json() as { error?: string };
-      setError(body.error ?? "认证失败");
-      return;
+    try {
+      const form = new FormData(event.currentTarget);
+      const response = await fetch(`/api/auth/${mode}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
+      });
+      if (!response.ok) {
+        const body = await response.json() as { error?: string };
+        throw new Error(body.error ?? "认证失败");
+      }
+      toast.success(mode === "setup" ? "管理员创建成功" : "登录成功");
+      onAuthenticated();
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPending(false);
     }
-    onAuthenticated();
-    window.location.reload();
   }
 
   return (
     <form className="space-y-4" onSubmit={(event) => { void submit(event); }}>
       <AuthField name="email" label="管理员邮箱" type="email" autoComplete="email" />
       <AuthField name="password" label="密码" type="password" autoComplete={mode === "setup" ? "new-password" : "current-password"} />
-      {error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p> : null}
       <button type="submit" disabled={pending} className="primary-button w-full">
         {pending ? <Loader2 className="size-4 animate-spin" /> : null}
         {pending ? "处理中..." : mode === "setup" ? "创建管理员" : "登录"}

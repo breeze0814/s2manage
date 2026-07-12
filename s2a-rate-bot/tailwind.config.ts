@@ -15,6 +15,8 @@ const config: Config = {
         "border-strong": "rgb(var(--border-strong) / <alpha-value>)",
         primary: "rgb(var(--primary) / <alpha-value>)",
         "primary-foreground": "rgb(var(--primary-foreground) / <alpha-value>)",
+        rate: "rgb(var(--rate) / <alpha-value>)",
+        "balance-value": "rgb(var(--balance) / <alpha-value>)",
       },
       boxShadow: {
         panel: "0 16px 44px rgb(var(--shadow) / 0.16)",

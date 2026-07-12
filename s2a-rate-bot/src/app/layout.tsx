@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AuthDialog } from "../components/auth-dialog";
 import { AppShell } from "../components/app-shell";
+import { Toaster } from "../components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body>
         <AuthDialog />
         <AppShell>{children}</AppShell>
+        <Toaster />
       </body>
     </html>
   );

@@ -1,4 +1,4 @@
-import { fetch, ProxyAgent, type RequestInit } from "undici";
+import { fetch, ProxyAgent, type Headers, type RequestInit } from "undici";
 import { writeExternalApiLog } from "../server/logging/business-logger.ts";
 
 type JsonBody = Record<string, unknown>;
@@ -29,12 +29,16 @@ export function createJsonHttpClient(options: {
 const DEFAULT_TIMEOUT_MS = 25_000;
 
 export async function requestJson<T = unknown>(input: JsonRequest): Promise<T> {
+  return (await requestJsonResponse<T>(input)).data;
+}
+
+export async function requestJsonResponse<T = unknown>(input: JsonRequest) {
   const startedAt = Date.now();
   try {
     const result = await fetchText(input);
     if (!result.ok) throw new HttpResponseError(result.status, result.text);
     await logExternalRequest(input, startedAt, result.status);
-    return (result.text.trim() ? JSON.parse(result.text) : {}) as T;
+    return { data: (result.text.trim() ? JSON.parse(result.text) : {}) as T, headers: result.headers, status: result.status };
   } catch (error) {
     await logExternalRequest(input, startedAt, error instanceof HttpResponseError ? error.status : null, error);
     throw error;
@@ -65,6 +69,7 @@ async function fetchText(input: JsonRequest) {
       ok: response.ok,
       status: response.status,
       text: await response.text(),
+      headers: responseHeaders(response.headers),
     };
   } catch (error) {
     if (controller.signal.aborted) {
@@ -75,6 +80,13 @@ async function fetchText(input: JsonRequest) {
     clearTimeout(timer);
     await dispatcher?.close();
   }
+}
+
+function responseHeaders(headers: Headers) {
+  const values = Object.fromEntries(headers.entries());
+  const cookies = typeof headers.getSetCookie === "function" ? headers.getSetCookie() : [];
+  if (cookies.length) values["set-cookie"] = cookies.join("\n");
+  return values;
 }
 
 function fetchOptions(input: JsonRequest, controller: AbortController, dispatcher: ProxyAgent | null) {

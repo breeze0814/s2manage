@@ -5,6 +5,7 @@ const TONES = {
   warning: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
   danger: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
   primary: "border-primary/35 bg-primary/10 text-foreground",
+  rate: "border-rate/30 bg-rate/10 text-rate",
 } as const;
 
 export type TagTone = keyof typeof TONES;

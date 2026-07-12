@@ -8,17 +8,19 @@ export type SelectOption = {
   readonly label: string;
 };
 
-export function Select({ value, options, ariaLabel, onValueChange }: Readonly<{
+export function Select({ value, options, ariaLabel, disabled = false, triggerIcon, onValueChange }: Readonly<{
   value: string;
   options: readonly SelectOption[];
   ariaLabel: string;
+  disabled?: boolean;
+  triggerIcon?: React.ReactNode;
   onValueChange: (value: string) => void;
 }>) {
   return (
-    <SelectPrimitive.Root value={value} onValueChange={onValueChange}>
-      <SelectPrimitive.Trigger aria-label={ariaLabel} className="form-control flex items-center justify-between gap-2 text-left">
-        <SelectPrimitive.Value />
-        <SelectPrimitive.Icon><ChevronDown className="size-4 text-muted" /></SelectPrimitive.Icon>
+    <SelectPrimitive.Root value={value} disabled={disabled} onValueChange={onValueChange}>
+      <SelectPrimitive.Trigger aria-label={ariaLabel} title={ariaLabel} className={triggerIcon ? "compact-icon-button" : "form-control flex items-center justify-between gap-2 text-left"}>
+        {triggerIcon ?? <SelectPrimitive.Value />}
+        {triggerIcon ? <span className="sr-only"><SelectPrimitive.Value /></span> : <SelectPrimitive.Icon><ChevronDown className="size-4 text-muted" /></SelectPrimitive.Icon>}
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content position="popper" sideOffset={6} className="z-[70] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-xl">

@@ -3,6 +3,7 @@
 import * as Switch from "@radix-ui/react-switch";
 import { Loader2, PlugZap, Save } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { CompactNumberInput } from "./ui/compact-number-input";
 import { WorkerStatusPanel } from "./worker-status-panel";
 
@@ -19,7 +20,6 @@ type SettingsFormState = {
   workerConcurrency: string;
 };
 
-type Feedback = { readonly tone: "idle" | "error" | "success"; readonly message: string };
 const EMPTY_FORM: SettingsFormState = {
   targetName: "",
   targetBaseUrl: "",
@@ -33,37 +33,35 @@ const EMPTY_FORM: SettingsFormState = {
   workerConcurrency: "3",
 };
 
-export function SettingsForm({ presentation = "page" }: Readonly<{ presentation?: "page" | "dialog" }>) {
+export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ presentation?: "page" | "dialog"; onSaved?: () => void }>) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<"save" | "test" | null>(null);
-  const [feedback, setFeedback] = useState<Feedback>({ tone: "idle", message: "" });
-  useEffect(() => { void loadSettings({ setForm, setLoading, setFeedback }); }, []);
+  useEffect(() => { void loadSettings({ setForm, setLoading }); }, []);
   const update = <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void saveSettings({ form, setForm, setPending, setFeedback });
+    void saveSettings({ form, setForm, setPending, onSaved });
   };
   if (loading) return <LoadingSettings presentation={presentation} />;
   const fields = <div className="grid items-start gap-5 xl:grid-cols-2"><div className="space-y-5"><TargetFields form={form} update={update} /><ProxyFields form={form} update={update} /></div><WorkerFields form={form} update={update} /></div>;
   if (presentation === "dialog") {
     return (
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
-        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6">{fields}<FeedbackMessage feedback={feedback} /></div>
-        <ActionBar compact pending={pending} onTest={() => { void testTarget({ setPending, setFeedback }); }} />
+        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6">{fields}</div>
+        <ActionBar compact pending={pending} onTest={() => { void testTarget({ setPending }); }} />
       </form>
     );
   }
   return (
     <section className="page-stack">
-      <header><h1 className="page-heading">全局配置</h1><p className="page-description">集中管理目标站、网络代理与 Worker 运行参数。</p></header>
+      <header><h1 className="page-heading">Global Settings</h1><p className="page-description">全局配置</p></header>
       <form className="space-y-5" onSubmit={submit}>
         {fields}
-        <FeedbackMessage feedback={feedback} />
-        <ActionBar pending={pending} onTest={() => { void testTarget({ setPending, setFeedback }); }} />
+        <ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} />
       </form>
     </section>
   );
@@ -80,7 +78,7 @@ function TargetFields({ form, update }: SettingsFieldsProps) {
         <TextInput type="password" value={form.adminApiKey} onChange={(value) => update("adminApiKey", value)} autoComplete="new-password" />
       </Field>
       <Field label="充值倍率" hint="用于把采集站分组倍率映射为本站倍率。">
-        <CompactNumberInput required min="0.0001" step="any" suffix="倍" value={form.targetRechargeRatio} onChange={(value) => update("targetRechargeRatio", value)} />
+        <CompactNumberInput required min="0.0001" step="any" suffix="倍" tone="rate" value={form.targetRechargeRatio} onChange={(value) => update("targetRechargeRatio", value)} />
       </Field>
     </SettingsCard>
   );
@@ -152,12 +150,6 @@ function ActionBar({ pending, onTest, compact = false }: Readonly<{ pending: "sa
   );
 }
 
-function FeedbackMessage({ feedback }: Readonly<{ feedback: Feedback }>) {
-  if (!feedback.message) return null;
-  const tone = feedback.tone === "error" ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
-  return <p role="status" aria-live="polite" className={`rounded-xl border px-4 py-3 text-sm ${tone}`}>{feedback.message}</p>;
-}
-
 function LoadingSettings({ presentation }: Readonly<{ presentation: "page" | "dialog" }>) {
   const layout = presentation === "dialog" ? "min-h-64 justify-center" : "";
   return <div className={`flex items-center gap-2 text-sm text-muted ${layout}`}><Loader2 className="size-4 animate-spin" />正在读取配置...</div>;
@@ -170,7 +162,7 @@ async function loadSettings(input: StateActions) {
     const data = await response.json() as SettingsResponse;
     input.setForm(formFromResponse(data));
   } catch (error) {
-    input.setFeedback({ tone: "error", message: errorMessage(error) });
+    toast.error(errorMessage(error));
   } finally {
     input.setLoading(false);
   }
@@ -183,23 +175,24 @@ async function saveSettings(input: SaveActions) {
     if (!response.ok) throw new Error(await responseError(response));
     const data = await response.json() as SettingsResponse;
     input.setForm(formFromResponse(data));
-    input.setFeedback({ tone: "success", message: "全局配置已保存" });
+    toast.success("全局配置已保存");
+    input.onSaved?.();
   } catch (error) {
-    input.setFeedback({ tone: "error", message: errorMessage(error) });
+    toast.error(errorMessage(error));
   } finally {
     input.setPending(null);
   }
 }
 
-async function testTarget(input: Pick<SaveActions, "setPending" | "setFeedback">) {
+async function testTarget(input: Pick<SaveActions, "setPending">) {
   input.setPending("test");
   try {
     const response = await fetch("/api/settings/test-target", { method: "POST" });
     const body = await response.json() as { message?: string; error?: string };
     if (!response.ok) throw new Error(body.error ?? "目标站连接失败");
-    input.setFeedback({ tone: "success", message: body.message ?? "目标站连接成功" });
+    toast.success(body.message ?? "目标站连接成功");
   } catch (error) {
-    input.setFeedback({ tone: "error", message: errorMessage(error) });
+    toast.error(errorMessage(error));
   } finally {
     input.setPending(null);
   }
@@ -242,6 +235,6 @@ function errorMessage(error: unknown) {
 }
 
 type SettingsFieldsProps = { form: SettingsFormState; update: <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => void };
-type StateActions = { setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setLoading: (value: boolean) => void; setFeedback: (value: Feedback) => void };
-type SaveActions = { form: SettingsFormState; setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setPending: (value: "save" | "test" | null) => void; setFeedback: (value: Feedback) => void };
+type StateActions = { setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setLoading: (value: boolean) => void };
+type SaveActions = { form: SettingsFormState; setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setPending: (value: "save" | "test" | null) => void; onSaved?: () => void };
 type SettingsResponse = { target: { name: string; baseUrl: string; rechargeRatio: number } | null; hasAdminApiKey: boolean; proxy: { enabled: boolean; proxyUrl: string }; worker: { intervalSeconds: number; timeoutSeconds: number; concurrency: number } };

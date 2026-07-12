@@ -2,6 +2,7 @@
 
 import { Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Tag, type TagTone } from "./ui/tag";
 
 type WorkerRun = {
@@ -21,17 +22,17 @@ type WorkerRun = {
 export function WorkerStatusPanel() {
   const [run, setRun] = useState<WorkerRun | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useEffect(() => { void loadWorkerStatus({ setRun, setLoading, setError }); }, []);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { void loadWorkerStatus({ setRun, setLoading, setFailed }); }, []);
   return (
     <section className="space-y-4 rounded-xl border border-border bg-surface-muted/60 p-4" aria-labelledby="worker-status-title">
       <div className="flex items-center justify-between gap-3">
         <div><h3 id="worker-status-title" className="text-sm font-semibold text-foreground">最近运行</h3><p className="text-xs text-muted">来自 Worker 持久化运行摘要。</p></div>
-        <button type="button" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setError })} disabled={loading} className="icon-button">
+        <button type="button" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setFailed })} disabled={loading} className="icon-button">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
         </button>
       </div>
-      {error ? <p role="alert" className="text-sm text-red-700 dark:text-red-300">读取失败：{error}</p> : loading ? <p className="text-sm text-muted">正在读取 Worker 状态...</p> : run ? <RunSummary run={run} /> : <p className="text-sm text-muted">尚无 Worker 运行记录。</p>}
+      {failed ? null : loading ? <p className="text-sm text-muted">正在读取 Worker 状态...</p> : run ? <RunSummary run={run} /> : <p className="text-sm text-muted">尚无 Worker 运行记录。</p>}
     </section>
   );
 }
@@ -65,18 +66,19 @@ function StatusBadge({ status }: Readonly<{ status: WorkerRun["status"] }>) {
 
 async function loadWorkerStatus(actions: StatusActions) {
   actions.setLoading(true);
-  actions.setError("");
+  actions.setFailed(false);
   try {
     const response = await fetch("/api/worker/status", { cache: "no-store" });
     const body = await response.json() as { run?: WorkerRun | null; error?: string };
     if (!response.ok) throw new Error(body.error ?? `请求失败 HTTP ${response.status}`);
     actions.setRun(body.run ?? null);
   } catch (error) {
-    actions.setError(error instanceof Error ? error.message : String(error));
+    actions.setFailed(true);
+    toast.error(error instanceof Error ? error.message : String(error));
   } finally {
     actions.setLoading(false);
   }
 }
 
 function formatTime(value: string | null) { return value ? new Date(value).toLocaleString("zh-CN") : "-"; }
-type StatusActions = { readonly setRun: (run: WorkerRun | null) => void; readonly setLoading: (loading: boolean) => void; readonly setError: (error: string) => void };
+type StatusActions = { readonly setRun: (run: WorkerRun | null) => void; readonly setLoading: (loading: boolean) => void; readonly setFailed: (failed: boolean) => void };

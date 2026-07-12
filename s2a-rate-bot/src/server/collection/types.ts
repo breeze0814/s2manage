@@ -11,6 +11,7 @@ export type CollectionSiteInput = {
   readonly baseUrl: string;
   readonly authMode: CollectionAuthMode;
   readonly username: string;
+  readonly newApiUserId: string;
   readonly password: string;
   readonly accessToken: string;
   readonly refreshToken: string;
@@ -50,6 +51,22 @@ export type CollectionOverview = {
   readonly account: SourceAccountSnapshot;
   readonly rates: readonly SourceRateSnapshot[];
   readonly credentials?: SourceAuthSession;
+};
+
+export type CollectionRateChangeType = "added" | "updated" | "deleted";
+
+export type CollectionRateChange = {
+  readonly id: number;
+  readonly runId: number;
+  readonly sourceSiteId: number;
+  readonly sourceSiteName: string;
+  readonly groupId: string;
+  readonly groupName: string;
+  readonly platform: string | null;
+  readonly changeType: CollectionRateChangeType;
+  readonly oldRate: number | null;
+  readonly newRate: number | null;
+  readonly collectedAt: string;
 };
 
 export type CollectionCollector = {

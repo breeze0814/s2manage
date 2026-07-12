@@ -3,6 +3,7 @@ export type SourceRateSnapshot = {
   readonly groupId: string;
   readonly groupName: string;
   readonly platform?: string;
+  readonly platformOverride?: string | null;
   readonly rawRate: number | null;
   readonly effectiveRate: number;
   readonly collectedAt: Date;

@@ -1,6 +1,7 @@
 const { execFileSync } = require("node:child_process");
+const { resolve } = require("node:path");
 
-const pm2 = process.platform === "win32" ? "pm2.cmd" : "pm2";
+const pm2 = resolve(__dirname, process.platform === "win32" ? "../node_modules/.bin/pm2.cmd" : "../node_modules/.bin/pm2");
 
 run(["install", "pm2-logrotate"]);
 run(["set", "pm2-logrotate:max_size", "2M"]);

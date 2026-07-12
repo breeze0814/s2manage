@@ -1,7 +1,6 @@
 "use client";
 
 import { Loader2, RefreshCw } from "lucide-react";
-import { Tag } from "../ui/tag";
 import { GroupRuleTable } from "./group-rule-table";
 import { useGroupsDashboard } from "./use-groups-dashboard";
 
@@ -9,9 +8,8 @@ export function GroupsDashboard() {
   const view = useGroupsDashboard();
   return (
     <section className="page-stack">
-      <header className="flex items-start justify-between gap-4"><div><h1 className="page-heading">分组倍率</h1><p className="page-description">页面读取本地分组快照；点击刷新后才请求目标站并更新本地数据。</p><div className="mt-2 flex flex-wrap gap-1.5"><Tag>规则版本 v1</Tag><Tag>按采集分组绑定</Tag></div></div><button type="button" aria-label="刷新目标站全部分组" title="刷新目标站全部分组" onClick={view.refresh} disabled={view.loading} className="icon-button shrink-0">{view.loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}<span className="sr-only">刷新目标站全部分组</span></button></header>
-      {view.message ? <p role="status" aria-live="polite" className="rounded-xl border border-border bg-surface-muted px-4 py-3 text-sm text-foreground">{view.message}</p> : null}
-      {view.loading ? <LoadingGroups /> : view.groups.length === 0 ? <EmptyGroups /> : <GroupRuleTable groups={view.groups} sites={view.sites} rates={view.rates} pending={view.pending} onRefresh={view.refreshOne} onSave={view.save} onPreview={view.preview} onApply={view.apply} />}
+      <header className="flex items-start justify-between gap-4"><div><h1 className="page-heading">Rate Groups</h1><p className="page-description">分组倍率</p></div><button type="button" onClick={view.refresh} disabled={view.loading} className="secondary-button shrink-0">{view.loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}刷新分组</button></header>
+      {view.loading ? <LoadingGroups /> : view.groups.length === 0 ? <EmptyGroups /> : <GroupRuleTable groups={view.groups} sites={view.sites} rates={view.rates} pending={view.pending} onRefresh={view.refreshOne} onSave={view.save} onApply={view.apply} />}
     </section>
   );
 }

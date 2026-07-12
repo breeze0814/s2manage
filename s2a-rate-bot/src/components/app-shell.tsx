@@ -22,7 +22,7 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
     <div className="min-h-dvh bg-background text-foreground">
       <a href="#main-content" className="fixed left-4 top-4 z-40 -translate-y-20 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus:translate-y-0">跳到主要内容</a>
       <TopNavigation pathname={pathname} />
-      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
     </div>
   );
 }
@@ -30,7 +30,7 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
 function TopNavigation({ pathname }: Readonly<{ pathname: string }>) {
   return (
     <header className="sticky top-0 z-40 pt-2">
-      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 lg:px-8">
         <div className="overflow-hidden rounded-2xl border border-border bg-surface/95 shadow-sm backdrop-blur-xl">
           <div className="hidden min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-5 md:grid lg:px-6">
             <div className="justify-self-start"><Brand /></div>

@@ -1,5 +1,5 @@
 import { normalizeRateMultiplier, toFiniteRate } from "../core/rates.ts";
-import { requestJson } from "./http-client.ts";
+import { requestJson, requestJsonResponse } from "./http-client.ts";
 import type { SourceRateSnapshot } from "./source-rates.ts";
 
 export type SourceRateRequest = {
@@ -9,6 +9,7 @@ export type SourceRateRequest = {
   readonly auth?: SourceAuth;
   readonly rechargeRatio: number;
   readonly targetRechargeRatio: number;
+  readonly newApiUserId?: string;
   readonly timeoutMs?: number;
   readonly proxyUrl?: string | null;
 };
@@ -67,7 +68,7 @@ export async function collectNewApiSourceRates(input: SourceRateRequest) {
   const payload = await requestJson({
     url: `${trimBaseUrl(input.baseUrl)}/api/pricing`,
     method: "GET",
-    headers: authHeaders(accessToken),
+    headers: newApiAuthHeaders(accessToken, input.newApiUserId),
     timeoutMs: input.timeoutMs,
     proxyUrl: input.proxyUrl,
   });
@@ -85,7 +86,8 @@ export async function resolveSub2ApiAccessToken(input: SourceRateRequest) {
 export async function resolveSub2ApiAuthSession(input: SourceRateRequest): Promise<SourceAuthSession> {
   const auth = normalizeAuth(input);
   if (auth.mode === "manual_token") {
-    const accessToken = auth.accessToken.trim();
+    const normalized = normalizeNewApiToken(auth.accessToken);
+    const accessToken = input.newApiUserId?.trim() && !normalized.includes("::") ? `${normalized}::${input.newApiUserId.trim()}` : normalized;
     if (accessToken) return { accessToken, refreshToken: optionalToken(auth.rtToken) };
     return refreshSub2ApiAuthSession(input, auth.rtToken ?? "");
   }
@@ -113,18 +115,23 @@ export async function resolveNewApiAuthSession(input: SourceRateRequest): Promis
     if (!accessToken) throw new Error("采集站 accessToken 不能为空");
     return { accessToken };
   }
-  const payload = await postJson({
+  const response = await requestJsonResponse({
     url: `${trimBaseUrl(input.baseUrl)}/api/user/login`,
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
     body: { username: auth.username, password: auth.password },
     timeoutMs: input.timeoutMs,
     proxyUrl: input.proxyUrl,
   });
+  const payload = response.data;
   const record = asRecord(payload);
   if (record.success !== true) throw new Error(stringValue(record.message) || "登录失败");
   const data = asRecord(record.data);
-  const token = stringValue(data.token || data.access_token);
-  if (!token) throw new Error("登录响应缺少 token");
-  return { accessToken: token, refreshToken: optionalToken(data.refresh_token) };
+  const userId = stringValue(data.id || input.newApiUserId);
+  const cookie = sessionCookie(response.headers["set-cookie"]);
+  const token = cookie ? `session:${cookie}` : normalizeNewApiToken(stringValue(data.token || data.access_token));
+  if (!token) throw new Error("登录响应缺少 session token");
+  return { accessToken: userId ? `${token}::${userId}` : token, refreshToken: optionalToken(data.refresh_token) };
 }
 
 function normalizeAuth(input: SourceRateRequest): SourceAuth {
@@ -195,6 +202,7 @@ function normalizeNewApiGroups(
       request: input,
       groupId,
       groupName,
+      platform: "new-api",
       rawRate: toFiniteRate(ratio),
     });
   });
@@ -253,6 +261,28 @@ function asRecord(value: unknown): JsonRecord {
 
 function stringValue(value: unknown) {
   return value === null || value === undefined ? "" : String(value);
+}
+
+export function newApiAuthHeaders(accessToken: string, configuredUserId?: string) {
+  const normalized = normalizeNewApiToken(accessToken);
+  const separator = normalized.lastIndexOf("::");
+  const token = separator >= 0 ? normalized.slice(0, separator) : normalized;
+  const userId = separator >= 0 ? normalized.slice(separator + 2) : configuredUserId?.trim() ?? "";
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (userId) headers["New-Api-User"] = userId;
+  if (token.startsWith("session:")) headers.cookie = token.slice("session:".length);
+  else if (token && token !== "public") headers.authorization = `Bearer ${token}`;
+  return headers;
+}
+
+function normalizeNewApiToken(value: string) {
+  const token = value.trim().replace(/^bearer\s+/i, "");
+  if (token.includes("=") && !token.startsWith("session:")) return `session:${token}`;
+  return token;
+}
+
+function sessionCookie(value?: string) {
+  return (value ?? "").split(/\r?\n/).map((cookie) => cookie.split(";")[0]?.trim() ?? "").filter(Boolean).join("; ");
 }
 
 function optionalToken(value: unknown) {

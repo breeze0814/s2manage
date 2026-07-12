@@ -18,12 +18,19 @@ test("home dashboard aggregates existing system APIs", () => {
   assert.match(dashboard, /\/api\/sources/);
   assert.match(dashboard, /\/api\/groups/);
   assert.match(dashboard, /\/api\/sources\/rates/);
+  assert.match(dashboard, /\/api\/sources\/changes/);
   assert.match(dashboard, /\/api\/worker\/status/);
   assert.match(dashboard, /采集站状态/);
   assert.match(dashboard, /采集站总余额/);
   assert.match(dashboard, /site\.balance/);
   assert.match(dashboard, /METRIC_TONES/);
   assert.match(dashboard, /Worker 最近运行/);
+  const changes = source("src/components/home/rate-change-panel.tsx");
+  assert.match(changes, /Recent Rate Changes/);
+  assert.match(changes, /新增/);
+  assert.match(changes, /已删除/);
+  assert.match(changes, /oldRate/);
+  assert.match(changes, /newRate/);
 });
 
 test("system logs page exposes external API and Worker business logs", () => {

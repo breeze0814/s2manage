@@ -20,7 +20,18 @@ test("PM2 deploys the web and Worker as separate managed processes", () => {
   assert.match(ecosystem, /run worker/);
   assert.match(ecosystem, /autorestart: true/);
   assert.match(pkg, /pm2:start/);
+  assert.match(pkg, /"pm2":/);
   assert.match(pkg, /node --env-file=\.env scripts\/start-next\.cjs start/);
+});
+
+test("deployment script pulls builds and reloads PM2 services", () => {
+  const deploy = source("deploy.sh");
+  assert.match(deploy, /set -Eeuo pipefail/);
+  assert.match(deploy, /git pull --ff-only/);
+  assert.match(deploy, /npm ci/);
+  assert.match(deploy, /npm run build/);
+  assert.match(deploy, /reload .*--update-env/);
+  assert.match(deploy, /PM2_BIN.* save/);
 });
 
 test("Next.js port can be overridden through the PORT environment variable", () => {
@@ -35,6 +46,7 @@ test("PM2 and business logs rotate at approximately two megabytes", () => {
   const logger = source("src/server/logging/business-logger.ts");
 
   assert.match(setup, /pm2-logrotate:max_size", "2M/);
+  assert.match(setup, /node_modules\/\.bin\/pm2/);
   assert.match(setup, /pm2-logrotate:retain", "5/);
   assert.match(setup, /pm2-logrotate:compress", "true/);
   assert.match(logger, /MAX_LOG_BYTES = 2 \* 1024 \* 1024/);

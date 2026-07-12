@@ -32,6 +32,7 @@ function sourceRequest(site: CollectionSiteRuntime, timeoutMs: number, proxyUrl:
   return {
     sourceSiteId: site.id,
     baseUrl: site.baseUrl,
+    newApiUserId: site.newApiUserId,
     auth: site.authMode === "password"
       ? { mode: "password", username: site.username, password: site.password }
       : { mode: "manual_token", accessToken: site.accessToken, rtToken: site.refreshToken },

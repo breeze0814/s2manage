@@ -5,6 +5,7 @@ export type SourceSiteView = {
   readonly baseUrl: string;
   readonly authMode: "password" | "manual_token";
   readonly username: string;
+  readonly newApiUserId: string;
   readonly rechargeRatio: number;
   readonly intervalSeconds: number;
   readonly useProxy: boolean;
@@ -26,6 +27,7 @@ export type SourceRateView = {
   readonly groupId: string;
   readonly groupName: string;
   readonly platform?: string;
+  readonly platformOverride?: string | null;
   readonly rawRate: number | null;
   readonly effectiveRate: number;
   readonly collectedAt: string;
@@ -37,6 +39,7 @@ export type SourceSiteForm = {
   baseUrl: string;
   authMode: "password" | "manual_token";
   username: string;
+  newApiUserId: string;
   password: string;
   accessToken: string;
   refreshToken: string;

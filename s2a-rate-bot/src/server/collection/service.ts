@@ -9,6 +9,7 @@ export const collectionSiteSchema = z.object({
   baseUrl: z.string().trim().url("采集站地址无效").transform((value) => value.replace(/\/+$/, "")),
   authMode: z.enum(["password", "manual_token"]),
   username: z.string().trim().default(""),
+  newApiUserId: z.string().trim().default(""),
   password: z.string().default(""),
   accessToken: z.string().trim().default(""),
   refreshToken: z.string().trim().default(""),
@@ -24,6 +25,8 @@ export type CollectionService = {
   readonly delete: (id: number) => Promise<void>;
   readonly list: () => Promise<CollectionSiteView[]>;
   readonly rates: (siteId?: number) => Promise<ReturnType<CollectionStore["rates"]>>;
+  readonly setRatePlatform: (siteId: number, groupId: string, platform: unknown) => Promise<ReturnType<CollectionStore["setRatePlatform"]>>;
+  readonly changes: (limit?: number) => Promise<ReturnType<CollectionStore["changes"]>>;
   readonly refresh: (id: number) => Promise<CollectionSiteView>;
   readonly refreshAll: () => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
 };
@@ -40,10 +43,14 @@ export function createCollectionService(input: {
     delete: async (id) => input.store.delete(id),
     list: async () => input.store.list().map((site) => siteView(site, input.cipher)),
     rates: async (siteId) => input.store.rates(siteId),
+    setRatePlatform: async (siteId, groupId, platform) => input.store.setRatePlatform(siteId, groupId, ratePlatformSchema.parse(platform)),
+    changes: async (limit) => input.store.changes(limit),
     refresh: (id) => refreshSite(input, id),
     refreshAll: () => refreshAllSites(input),
   };
 }
+
+const ratePlatformSchema = z.enum(["openai", "anthropic", "gemini", "new-api"]).nullable();
 
 async function createSite(input: CollectionDependencies, raw: unknown) {
   const site = collectionSiteSchema.parse(raw);
@@ -97,7 +104,8 @@ async function refreshAllSites(input: CollectionDependencies) {
 function encryptedSite(site: CollectionSiteInput, cipher: SecretCipher, current?: CollectionSiteStored) {
   return {
     name: site.name, siteType: site.siteType, baseUrl: site.baseUrl, authMode: site.authMode,
-    username: site.username, passwordEnc: encryptedValue(site.password, current?.passwordEnc, cipher),
+    username: site.username, newApiUserId: site.siteType === "newapi" ? site.newApiUserId : "",
+    passwordEnc: encryptedValue(site.password, current?.passwordEnc, cipher),
     accessTokenEnc: encryptedValue(site.accessToken, current?.accessTokenEnc, cipher),
     refreshTokenEnc: encryptedValue(site.refreshToken, current?.refreshTokenEnc, cipher),
     rechargeRatio: site.rechargeRatio, intervalSeconds: site.intervalSeconds,
@@ -146,7 +154,10 @@ function validateAuthentication(site: CollectionSiteInput, context: z.Refinement
   if (site.authMode === "password" && (!site.username || !site.password)) {
     context.addIssue({ code: "custom", message: "账号密码认证需要用户名和密码" });
   }
-  if (site.authMode === "manual_token" && !site.accessToken && !site.refreshToken) {
+  if (site.siteType === "newapi" && site.authMode === "manual_token" && !site.accessToken) {
+    context.addIssue({ code: "custom", message: "New API Token 认证需要 Access Token" });
+  }
+  if (site.siteType === "sub2api" && site.authMode === "manual_token" && !site.accessToken && !site.refreshToken) {
     context.addIssue({ code: "custom", message: "Token 认证需要 Access Token 或 Refresh Token" });
   }
 }

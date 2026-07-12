@@ -11,11 +11,15 @@ function source(path: string) {
 }
 
 test("source dashboard distinguishes remote collection from local page reload", () => {
-  const dashboard = source("src/components/sources/sources-dashboard.tsx")
-    + source("src/components/sources/use-sources-dashboard.ts");
+  const component = source("src/components/sources/sources-dashboard.tsx");
+  const dashboard = component + source("src/components/sources/use-sources-dashboard.ts");
 
   assert.match(dashboard, /重新请求全部远端/);
-  assert.match(dashboard, /重新读取页面数据/);
+  assert.doesNotMatch(component, /重新读取页面数据|重载数据|onReload/);
+  assert.match(dashboard, /text="添加站点"/);
+  assert.match(dashboard, /text="刷新全部"/);
+  assert.doesNotMatch(dashboard, /function Metric/);
+  assert.doesNotMatch(dashboard, /<Metric label=/);
   assert.match(dashboard, /\/api\/sources\/refresh-all/);
   assert.match(dashboard, /\/api\/sources\/rates/);
 });
@@ -29,6 +33,17 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(dialog, /newapi/);
   assert.match(dialog, /password/);
   assert.match(dialog, /manual_token/);
+  assert.match(dialog, /<Select ariaLabel="站点类型"/);
+  assert.doesNotMatch(dialog, /<select/);
+  assert.match(dialog, /form\.siteType === "newapi" \? "用户名" : "邮箱"/);
+  assert.match(dialog, /New API Token 模式必须填写 Access Token/);
+  assert.match(dialog, /New-Api-User/);
+  assert.match(dialog, /newApiUserId/);
+  assert.match(dialog, /w-\[min\(96vw,920px\)\]/);
+  assert.match(dialog, /md:grid-cols-\[auto_auto_minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
+  assert.match(dialog, /form\.siteType === "sub2api" \? <Field label="Refresh Token"/);
+  assert.match(dialog, /update\("refreshToken", ""\)/);
+  assert.equal((dialog.match(/<fieldset/g) ?? []).length, 2);
   assert.match(table, /data-refresh-site/);
   assert.match(table, /data-edit-site/);
   assert.match(table, /data-delete-site/);
@@ -38,6 +53,10 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.doesNotMatch(table, /账号认证/);
   assert.doesNotMatch(table, /intervalSeconds/);
   assert.match(table, /size-8/);
+  assert.match(table, /role="listbox"/);
+  assert.match(table, /role="option"/);
+  assert.match(table, /aria-selected=\{props\.selected\}/);
+  assert.match(table, /border-primary bg-primary\/5/);
   assert.match(table, /余额/);
   assert.match(dialog, /bg-stone-950\/60/);
   assert.match(dialog, /bg-primary/);
@@ -53,16 +72,33 @@ test("aggregated source rate table combines group and site in one column", () =>
   const platformIcon = source("src/components/platform-icon.tsx");
 
   assert.match(dashboard, /data-source-split-layout/);
-  assert.match(dashboard, /lg:grid-cols-\[minmax\(320px,0\.85fr\)_minmax\(0,1\.65fr\)\]/);
+  assert.match(dashboard, /selectedSiteId/);
+  assert.match(dashboard, /onSelect=\{setSelectedSiteId\}/);
+  assert.match(table, /展示全部/);
+  assert.match(table, /matchesSite/);
+  assert.match(dashboard, /lg:grid-cols-\[minmax\(320px,0\.75fr\)_minmax\(0,1\.65fr\)\]/);
   assert.match(table, /采集站/);
   assert.match(table, /分组/);
-  assert.match(table, /分组 \/ 采集站/);
-  assert.match(table, /rate\.groupName[\s\S]*SiteTag name=\{siteName\}/);
+  assert.match(table, /ID \/ 采集站/);
+  assert.match(table, /#\{rate\.groupId\}[\s\S]*SiteTag name=\{siteName\}/);
   assert.match(table, /平台/);
   assert.match(table, /原始倍率/);
   assert.match(table, /有效倍率/);
+  assert.match(table, /有效倍率：低到高/);
+  assert.match(table, /有效倍率：高到低/);
+  assert.match(table, /sortRates/);
+  assert.match(table, /DEFAULT_PAGE_SIZE = 10/);
+  assert.match(table, /每页展示条数/);
+  assert.match(table, /value: "15"/);
+  assert.match(table, /value: "20"/);
+  assert.match(table, /第 \{page\} \/ \{pageCount\} 页/);
   assert.match(table, /最后采集/);
   assert.match(table, /PlatformLabel/);
+  assert.match(table, /PlatformAction/);
+  assert.match(table, /<th className="text-right">操作<\/th>/);
+  assert.match(table, /PLATFORM_OPTIONS/);
+  assert.match(table, /自动识别/);
+  assert.match(table, /onPlatformChange/);
   assert.match(table, /<Tag/);
   assert.match(table, /SiteTag/);
   assert.match(table, /title=\{name\} tone="info"/);

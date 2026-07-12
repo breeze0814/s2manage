@@ -71,6 +71,36 @@ test("root layout mounts the application shell and global styles", () => {
   assert.match(layout, /lang="zh-CN"/);
 });
 
+test("browser tab uses a compact theme-aligned SVG icon", () => {
+  const icon = source("src/app/icon.svg");
+
+  assert.match(icon, /viewBox="0 0 64 64"/);
+  assert.match(icon, /fill="#1c1917"/i);
+  assert.match(icon, /stroke="#f99c00"/i);
+  assert.match(icon, /aria-label="S2A Rate Bot"/);
+  assert.doesNotMatch(icon, /<text/);
+});
+
+test("top-level page titles use consistent English and Chinese pairs", () => {
+  const titles = [
+    ["src/components/home/home-dashboard.tsx", "System Overview", "系统概览"],
+    ["src/components/groups/groups-dashboard.tsx", "Rate Groups", "分组倍率"],
+    ["src/components/sources/sources-dashboard.tsx", "Rate Sources", "倍率采集"],
+    ["src/components/accounts/accounts-dashboard.tsx", "Account Pool", "号池管理"],
+    ["src/components/logs/logs-dashboard.tsx", "System Logs", "系统日志"],
+    ["src/components/settings-form.tsx", "Global Settings", "全局配置"],
+  ] as const;
+
+  for (const [path, english, chinese] of titles) {
+    const component = source(path);
+    assert.match(component, new RegExp(`page-heading[^>]*>${english}<`));
+    assert.match(component, new RegExp(`page-description[^>]*>${chinese}<`));
+  }
+  const settingsDialog = source("src/components/settings-dialog.tsx");
+  assert.match(settingsDialog, /Global Settings/);
+  assert.match(settingsDialog, /全局配置/);
+});
+
 test("responsive shell uses a Vercel-style top navigation without horizontal page overflow", () => {
   const styles = source("src/app/globals.css");
   const shell = source("src/components/app-shell.tsx");
@@ -81,7 +111,7 @@ test("responsive shell uses a Vercel-style top navigation without horizontal pag
   assert.match(shell, /justify-self-start/);
   assert.match(shell, /justify-self-center/);
   assert.match(shell, /justify-self-end/);
-  assert.ok((shell.match(/max-w-7xl/g) ?? []).length >= 2);
+  assert.ok((shell.match(/max-w-screen-2xl/g) ?? []).length >= 2);
   assert.match(shell, /md:grid/);
   assert.match(shell, /md:hidden/);
   assert.match(shell, /overflow-x-auto/);
@@ -141,6 +171,100 @@ test("components use semantic theme colors instead of slate utilities", () => {
   for (const dataComponent of ["src/components/accounts/accounts-dashboard.tsx", "src/components/groups/group-rule-table.tsx", "src/components/sources/source-rates-table.tsx", "src/components/sources/source-site-table.tsx"]) {
     assert.doesNotMatch(source(dataComponent), /text-primary/, `${dataComponent} should not use low-contrast orange for data text`);
   }
+});
+
+test("rate multipliers and balances use dedicated semantic data colors", () => {
+  const styles = source("src/app/globals.css");
+  const tailwind = source("tailwind.config.ts");
+  const compactInput = source("src/components/ui/compact-number-input.tsx");
+  const home = source("src/components/home/home-dashboard.tsx");
+  const accounts = source("src/components/accounts/accounts-dashboard.tsx");
+  const groupTable = source("src/components/groups/group-rule-table.tsx");
+  const groupDialog = source("src/components/groups/group-rule-dialog.tsx");
+  const sourceTable = source("src/components/sources/source-site-table.tsx");
+  const rateTable = source("src/components/sources/source-rates-table.tsx");
+  const settings = source("src/components/settings-form.tsx");
+  const sourceDialog = source("src/components/sources/source-site-dialog.tsx");
+
+  assert.match(styles, /--rate:/);
+  assert.match(styles, /--balance:/);
+  assert.match(tailwind, /rate:\s*"rgb\(var\(--rate\) \/ <alpha-value>\)"/);
+  assert.match(tailwind, /"balance-value":\s*"rgb\(var\(--balance\) \/ <alpha-value>\)"/);
+  assert.match(compactInput, /tone\?:\s*"default"\s*\|\s*"rate"/);
+  assert.match(home, /valueClassName="text-balance-value"/);
+  assert.match(home, /site\.balance[\s\S]*text-balance-value/);
+  assert.match(sourceTable, /text-balance-value/);
+  for (const component of [accounts, groupTable, groupDialog, rateTable]) {
+    assert.match(component, /(?:text-rate|tone="rate")/);
+  }
+  assert.match(settings, /tone="rate"/);
+  assert.match(sourceDialog, /tone="rate"/);
+});
+
+test("transient system feedback uses shadcn Sonner alerts instead of inline messages", () => {
+  const pkg = JSON.parse(source("package.json")) as { dependencies?: Record<string, string> };
+  const layout = source("src/app/layout.tsx");
+  const toaster = source("src/components/ui/sonner.tsx");
+  const confirmAlert = source("src/components/ui/confirm-alert.tsx");
+  const dashboards = [
+    "src/components/accounts/accounts-dashboard.tsx",
+    "src/components/groups/groups-dashboard.tsx",
+    "src/components/sources/sources-dashboard.tsx",
+  ].map(source).join("\n");
+  const feedbackSources = [
+    "src/components/accounts/use-accounts-dashboard.ts",
+    "src/components/groups/use-groups-dashboard.ts",
+    "src/components/sources/use-sources-dashboard.ts",
+    "src/components/settings-form.tsx",
+    "src/components/home/home-dashboard.tsx",
+  ].map(source).join("\n");
+
+  assert.ok(pkg.dependencies?.sonner);
+  assert.ok(pkg.dependencies?.["@radix-ui/react-alert-dialog"]);
+  assert.match(layout, /<Toaster \/>/);
+  assert.match(toaster, /Toaster as Sonner/);
+  assert.match(toaster, /position="top-center"/);
+  assert.match(confirmAlert, /@radix-ui\/react-alert-dialog/);
+  assert.match(feedbackSources, /toast\.success/);
+  assert.match(feedbackSources, /toast\.error/);
+  assert.doesNotMatch(dashboards, /view\.message/);
+  assert.doesNotMatch(feedbackSources, /setMessage|FeedbackMessage|window\.confirm/);
+});
+
+test("dialog forms close only after a successful save", () => {
+  const settingsDialog = source("src/components/settings-dialog.tsx");
+  const settingsForm = source("src/components/settings-form.tsx");
+  const groupDialog = source("src/components/groups/group-rule-dialog.tsx");
+  const groupHook = source("src/components/groups/use-groups-dashboard.ts");
+  const sourceHook = source("src/components/sources/use-sources-dashboard.ts");
+
+  assert.match(settingsDialog, /open=\{open\}/);
+  assert.match(settingsDialog, /onSaved=\{\(\) => setOpen\(false\)\}/);
+  assert.match(settingsForm, /onSaved\?: \(\) => void/);
+  assert.match(settingsForm, /input\.onSaved\?\.\(\)/);
+  assert.match(groupDialog, /await onSave\(group\.id, draft\)/);
+  assert.match(groupDialog, /setOpen\(false\)/);
+  assert.match(groupHook, /Promise<boolean>/);
+  assert.match(groupHook, /return true/);
+  assert.match(groupHook, /return false/);
+  assert.match(sourceHook, /setDialog\(\{ open: false, site: null \}\)/);
+});
+
+test("centered dialogs preserve their position during open and close animations", () => {
+  const styles = source("src/app/globals.css");
+  const dialogs = [
+    "src/components/auth-dialog.tsx",
+    "src/components/settings-dialog.tsx",
+    "src/components/groups/group-rule-dialog.tsx",
+    "src/components/sources/source-site-dialog.tsx",
+    "src/components/ui/confirm-alert.tsx",
+  ].map(source).join("\n");
+
+  assert.match(styles, /@keyframes dialog-content-in/);
+  assert.match(styles, /@keyframes dialog-content-out/);
+  assert.match(styles, /\.dialog-content-motion/);
+  assert.ok((dialogs.match(/dialog-content-motion/g) ?? []).length >= 5);
+  assert.doesNotMatch(dialogs, /zoom-(?:in|out)-95/);
 });
 
 test("subproject owns its ESLint configuration", () => {

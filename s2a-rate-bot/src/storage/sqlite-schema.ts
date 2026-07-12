@@ -2,7 +2,10 @@ import type { DatabaseSync } from "node:sqlite";
 
 const MINIMUM_PARAMETER_SCHEMA_VERSION = 9;
 const LOCAL_SNAPSHOT_SCHEMA_VERSION = 10;
-const SCHEMA_VERSION = LOCAL_SNAPSHOT_SCHEMA_VERSION;
+const RATE_CHANGE_SCHEMA_VERSION = 11;
+const NEW_API_USER_SCHEMA_VERSION = 12;
+const RATE_PLATFORM_SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = RATE_PLATFORM_SCHEMA_VERSION;
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -40,6 +43,7 @@ const CREATE_TABLES = [
     base_url TEXT NOT NULL,
     auth_mode TEXT NOT NULL,
     username TEXT NOT NULL,
+    new_api_user_id TEXT NOT NULL DEFAULT '',
     password_enc TEXT NOT NULL,
     access_token_enc TEXT NOT NULL,
     refresh_token_enc TEXT NOT NULL,
@@ -78,6 +82,30 @@ const CREATE_TABLES = [
     PRIMARY KEY (site_id, group_id),
     FOREIGN KEY (site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
   ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS collection_group_platform_overrides (
+    site_id INTEGER NOT NULL,
+    group_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (site_id, group_id),
+    FOREIGN KEY (site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS collection_rate_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    site_id INTEGER NOT NULL,
+    group_id TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    platform TEXT,
+    change_type TEXT NOT NULL CHECK (change_type IN ('added', 'updated', 'deleted')),
+    old_rate REAL,
+    new_rate REAL,
+    collected_at TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES collection_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
+  ) STRICT`,
+  `CREATE INDEX IF NOT EXISTS collection_rate_changes_recent
+    ON collection_rate_changes (collected_at DESC, id DESC)`,
   `CREATE TABLE IF NOT EXISTS target_account_snapshots (
     account_id INTEGER PRIMARY KEY,
     account_name TEXT NOT NULL,
@@ -150,12 +178,19 @@ export function initializeSqliteSchema(database: DatabaseSync) {
 function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureTargetRechargeRatio(database);
   ensureTargetGroupPlatform(database);
+  ensureNewApiUserId(database);
   if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {
     database.exec(`UPDATE target_group_rules
       SET parameters_json = json_set(parameters_json, '$.minimum', 0)
       WHERE json_type(parameters_json, '$.minimum') IS NULL`);
   }
   if (previousVersion < LOCAL_SNAPSHOT_SCHEMA_VERSION) seedGroupSnapshots(database);
+}
+
+function ensureNewApiUserId(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "new_api_user_id")) return;
+  database.exec("ALTER TABLE collection_sites ADD COLUMN new_api_user_id TEXT NOT NULL DEFAULT ''");
 }
 
 function ensureTargetRechargeRatio(database: DatabaseSync) {

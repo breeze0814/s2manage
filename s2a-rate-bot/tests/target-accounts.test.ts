@@ -91,10 +91,22 @@ test("account routes and dashboard expose remote refresh and schedulable control
   assert.match(hook, /\/api\/groups/);
   assert.match(hook, /Promise\.all/);
   const dashboard = readFileSync(new URL("src/components/accounts/accounts-dashboard.tsx", ROOT), "utf8");
+  assert.match(dashboard, /Account Pool/);
+  assert.match(dashboard, /号池管理/);
+  assert.doesNotMatch(dashboard, /页面读取本地账号快照/);
   assert.match(dashboard, /GroupTag/);
   assert.match(dashboard, /rate_multiplier/);
-  assert.match(dashboard, /AccountOverview/);
-  assert.match(dashboard, /参与 \{scheduled\}/);
+  assert.doesNotMatch(dashboard, /共 \{accounts\.length\} 个账号/);
+  assert.match(dashboard, /<th>ID<\/th><th>账号<\/th>/);
+  assert.match(dashboard, /<td className="font-mono text-sm tabular-nums text-muted">#\{account\.id\}<\/td>/);
+  assert.match(dashboard, /刷新账号/);
+  assert.match(dashboard, /secondary-button shrink-0/);
+  assert.match(dashboard, /<Check className="size-3\.5"/);
+  assert.match(dashboard, /<X className="size-3\.5"/);
+  assert.match(dashboard, /account\.priority \?\? "-"/);
+  assert.match(dashboard, /account\.rateMultiplier \?\? "-"/);
+  assert.doesNotMatch(dashboard, /优先级 \{account\.priority/);
+  assert.doesNotMatch(dashboard, /倍率 ×\{account\.rateMultiplier/);
 });
 
 function createAccountRemote() {
