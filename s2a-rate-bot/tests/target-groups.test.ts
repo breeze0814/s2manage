@@ -222,6 +222,8 @@ test("target group routes and dashboard expose remote refresh, rule version and 
   assert.match(table, /PlatformLabel/);
   assert.match(table, /group\.bindings\.map/);
   assert.match(table, /flex-col items-start/);
+  assert.match(table, /siteNames\.get\(binding\.sourceSiteId\)/);
+  assert.match(table, /\{siteName\}[\s\S]*rate\?\.groupName/);
   assert.doesNotMatch(table, /bindings\.slice/);
   assert.match(table, /刷新此分组/);
   assert.doesNotMatch(table, /text="刷新"/);
