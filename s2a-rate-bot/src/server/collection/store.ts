@@ -7,6 +7,11 @@ import type { CollectionOverview, CollectionRateChange, CollectionSiteStored } f
 
 const DEFAULT_CHANGE_LIMIT = 50;
 
+export type CollectionChangesQuery = {
+  readonly limit?: number;
+  readonly since?: string;
+};
+
 export type CollectionStore = {
   readonly create: (site: Omit<CollectionSiteStored, "id" | StatusFields>) => CollectionSiteStored;
   readonly update: (id: number, site: Omit<CollectionSiteStored, "id" | StatusFields>) => CollectionSiteStored;
@@ -17,7 +22,7 @@ export type CollectionStore = {
   readonly recordFailure: (siteId: number, error: string, startedAt: string) => void;
   readonly rates: (siteId?: number) => SourceRateSnapshot[];
   readonly setRatePlatform: (siteId: number, groupId: string, platform: string | null) => SourceRateSnapshot;
-  readonly changes: (limit?: number) => CollectionRateChange[];
+  readonly changes: (query?: CollectionChangesQuery) => CollectionRateChange[];
   readonly close: () => void;
 };
 
@@ -44,7 +49,7 @@ function collectionStore(database: DatabaseSync): CollectionStore {
     recordFailure: (siteId, error, startedAt) => recordFailure(database, siteId, error, startedAt),
     rates: (siteId) => readRates(database, siteId),
     setRatePlatform: (siteId, groupId, platform) => setRatePlatform(database, siteId, groupId, platform),
-    changes: (limit) => readChanges(database, limit),
+    changes: (query) => readChanges(database, query),
     close: () => database.close(),
   };
 }
@@ -175,11 +180,16 @@ function setRatePlatform(database: DatabaseSync, siteId: number, groupId: string
   return readRates(database, siteId).find((rate) => rate.groupId === groupId)!;
 }
 
-function readChanges(database: DatabaseSync, limit = DEFAULT_CHANGE_LIMIT): CollectionRateChange[] {
+function readChanges(database: DatabaseSync, query: CollectionChangesQuery = {}): CollectionRateChange[] {
+  const limit = query.limit ?? DEFAULT_CHANGE_LIMIT;
   const rows = database.prepare(`SELECT changes.*, sites.name AS site_name
     FROM collection_rate_changes AS changes
     JOIN collection_sites AS sites ON sites.id = changes.site_id
-    ORDER BY changes.collected_at DESC, changes.id DESC LIMIT ?`).all(limit) as Record<string, unknown>[];
+    WHERE (:since IS NULL OR changes.collected_at >= :since)
+    ORDER BY changes.collected_at DESC, changes.id DESC LIMIT :limit`).all({
+      since: query.since ?? null,
+      limit,
+    }) as Record<string, unknown>[];
   return rows.map(mapChange);
 }
 

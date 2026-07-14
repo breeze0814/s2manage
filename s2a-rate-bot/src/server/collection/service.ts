@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { SecretCipher } from "../crypto.ts";
-import type { CollectionStore } from "./store.ts";
+import type { CollectionChangesQuery, CollectionStore } from "./store.ts";
 import type { CollectionCollector, CollectionRequestOptions, CollectionSiteInput, CollectionSiteRuntime, CollectionSiteStored, CollectionSiteView } from "./types.ts";
 
 export const collectionSiteSchema = z.object({
@@ -26,7 +26,7 @@ export type CollectionService = {
   readonly list: () => Promise<CollectionSiteView[]>;
   readonly rates: (siteId?: number) => Promise<ReturnType<CollectionStore["rates"]>>;
   readonly setRatePlatform: (siteId: number, groupId: string, platform: unknown) => Promise<ReturnType<CollectionStore["setRatePlatform"]>>;
-  readonly changes: (limit?: number) => Promise<ReturnType<CollectionStore["changes"]>>;
+  readonly changes: (query?: CollectionChangesQuery) => Promise<ReturnType<CollectionStore["changes"]>>;
   readonly refresh: (id: number) => Promise<CollectionSiteView>;
   readonly refreshAll: () => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
 };
@@ -44,7 +44,7 @@ export function createCollectionService(input: {
     list: async () => input.store.list().map((site) => siteView(site, input.cipher)),
     rates: async (siteId) => input.store.rates(siteId),
     setRatePlatform: async (siteId, groupId, platform) => input.store.setRatePlatform(siteId, groupId, ratePlatformSchema.parse(platform)),
-    changes: async (limit) => input.store.changes(limit),
+    changes: async (query) => input.store.changes(query),
     refresh: (id) => refreshSite(input, id),
     refreshAll: () => refreshAllSites(input),
   };

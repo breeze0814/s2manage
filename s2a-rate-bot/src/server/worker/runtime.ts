@@ -4,6 +4,7 @@ import { getRuntimeTargetGroupService } from "../target-groups/runtime.ts";
 import { createWorkerService } from "./service.ts";
 import { createSqliteWorkerRunStore } from "./store.ts";
 import { writeWorkerLog } from "../logging/business-logger.ts";
+import { createSqliteMaintenance } from "../../storage/sqlite-maintenance.ts";
 
 const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 type RuntimeWorkerService = ReturnType<typeof buildRuntimeWorkerService>;
@@ -17,10 +18,12 @@ export function getRuntimeWorkerService(env: NodeJS.ProcessEnv = process.env) {
 }
 
 function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
+  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
   const settings = getRuntimeSettingsService(env);
   const collection = getRuntimeCollectionService(env);
   const targetGroups = getRuntimeTargetGroupService(env);
-  const runs = createSqliteWorkerRunStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
+  const runs = createSqliteWorkerRunStore(databaseUrl);
+  const maintenance = createSqliteMaintenance(databaseUrl);
   const worker = createWorkerService({
     settings: async () => workerSettings(await settings.get()),
     collection,
@@ -30,10 +33,20 @@ function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
   });
   return {
     ...worker,
-    runCycle: async () => loggedWorkerCycle(worker.runCycle),
+    runCycle: async () => runMaintainedCycle(worker.runCycle, maintenance),
     intervalSeconds: async () => (await settings.get()).worker.intervalSeconds,
-    close: () => runs.close(),
+    close: () => { maintenance.close(); runs.close(); },
   };
+}
+
+async function runMaintainedCycle(
+  runCycle: () => ReturnType<ReturnType<typeof createWorkerService>["runCycle"]>,
+  maintenance: ReturnType<typeof createSqliteMaintenance>,
+) {
+  const result = await loggedWorkerCycle(runCycle);
+  const cleanup = maintenance.runIfDue();
+  if (cleanup) await writeWorkerLog({ event: "database_cleanup_completed", ...cleanup });
+  return result;
 }
 
 async function loggedWorkerCycle(runCycle: () => ReturnType<ReturnType<typeof createWorkerService>["runCycle"]>) {

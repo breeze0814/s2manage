@@ -146,7 +146,7 @@ test("successful refresh records added updated and deleted group rates", async (
       return { account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5 }, rates };
     },
   };
-  await withCollection(collector, async ({ service }) => {
+  await withCollection(collector, async ({ service, databasePath }) => {
     const site = await service.create(sourceInput());
     await service.refresh(site.id);
     await service.refresh(site.id);
@@ -160,6 +160,13 @@ test("successful refresh records added updated and deleted group rates", async (
       ["vip", "updated", 2, 2.5],
     ]);
     assert.equal(changes.every((change) => change.sourceSiteName === "Sub2 Source"), true);
+
+    const database = new DatabaseSync(databasePath);
+    database.prepare("UPDATE collection_rate_changes SET collected_at = ? WHERE group_id = ?")
+      .run("2020-01-01T00:00:00.000Z", "legacy");
+    database.close();
+    const recent = await service.changes({ since: new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString() });
+    assert.equal(recent.some((change) => change.groupId === "legacy"), false);
   });
 });
 

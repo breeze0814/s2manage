@@ -6,11 +6,15 @@ import { getRuntimeCollectionService } from "../../../../server/collection/runti
 
 export const runtime = "nodejs";
 const CHANGE_LIMIT = 50;
+const CHANGE_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 export async function GET(request: NextRequest) {
   try {
     await requireAuthenticatedRequest(request);
-    return NextResponse.json({ changes: await getRuntimeCollectionService().changes(CHANGE_LIMIT) });
+    const since = new Date(Date.now() - CHANGE_WINDOW_MS).toISOString();
+    return NextResponse.json({
+      changes: await getRuntimeCollectionService().changes({ limit: CHANGE_LIMIT, since }),
+    });
   } catch (error) {
     return collectionError(error);
   }

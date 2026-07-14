@@ -22,7 +22,7 @@ export function RateChangePanel({ changes }: Readonly<{ changes: readonly RateCh
       <div className="panel-header">
         <div>
           <h2 id="rate-change-title" className="font-semibold">Recent Rate Changes</h2>
-          <p className="mt-1 text-sm text-muted">最近采集发现的倍率变化、新增与删除分组。</p>
+          <p className="mt-1 text-sm text-muted">仅展示最近 24 小时内发现的倍率变化、新增与删除分组。</p>
         </div>
         <Tag>{changes.length} 条变化</Tag>
       </div>
@@ -90,7 +90,7 @@ function rateChangeLabel(change: RateChange) {
 }
 
 function EmptyChanges() {
-  return <p className="p-5 text-sm text-muted">暂无倍率变化记录，完成下一次成功采集后将在这里展示。</p>;
+  return <p className="p-5 text-sm text-muted">最近 24 小时暂无倍率变化。</p>;
 }
 
 function formatRate(value: number | null) {
