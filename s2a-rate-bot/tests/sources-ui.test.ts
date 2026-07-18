@@ -69,6 +69,7 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
 test("aggregated source rate table combines group and site in one column", () => {
   const dashboard = source("src/components/sources/sources-dashboard.tsx");
   const table = source("src/components/sources/source-rates-table.tsx");
+  const effectiveRate = source("src/components/ui/effective-rate-value.tsx");
   const platformIcon = source("src/components/platform-icon.tsx");
 
   assert.match(dashboard, /data-source-split-layout/);
@@ -86,6 +87,10 @@ test("aggregated source rate table combines group and site in one column", () =>
   assert.match(table, /有效倍率/);
   assert.match(table, /有效倍率：低到高/);
   assert.match(table, /有效倍率：高到低/);
+  assert.match(table, /<EffectiveRateValue>×\{formatRate\(rate\.effectiveRate\)\}<\/EffectiveRateValue>/);
+  assert.doesNotMatch(table, /<Tag tone="rate"[^>]*>×\{formatRate\(rate\.effectiveRate\)\}<\/Tag>/);
+  assert.match(effectiveRate, /text-effective-rate/);
+  assert.doesNotMatch(effectiveRate, /border|bg-surface|px-2/);
   assert.match(table, /sortRates/);
   assert.match(table, /DEFAULT_PAGE_SIZE = 10/);
   assert.match(table, /每页展示条数/);

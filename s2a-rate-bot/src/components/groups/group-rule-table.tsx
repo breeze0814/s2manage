@@ -3,6 +3,7 @@
 import { Loader2, Play, RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 import { PlatformLabel } from "../platform-icon";
+import { EffectiveRateValue } from "../ui/effective-rate-value";
 import { Tag } from "../ui/tag";
 import { GroupRuleDialog } from "./group-rule-dialog";
 import type { RuleDraft, SourceRateOption, SourceSiteOption, TargetGroupView } from "./types";
@@ -52,7 +53,7 @@ function GroupCell({ group }: Readonly<{ group: TargetGroupView }>) {
 
 function BindingCell({ group, rateMap, siteNames }: Readonly<{ group: TargetGroupView; rateMap: ReadonlyMap<string, SourceRateOption>; siteNames: ReadonlyMap<number, string> }>) {
   if (group.bindings.length === 0) return <span className="text-sm text-muted">尚未绑定</span>;
-  return <div className="flex max-w-md flex-col items-start gap-1.5">{group.bindings.map((binding) => { const rate = rateMap.get(`${binding.sourceSiteId}:${binding.sourceGroupId}`); const siteName = siteNames.get(binding.sourceSiteId) ?? `#${binding.sourceSiteId}`; return <Tag key={`${binding.sourceSiteId}:${binding.sourceGroupId}`} title={`${siteName} · ${rate?.groupName ?? binding.sourceGroupId}`} className="w-full justify-between"><span className="min-w-0 truncate text-foreground"><span className="text-muted">{siteName}</span><span className="mx-1.5 text-border-strong">/</span>{rate?.groupName ?? binding.sourceGroupId}</span><span className="shrink-0 font-mono font-semibold tabular-nums text-rate">×{rate?.effectiveRate ?? "-"}</span></Tag>; })}</div>;
+  return <div className="flex max-w-md flex-col items-start gap-1.5">{group.bindings.map((binding) => { const rate = rateMap.get(`${binding.sourceSiteId}:${binding.sourceGroupId}`); const siteName = siteNames.get(binding.sourceSiteId) ?? `#${binding.sourceSiteId}`; return <div key={`${binding.sourceSiteId}:${binding.sourceGroupId}`} title={`${siteName} · ${rate?.groupName ?? binding.sourceGroupId}`} className="flex w-full items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate text-foreground"><span className="text-muted">{siteName}</span><span className="mx-1.5 text-border-strong">/</span>{rate?.groupName ?? binding.sourceGroupId}</span><EffectiveRateValue className="shrink-0">×{rate?.effectiveRate ?? "-"}</EffectiveRateValue></div>; })}</div>;
 }
 
 function RuleCell({ group }: Readonly<{ group: TargetGroupView }>) {

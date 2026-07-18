@@ -181,19 +181,29 @@ test("rate multipliers and balances use dedicated semantic data colors", () => {
   const accounts = source("src/components/accounts/accounts-dashboard.tsx");
   const groupTable = source("src/components/groups/group-rule-table.tsx");
   const groupDialog = source("src/components/groups/group-rule-dialog.tsx");
+  const effectiveRate = source("src/components/ui/effective-rate-value.tsx");
+  const rateChanges = source("src/components/home/rate-change-panel.tsx");
   const sourceTable = source("src/components/sources/source-site-table.tsx");
   const rateTable = source("src/components/sources/source-rates-table.tsx");
   const settings = source("src/components/settings-form.tsx");
   const sourceDialog = source("src/components/sources/source-site-dialog.tsx");
 
   assert.match(styles, /--rate:/);
+  assert.match(styles, /--effective-rate:/);
   assert.match(styles, /--balance:/);
   assert.match(tailwind, /rate:\s*"rgb\(var\(--rate\) \/ <alpha-value>\)"/);
+  assert.match(tailwind, /"effective-rate":\s*"rgb\(var\(--effective-rate\) \/ <alpha-value>\)"/);
   assert.match(tailwind, /"balance-value":\s*"rgb\(var\(--balance\) \/ <alpha-value>\)"/);
   assert.match(compactInput, /tone\?:\s*"default"\s*\|\s*"rate"/);
   assert.match(home, /valueClassName="text-balance-value"/);
   assert.match(home, /site\.balance[\s\S]*text-balance-value/);
   assert.match(sourceTable, /text-balance-value/);
+  assert.match(effectiveRate, /text-effective-rate/);
+  assert.match(rateTable, /EffectiveRateValue/);
+  assert.match(groupTable, /EffectiveRateValue/);
+  assert.match(groupDialog, /EffectiveRateValue/);
+  assert.match(rateChanges, /text-effective-rate/);
+  assert.doesNotMatch(groupDialog, /<Tag tone="rate"[^>]*>[\s\S]*?有效 ×\{formatRate\(rate\.effectiveRate\)\}[\s\S]*?<\/Tag>/);
   for (const component of [accounts, groupTable, groupDialog, rateTable]) {
     assert.match(component, /(?:text-rate|tone="rate")/);
   }

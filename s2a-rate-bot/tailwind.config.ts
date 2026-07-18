@@ -16,6 +16,7 @@ const config: Config = {
         primary: "rgb(var(--primary) / <alpha-value>)",
         "primary-foreground": "rgb(var(--primary-foreground) / <alpha-value>)",
         rate: "rgb(var(--rate) / <alpha-value>)",
+        "effective-rate": "rgb(var(--effective-rate) / <alpha-value>)",
         "balance-value": "rgb(var(--balance) / <alpha-value>)",
       },
       boxShadow: {

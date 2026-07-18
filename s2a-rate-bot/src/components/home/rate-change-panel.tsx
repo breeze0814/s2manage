@@ -67,7 +67,7 @@ function RateTransition({ change }: Readonly<{ change: RateChange }>) {
     <div className="flex shrink-0 items-center gap-2 font-mono text-sm font-semibold tabular-nums" aria-label={rateChangeLabel(change)}>
       <span className="text-muted">{formatRate(change.oldRate)}</span>
       <ArrowRight className="size-4 text-muted" aria-hidden="true" />
-      <span className={change.changeType === "deleted" ? "text-red-600 dark:text-red-400" : "text-rate"}>
+      <span className={change.changeType === "deleted" ? "text-red-600 dark:text-red-400" : "text-effective-rate"}>
         {change.changeType === "deleted" ? "已删除" : formatRate(change.newRate)}
       </span>
     </div>

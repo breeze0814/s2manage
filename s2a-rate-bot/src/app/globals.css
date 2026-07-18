@@ -15,6 +15,7 @@
   --primary: 249 156 0;
   --primary-foreground: 28 25 23;
   --rate: 29 78 216;
+  --effective-rate: 192 38 211;
   --balance: 4 120 87;
   --shadow: 28 25 23;
   font-family: "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -33,6 +34,7 @@
   --primary: 249 156 0;
   --primary-foreground: 28 25 23;
   --rate: 147 197 253;
+  --effective-rate: 240 171 252;
   --balance: 110 231 183;
   --shadow: 0 0 0;
 }

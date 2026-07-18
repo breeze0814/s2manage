@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { evaluateRateRule } from "../../core/rate-rule";
 import { PlatformLabel } from "../platform-icon";
 import { CompactNumberInput } from "../ui/compact-number-input";
+import { EffectiveRateValue } from "../ui/effective-rate-value";
 import { Select } from "../ui/select";
 import { Tag } from "../ui/tag";
 import type {
@@ -318,9 +319,9 @@ function BindingSelector({
                 <Tag tone="rate" className="shrink-0 font-mono tabular-nums">
                   原 ×{formatRate(rate.rawRate)}
                 </Tag>
-                <Tag tone="rate" className="shrink-0 font-mono tabular-nums">
+                <EffectiveRateValue className="shrink-0 text-xs">
                   有效 ×{formatRate(rate.effectiveRate)}
-                </Tag>
+                </EffectiveRateValue>
               </label>
             );
           })
