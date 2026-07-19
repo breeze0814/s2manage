@@ -179,12 +179,35 @@ test("preview and apply use bound collected rates and update only when changed",
   });
 });
 
-test("unsupported rule versions and missing bindings fail explicitly", async () => {
+test("save removes missing bindings and disables a rule when none remain", async () => {
   await withTargetService(async ({ service }) => {
     await assert.rejects(service.saveRule(7, { ...ruleInput(), ruleVersion: 2 }), /不支持的倍率规则版本/);
     await service.refreshAll();
-    await service.saveRule(7, { ...ruleInput(), bindings: [{ sourceSiteId: 1, sourceGroupId: "missing" }] });
-    await assert.rejects(service.preview(7), /采集源分组不存在/);
+    const partial = await service.saveRule(7, { ...ruleInput(), bindings: [
+      { sourceSiteId: 1, sourceGroupId: "vip" },
+      { sourceSiteId: 1, sourceGroupId: "missing" },
+    ] });
+    assert.equal(partial.rule.enabled, true);
+    assert.deepEqual(partial.bindings, [{ sourceSiteId: 1, sourceGroupId: "vip" }]);
+
+    const empty = await service.saveRule(7, { ...ruleInput(), bindings: [{ sourceSiteId: 1, sourceGroupId: "missing" }] });
+    assert.equal(empty.rule.enabled, false);
+    assert.deepEqual(empty.bindings, []);
+    assert.match(empty.rule.lastError ?? "", /自动取消绑定/);
+    assert.equal((await service.preview(7)).action, "skip");
+  });
+});
+
+test("preview repairs stale bindings stored before cleanup", async () => {
+  await withTargetService(async ({ service, store }) => {
+    await service.refreshAll();
+    await service.saveRule(7, ruleInput());
+    store.saveRule(store.getRule(7)!, [{ sourceSiteId: 1, sourceGroupId: "missing" }]);
+
+    assert.equal((await service.preview(7)).action, "skip");
+    assert.deepEqual(store.bindings(7), []);
+    assert.equal(store.getRule(7)?.enabled, false);
+    assert.match(store.getRule(7)?.lastError ?? "", /自动取消绑定/);
   });
 });
 

@@ -107,7 +107,7 @@ function saveRule(database: DatabaseSync, rule: TargetRule, bindings: readonly S
       :lastAppliedAt, :lastError, :updatedAt)
       ON CONFLICT(group_id) DO UPDATE SET group_name=excluded.group_name, enabled=excluded.enabled,
       rule_version=excluded.rule_version, rule_type=excluded.rule_type, parameters_json=excluded.parameters_json,
-      current_rate=excluded.current_rate, updated_at=excluded.updated_at`).run(ruleBindings(rule));
+      current_rate=excluded.current_rate, last_error=excluded.last_error, updated_at=excluded.updated_at`).run(ruleBindings(rule));
     database.prepare("DELETE FROM target_group_bindings WHERE group_id = ?").run(rule.targetGroupId);
     const statement = database.prepare("INSERT INTO target_group_bindings VALUES (?, ?, ?)");
     for (const binding of bindings) statement.run(rule.targetGroupId, binding.sourceSiteId, binding.sourceGroupId);

@@ -11,6 +11,7 @@ const parametersSchema = z.object({
     .nonnegative("计算最小值必须大于或等于 0"),
   formula: z.string().trim().min(1),
 });
+const STALE_SOURCE_BINDING_ERROR = "已删除的采集源分组已自动取消绑定";
 const bindingSchema = z.object({ sourceSiteId: z.number().int().positive(), sourceGroupId: z.string().trim().min(1) });
 export const targetRuleSchema = z.object({
   enabled: z.boolean(),
@@ -73,12 +74,15 @@ async function refreshGroup(input: TargetDependencies, groupId: number) {
 async function saveRule(input: TargetDependencies, groupId: number, raw: unknown) {
   const parsed = targetRuleSchema.parse(raw);
   const group = localGroup(input.store, groupId);
+  const reconciliation = reconcileBindings(parsed.bindings, await input.sourceRates());
   const rule: TargetRule = {
-    targetGroupId: group.id, targetGroupName: group.name, enabled: parsed.enabled,
+    targetGroupId: group.id, targetGroupName: group.name,
+    enabled: parsed.enabled && reconciliation.bindings.length > 0,
     ruleVersion: 1, ruleType: parsed.ruleType, parameters: parsed.parameters,
-    currentRate: group.rate_multiplier ?? null, lastAppliedAt: input.store.getRule(groupId)?.lastAppliedAt ?? null, lastError: null,
+    currentRate: group.rate_multiplier ?? null, lastAppliedAt: input.store.getRule(groupId)?.lastAppliedAt ?? null,
+    lastError: reconciliation.removed ? STALE_SOURCE_BINDING_ERROR : null,
   };
-  input.store.saveRule(rule, dedupeBindings(parsed.bindings));
+  input.store.saveRule(rule, reconciliation.bindings);
   return groupView(input.store, group);
 }
 
@@ -86,11 +90,11 @@ async function previewRule(input: TargetDependencies, groupId: number) {
   const group = localGroup(input.store, groupId);
   const rule = input.store.getRule(groupId);
   if (!rule) throw new Error("目标分组尚未配置倍率规则");
-  const sourceRates = await boundRates(input, groupId);
+  const reconciled = await boundRates(input, groupId, rule);
   return resolveRateUpdate({
     target: { id: group.id, name: group.name, currentRate: group.rate_multiplier ?? null },
-    rule: { enabled: rule.enabled, mode: rule.ruleType, ...rule.parameters },
-    sourceRates,
+    rule: { enabled: reconciled.rule.enabled, mode: reconciled.rule.ruleType, ...reconciled.rule.parameters },
+    sourceRates: reconciled.rates,
   });
 }
 
@@ -108,16 +112,16 @@ async function applyRule(input: TargetDependencies, groupId: number) {
   }
 }
 
-async function boundRates(input: TargetDependencies, groupId: number) {
+async function boundRates(input: TargetDependencies, groupId: number, rule: TargetRule) {
   const bindings = input.store.bindings(groupId);
   const rates = await input.sourceRates();
-  const index = new Map(rates.map((rate) => [`${rate.sourceSiteId}:${rate.groupId}`, rate.effectiveRate]));
-  return bindings.map((binding) => {
-    const key = `${binding.sourceSiteId}:${binding.sourceGroupId}`;
-    const rate = index.get(key);
-    if (rate === undefined) throw new Error(`采集源分组不存在: ${key}`);
-    return rate;
-  });
+  const reconciliation = reconcileBindings(bindings, rates);
+  const reconciledRule = reconciliation.removed
+    ? { ...rule, enabled: rule.enabled && reconciliation.bindings.length > 0, lastError: STALE_SOURCE_BINDING_ERROR }
+    : rule;
+  if (reconciliation.removed) input.store.saveRule(reconciledRule, reconciliation.bindings);
+  const rateMap = new Map(rates.map((rate) => [`${rate.sourceSiteId}:${rate.groupId}`, rate.effectiveRate]));
+  return { rule: reconciledRule, rates: reconciliation.bindings.map((binding) => rateMap.get(bindingKey(binding))!) };
 }
 
 async function remoteGroup(client: TargetGroupClient, groupId: number): Promise<TargetGroup | null> {
@@ -140,5 +144,12 @@ function defaultRule(group: TargetGroup): TargetRule {
 }
 
 function defaultParameters(): RuleParameters { return { offset: 0, minimum: 0, formula: "avg" }; }
-function dedupeBindings(bindings: readonly SourceBinding[]) { return [...new Map(bindings.map((binding) => [`${binding.sourceSiteId}:${binding.sourceGroupId}`, binding])).values()]; }
+function reconcileBindings(bindings: readonly SourceBinding[], rates: readonly SourceRateSnapshot[]) {
+  const normalized = dedupeBindings(bindings);
+  const available = new Set(rates.map((rate) => `${rate.sourceSiteId}:${rate.groupId}`));
+  const valid = normalized.filter((binding) => available.has(bindingKey(binding)));
+  return { bindings: valid, removed: valid.length !== normalized.length };
+}
+function dedupeBindings(bindings: readonly SourceBinding[]) { return [...new Map(bindings.map((binding) => [bindingKey(binding), binding])).values()]; }
+function bindingKey(value: Pick<SourceBinding, "sourceSiteId" | "sourceGroupId">) { return `${value.sourceSiteId}:${value.sourceGroupId}`; }
 type TargetDependencies = Parameters<typeof createTargetGroupService>[0];
