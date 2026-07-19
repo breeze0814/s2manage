@@ -30,7 +30,7 @@ export type TargetGroupView = TargetGroup & {
 export type TargetGroupService = {
   readonly list: () => Promise<TargetGroupView[]>;
   readonly refreshAll: () => Promise<TargetGroupView[]>;
-  readonly refresh: (groupId: number) => Promise<TargetGroupView>;
+  readonly refresh: (groupId: number) => Promise<TargetGroupView | null>;
   readonly saveRule: (groupId: number, input: unknown) => Promise<TargetGroupView>;
   readonly preview: (groupId: number) => Promise<ReturnType<typeof resolveRateUpdate>>;
   readonly apply: (groupId: number) => Promise<ReturnType<typeof resolveRateUpdate>>;
@@ -62,6 +62,10 @@ async function refreshAllGroups(input: TargetDependencies) {
 
 async function refreshGroup(input: TargetDependencies, groupId: number) {
   const group = await remoteGroup(input.client, groupId);
+  if (!group) {
+    input.store.removeGroup(groupId);
+    return null;
+  }
   input.store.saveGroup(group);
   return groupView(input.store, group);
 }
@@ -116,10 +120,9 @@ async function boundRates(input: TargetDependencies, groupId: number) {
   });
 }
 
-async function remoteGroup(client: TargetGroupClient, groupId: number) {
+async function remoteGroup(client: TargetGroupClient, groupId: number): Promise<TargetGroup | null> {
   const group = (await client.listGroups()).find((item) => item.id === groupId);
-  if (!group) throw new Error(`目标分组不存在: ${groupId}`);
-  return group;
+  return group ?? null;
 }
 
 function localGroup(store: TargetGroupStore, groupId: number) {

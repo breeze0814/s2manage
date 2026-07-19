@@ -169,25 +169,53 @@ test("successful refresh records added updated and deleted group rates", async (
     assert.equal(recent.some((change) => change.groupId === "legacy"), false);
   });
 });
-
+test("successful refresh removes bindings for deleted source groups", async () => {
+  let collection = 0;
+  const collector = {
+    collect: async ({ site }: { site: { id: number } }) => ({
+      account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5 },
+      rates: ++collection === 1
+        ? [sourceRate(site.id, "vip", "VIP", 2), sourceRate(site.id, "legacy", "Legacy", 3)]
+        : [sourceRate(site.id, "vip", "VIP", 2.5)],
+    }),
+  };
+  await withCollection(collector, async ({ service, databasePath }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+    const targetStore = (await import("../src/server/target-groups/store.ts")).createSqliteTargetGroupStore(`file:${databasePath}`);
+    try {
+      targetStore.saveRule({ targetGroupId: 7, targetGroupName: "Target", enabled: true, ruleVersion: 1,
+        ruleType: "average", parameters: { offset: 0, minimum: 0, formula: "avg" },
+        currentRate: null, lastAppliedAt: null, lastError: null }, [
+        { sourceSiteId: site.id, sourceGroupId: "vip" },
+        { sourceSiteId: site.id, sourceGroupId: "legacy" },
+      ]);
+      targetStore.saveRule({ ...targetStore.getRule(7)!, targetGroupId: 8, targetGroupName: "Orphaned" },
+        [{ sourceSiteId: site.id, sourceGroupId: "legacy" }]);
+      await service.refresh(site.id);
+      assert.deepEqual([targetStore.bindings(7), targetStore.getRule(7)?.enabled, targetStore.bindings(8), targetStore.getRule(8)?.enabled],
+        [[{ sourceSiteId: site.id, sourceGroupId: "vip" }], true, [], false]);
+      assert.match(targetStore.getRule(8)?.lastError ?? "", /已自动停用/);
+    } finally {
+      targetStore.close();
+    }
+  });
+});
 test("manual group platform overrides persist across refreshes", async () => {
   await withCollection(successCollector(), async ({ service }) => {
     const site = await service.create(sourceInput());
     await service.refresh(site.id);
-
     const overridden = await service.setRatePlatform(site.id, "vip", "anthropic");
     assert.equal(overridden.platform, "anthropic");
     assert.equal(overridden.platformOverride, "anthropic");
 
     await service.refresh(site.id);
     assert.equal((await service.rates(site.id))[0]?.platform, "anthropic");
-
     const automatic = await service.setRatePlatform(site.id, "vip", null);
     assert.equal(automatic.platform, "openai");
     assert.equal(automatic.platformOverride, null);
   });
 });
-
 test("failed refresh records the error and increments consecutive failures", async () => {
   await withCollection({ collect: async () => { throw new Error("remote unavailable"); } }, async ({ service }) => {
     const site = await service.create(sourceInput());

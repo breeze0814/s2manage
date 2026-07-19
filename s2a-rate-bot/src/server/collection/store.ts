@@ -6,6 +6,7 @@ import { compareRateSnapshots, type PendingRateChange } from "./rate-changes.ts"
 import type { CollectionOverview, CollectionRateChange, CollectionSiteStored } from "./types.ts";
 
 const DEFAULT_CHANGE_LIMIT = 50;
+const MISSING_BINDINGS_RULE_ERROR = "绑定的采集分组已删除，倍率规则已自动停用";
 
 export type CollectionChangesQuery = {
   readonly limit?: number;
@@ -118,6 +119,7 @@ function recordSuccess(database: DatabaseSync, siteId: number, overview: Collect
     const runId = insertRun(database, { siteId, status: "success", error: null, groupCount: overview.rates.length, startedAt, finishedAt });
     insertChanges(database, { runId, siteId, changes, collectedAt: finishedAt });
     replaceRates(database, siteId, overview.rates);
+    removeMissingBindings(database, siteId);
   });
 }
 
@@ -136,6 +138,18 @@ function replaceRates(database: DatabaseSync, siteId: number, rates: readonly So
   const statement = database.prepare(`INSERT INTO collection_group_rates VALUES (
     :siteId, :groupId, :groupName, :platform, :rawRate, :effectiveRate, :collectedAt)`);
   for (const rate of rates) statement.run({ siteId, groupId: rate.groupId, groupName: rate.groupName, platform: rate.platform ?? null, rawRate: rate.rawRate, effectiveRate: rate.effectiveRate, collectedAt: rate.collectedAt.toISOString() });
+}
+
+function removeMissingBindings(database: DatabaseSync, siteId: number) {
+  database.prepare(`DELETE FROM target_group_bindings AS bindings
+    WHERE bindings.source_site_id = :siteId AND NOT EXISTS (
+      SELECT 1 FROM collection_group_rates AS rates
+      WHERE rates.site_id = :siteId AND rates.group_id = bindings.source_group_id
+    )`).run({ siteId });
+  database.prepare(`UPDATE target_group_rules AS rules SET enabled=0, last_error=:error, updated_at=:updatedAt
+    WHERE rules.enabled=1 AND NOT EXISTS (
+      SELECT 1 FROM target_group_bindings AS bindings WHERE bindings.group_id = rules.group_id
+    )`).run({ error: MISSING_BINDINGS_RULE_ERROR, updatedAt: nowIso() });
 }
 
 function insertRun(database: DatabaseSync, run: Record<string, string | number | null>) {

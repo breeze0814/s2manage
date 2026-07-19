@@ -96,7 +96,7 @@ test("target group page reads SQLite until an explicit remote refresh", async ()
 
     assert.equal((await service.list())[0].name, "Target VIP");
     assert.equal((await service.list())[0].platform, "anthropic");
-    assert.equal((await service.refresh(7)).name, "Remote Renamed");
+    assert.equal((await service.refresh(7))?.name, "Remote Renamed");
     assert.equal(listCalls(), 2);
   });
 });
@@ -108,6 +108,32 @@ test("failed target group API refresh preserves the last persisted snapshot", as
 
     await assert.rejects(service.refreshAll(), /invalid remote group payload/);
     assert.equal((await service.list())[0]?.name, "Target VIP");
+  });
+});
+
+test("refresh removes local rules and bindings for target groups deleted remotely", async () => {
+  await withTargetService(async ({ service, setGroups, store }) => {
+    await service.refreshAll();
+    await service.saveRule(7, ruleInput());
+    setGroups([]);
+
+    assert.deepEqual(await service.refreshAll(), []);
+    assert.equal(store.getGroup(7), null);
+    assert.equal(store.getRule(7), null);
+    assert.deepEqual(store.bindings(7), []);
+  });
+});
+
+test("single group refresh removes a group deleted remotely", async () => {
+  await withTargetService(async ({ service, setGroups, store }) => {
+    await service.refreshAll();
+    await service.saveRule(7, ruleInput());
+    setGroups([]);
+
+    assert.equal(await service.refresh(7), null);
+    assert.equal(store.getGroup(7), null);
+    assert.equal(store.getRule(7), null);
+    assert.deepEqual(store.bindings(7), []);
   });
 });
 
@@ -183,9 +209,12 @@ test("target group routes and dashboard expose remote refresh, rule version and 
   ];
   for (const path of paths) assert.equal(existsSync(new URL(path, ROOT)), true, `${path} should exist`);
   const dashboard = readFileSync(new URL("src/components/groups/groups-dashboard.tsx", ROOT), "utf8");
+  const dashboardHook = readFileSync(new URL("src/components/groups/use-groups-dashboard.ts", ROOT), "utf8");
   const table = readFileSync(new URL("src/components/groups/group-rule-table.tsx", ROOT), "utf8");
   const dialog = readFileSync(new URL("src/components/groups/group-rule-dialog.tsx", ROOT), "utf8");
   assert.match(dashboard, /刷新分组/);
+  assert.match(dashboardHook, /group === null/);
+  assert.match(dashboardHook, /已清理本地规则/);
   assert.doesNotMatch(dashboard, /规则版本 v1/);
   assert.doesNotMatch(dashboard, /按采集分组绑定/);
   assert.match(dashboard, /刷新分组/);

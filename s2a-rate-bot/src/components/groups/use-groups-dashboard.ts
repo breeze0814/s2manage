@@ -85,8 +85,13 @@ function rulePayload(draft: RuleDraft) {
 async function refreshGroup(input: RefreshGroupActions) {
   input.setPending(`refresh:${input.groupId}`);
   try {
-    const body = await api<{ group: TargetGroupView }>(`/api/groups/${input.groupId}/refresh`, { method: "POST" });
-    input.setGroups((groups) => groups.map((group) => group.id === input.groupId ? body.group : group));
+    const body = await api<{ group: TargetGroupView | null }>(`/api/groups/${input.groupId}/refresh`, { method: "POST" });
+    if (body.group === null) {
+      input.setGroups((groups) => groups.filter((group) => group.id !== input.groupId));
+      toast.warning("目标站已删除该分组，已清理本地规则");
+      return;
+    }
+    input.setGroups((groups) => groups.map((group) => group.id === input.groupId ? body.group! : group));
     toast.success(`已刷新分组「${body.group.name}」并写入本地快照`);
   } catch (error) {
     toast.error(errorMessage(error));

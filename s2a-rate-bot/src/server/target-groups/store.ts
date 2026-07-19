@@ -7,6 +7,7 @@ export type TargetGroupStore = {
   readonly getGroup: (groupId: number) => TargetGroup | null;
   readonly listGroups: () => TargetGroup[];
   readonly replaceGroups: (groups: readonly TargetGroup[]) => void;
+  readonly removeGroup: (groupId: number) => void;
   readonly saveGroup: (group: TargetGroup) => void;
   readonly getRule: (groupId: number) => TargetRule | null;
   readonly listRules: () => TargetRule[];
@@ -30,6 +31,7 @@ function targetGroupStore(database: DatabaseSync): TargetGroupStore {
     getGroup: (groupId) => readGroup(database, groupId),
     listGroups: () => listGroups(database),
     replaceGroups: (groups) => replaceGroups(database, groups),
+    removeGroup: (groupId) => removeGroup(database, groupId),
     saveGroup: (group) => saveGroup(database, group),
     getRule: (groupId) => readRule(database, groupId),
     listRules: () => listRules(database),
@@ -55,7 +57,22 @@ function replaceGroups(database: DatabaseSync, groups: readonly TargetGroup[]) {
   transaction(database, () => {
     database.prepare("DELETE FROM target_group_snapshots").run();
     for (const group of groups) saveGroup(database, group);
+    removeMissingRules(database);
   });
+}
+
+function removeGroup(database: DatabaseSync, groupId: number) {
+  transaction(database, () => {
+    database.prepare("DELETE FROM target_group_rules WHERE group_id = ?").run(groupId);
+    database.prepare("DELETE FROM target_group_snapshots WHERE group_id = ?").run(groupId);
+  });
+}
+
+function removeMissingRules(database: DatabaseSync) {
+  database.prepare(`DELETE FROM target_group_rules AS rules
+    WHERE NOT EXISTS (
+      SELECT 1 FROM target_group_snapshots AS groups WHERE groups.group_id = rules.group_id
+    )`).run();
 }
 
 function saveGroup(database: DatabaseSync, group: TargetGroup) {
