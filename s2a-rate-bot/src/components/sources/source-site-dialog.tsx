@@ -17,6 +17,7 @@ const EMPTY_FORM: SourceSiteForm = {
   name: "",
   siteType: "sub2api",
   baseUrl: "",
+  websiteUrl: "",
   authMode: "password",
   username: "",
   newApiUserId: "",
@@ -114,7 +115,10 @@ function SiteMainFields({ form, update }: Readonly<{ form: SourceSiteForm; updat
       <Field label="站点类型"><Select ariaLabel="站点类型" value={form.siteType} options={SITE_TYPE_OPTIONS}
         onValueChange={(value) => updateSiteType(value as SourceSiteForm["siteType"], update)} /></Field>
     </div>
-    <Field label="站点地址"><Input type="url" value={form.baseUrl} onChange={(value) => update("baseUrl", value)} placeholder="https://source.example.com" /></Field>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="接口地址"><Input type="url" value={form.baseUrl} onChange={(value) => update("baseUrl", value)} placeholder="https://api.example.com" /></Field>
+      <Field label="官网地址"><Input type="url" required={false} value={form.websiteUrl} onChange={(value) => update("websiteUrl", value)} placeholder="https://www.example.com" /></Field>
+    </div>
     {form.siteType === "newapi" ? <Field label="New-Api-User" hint="部分 New API 接口要求填写当前用户 ID，例如 4465。">
       <Input value={form.newApiUserId} onChange={(value) => update("newApiUserId", value)} placeholder="4465" />
     </Field> : null}
@@ -180,6 +184,7 @@ function Input({
   onChange: (value: string) => void;
   type?: string;
   placeholder?: string;
+  required?: boolean;
 }>) {
   return <input required={input.type !== "password"} {...input} value={value} onChange={(event) => onChange(event.target.value)} className={controlClass()} />;
 }
@@ -223,6 +228,7 @@ function formFromSite(site: SourceSiteView): SourceSiteForm {
     name: site.name,
     siteType: site.siteType,
     baseUrl: site.baseUrl,
+    websiteUrl: site.websiteUrl,
     authMode: site.authMode,
     username: site.username,
     newApiUserId: site.newApiUserId,

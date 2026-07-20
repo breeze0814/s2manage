@@ -8,7 +8,8 @@ const RATE_PLATFORM_SCHEMA_VERSION = 13;
 const REFRESH_VERSION_SCHEMA_VERSION = 14;
 const ACCOUNT_SCHEDULABLE_REMOVAL_SCHEMA_VERSION = 15;
 const ACCOUNT_LOCAL_STATE_SCHEMA_VERSION = 16;
-const SCHEMA_VERSION = ACCOUNT_LOCAL_STATE_SCHEMA_VERSION;
+const COLLECTION_SITE_WEBSITE_SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = COLLECTION_SITE_WEBSITE_SCHEMA_VERSION;
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -44,6 +45,7 @@ const CREATE_TABLES = [
     name TEXT NOT NULL,
     site_type TEXT NOT NULL,
     base_url TEXT NOT NULL,
+    website_url TEXT NOT NULL DEFAULT '',
     auth_mode TEXT NOT NULL,
     username TEXT NOT NULL,
     new_api_user_id TEXT NOT NULL DEFAULT '',
@@ -198,6 +200,7 @@ function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureTargetGroupPlatform(database);
   ensureNewApiUserId(database);
   ensureRefreshVersion(database);
+  ensureCollectionSiteWebsiteUrl(database);
   ensureTargetAccountSnapshotSchema(database);
   if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {
     database.exec(`UPDATE target_group_rules
@@ -217,6 +220,12 @@ function ensureRefreshVersion(database: DatabaseSync) {
   const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
   if (columns.some((column) => column.name === "refresh_version")) return;
   database.exec("ALTER TABLE collection_sites ADD COLUMN refresh_version INTEGER NOT NULL DEFAULT 0");
+}
+
+function ensureCollectionSiteWebsiteUrl(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "website_url")) return;
+  database.exec("ALTER TABLE collection_sites ADD COLUMN website_url TEXT NOT NULL DEFAULT ''");
 }
 
 function ensureTargetAccountSnapshotSchema(database: DatabaseSync) {

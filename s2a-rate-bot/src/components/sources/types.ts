@@ -3,6 +3,7 @@ export type SourceSiteView = {
   readonly name: string;
   readonly siteType: "sub2api" | "newapi";
   readonly baseUrl: string;
+  readonly websiteUrl: string;
   readonly authMode: "password" | "manual_token";
   readonly username: string;
   readonly newApiUserId: string;
@@ -37,6 +38,7 @@ export type SourceSiteForm = {
   name: string;
   siteType: "sub2api" | "newapi";
   baseUrl: string;
+  websiteUrl: string;
   authMode: "password" | "manual_token";
   username: string;
   newApiUserId: string;

@@ -9,6 +9,7 @@ export type CollectionSiteInput = {
   readonly name: string;
   readonly siteType: CollectionSiteType;
   readonly baseUrl: string;
+  readonly websiteUrl: string;
   readonly authMode: CollectionAuthMode;
   readonly username: string;
   readonly newApiUserId: string;

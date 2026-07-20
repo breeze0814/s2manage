@@ -67,7 +67,7 @@ function count(database: DatabaseSync, table: string) {
 }
 
 function siteInput() {
-  return { name: "Source", siteType: "sub2api" as const, baseUrl: "https://example.com", authMode: "password" as const,
+  return { name: "Source", siteType: "sub2api" as const, baseUrl: "https://example.com", websiteUrl: "", authMode: "password" as const,
     username: "user", newApiUserId: "", passwordEnc: "enc", accessTokenEnc: "enc", refreshTokenEnc: "enc",
     rechargeRatio: 1, intervalSeconds: 600, useProxy: false, enabled: true };
 }

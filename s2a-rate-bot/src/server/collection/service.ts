@@ -7,6 +7,7 @@ export const collectionSiteSchema = z.object({
   name: z.string().trim().min(1, "采集站名称不能为空"),
   siteType: z.enum(["sub2api", "newapi"]),
   baseUrl: z.string().trim().url("采集站地址无效").transform((value) => value.replace(/\/+$/, "")),
+  websiteUrl: z.string().trim().default("").refine(isOptionalHttpUrl, "采集站官网必须是 HTTP 或 HTTPS 地址"),
   authMode: z.enum(["password", "manual_token"]),
   username: z.string().trim().default(""),
   newApiUserId: z.string().trim().default(""),
@@ -134,7 +135,7 @@ async function refreshAllSites(input: CollectionDependencies) {
 
 function encryptedSite(site: CollectionSiteInput, cipher: SecretCipher, current?: CollectionSiteStored) {
   return {
-    name: site.name, siteType: site.siteType, baseUrl: site.baseUrl, authMode: site.authMode,
+    name: site.name, siteType: site.siteType, baseUrl: site.baseUrl, websiteUrl: site.websiteUrl, authMode: site.authMode,
     username: site.username, newApiUserId: site.siteType === "newapi" ? site.newApiUserId : "",
     passwordEnc: encryptedValue(site.password, current?.passwordEnc, cipher),
     accessTokenEnc: encryptedValue(site.accessToken, current?.accessTokenEnc, cipher),
@@ -162,6 +163,13 @@ function mergeStoredSecrets(raw: unknown, current: CollectionSiteStored, cipher:
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function isOptionalHttpUrl(value: string) {
+  if (!value) return true;
+  if (!URL.canParse(value)) return false;
+  const protocol = new URL(value).protocol;
+  return protocol === "http:" || protocol === "https:";
 }
 
 function runtimeSite(site: CollectionSiteStored, cipher: SecretCipher): CollectionSiteRuntime {

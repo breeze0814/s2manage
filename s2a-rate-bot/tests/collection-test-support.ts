@@ -3,6 +3,7 @@ export function sourceInput(overrides: Record<string, unknown> = {}) {
     name: "Sub2 Source",
     siteType: "sub2api",
     baseUrl: "https://source.example.com",
+    websiteUrl: "https://www.source.example.com",
     authMode: "password",
     username: "user@example.com",
     password: "source-password",

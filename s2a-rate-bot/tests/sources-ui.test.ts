@@ -39,6 +39,10 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(dialog, /New API Token 模式必须填写 Access Token/);
   assert.match(dialog, /New-Api-User/);
   assert.match(dialog, /newApiUserId/);
+  assert.match(dialog, /label="官网地址"/);
+  assert.match(dialog, /form\.websiteUrl/);
+  assert.match(dialog, /update\("websiteUrl", value\)/);
+  assert.match(dialog, /websiteUrl: site\.websiteUrl/);
   assert.match(dialog, /w-\[min\(96vw,920px\)\]/);
   assert.match(dialog, /md:grid-cols-\[auto_auto_minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
   assert.match(dialog, /form\.siteType === "sub2api" \? <Field label="Refresh Token"/);
@@ -47,6 +51,11 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(table, /data-refresh-site/);
   assert.match(table, /data-edit-site/);
   assert.match(table, /data-delete-site/);
+  assert.match(table, /data-open-site-website/);
+  assert.match(table, /href=\{site\.websiteUrl\}/);
+  assert.match(table, /target="_blank"/);
+  assert.match(table, /rel="noopener noreferrer"/);
+  assert.match(table, /未配置官网/);
   assert.match(table, /TypeTag/);
   assert.match(table, /SiteMeta/);
   assert.match(table, /充值 ×/);

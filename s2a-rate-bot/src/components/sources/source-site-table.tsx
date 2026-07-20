@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ConfirmAlert } from "../ui/confirm-alert";
 import { Tag } from "../ui/tag";
@@ -42,6 +42,7 @@ function TypeTag({ type }: Readonly<{ type: SourceSiteView["siteType"] }>) {
 function ActionButtons({ site, pending, onRefresh, onEdit, onDelete }: SourceActions & { site: SourceSiteView; pending: boolean }) {
   return (
     <div className="flex shrink-0 justify-end gap-1" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+      <WebsiteAction site={site} />
       <IconButton label="刷新" marker="data-refresh-site" disabled={pending || !site.enabled} onClick={() => onRefresh(site)}><RefreshCw className={`size-3.5 ${pending ? "animate-spin" : ""}`} /></IconButton>
       <IconButton label="编辑" marker="data-edit-site" onClick={() => onEdit(site)}><Pencil className="size-3.5" /></IconButton>
       <IconButton label="删除" marker="data-delete-site" onClick={() => onDelete(site)}><Trash2 className="size-3.5" /></IconButton>
@@ -49,8 +50,13 @@ function ActionButtons({ site, pending, onRefresh, onEdit, onDelete }: SourceAct
   );
 }
 
+function WebsiteAction({ site }: Readonly<{ site: SourceSiteView }>) {
+  if (!site.websiteUrl) return <IconButton label="未配置官网" marker="data-open-site-website" disabled><ExternalLink className="size-3.5" /></IconButton>;
+  return <a href={site.websiteUrl} target="_blank" rel="noopener noreferrer" aria-label={`打开「${site.name}」官网`} title="打开官网" data-open-site-website className={SITE_ACTION_CLASS}><ExternalLink className="size-3.5" /></a>;
+}
+
 function IconButton({ label, marker, children, ...button }: Readonly<{ label: string; marker: string; children: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>>) {
-  return <button type="button" aria-label={label} title={label} {...{ [marker]: true }} {...button} className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-40">{children}</button>;
+  return <button type="button" aria-label={label} title={label} {...{ [marker]: true }} {...button} className={SITE_ACTION_CLASS}>{children}</button>;
 }
 
 function Status({ site }: Readonly<{ site: SourceSiteView }>) {
@@ -61,4 +67,5 @@ function Status({ site }: Readonly<{ site: SourceSiteView }>) {
 
 function formatBalance(value: number | null) { return value === null ? "-" : String(value); }
 function selectWithKeyboard(event: React.KeyboardEvent, siteId: number, onSelect: (siteId: number) => void) { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); onSelect(siteId); }
+const SITE_ACTION_CLASS = "inline-flex size-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-40";
 type SourceActions = { onRefresh: (site: SourceSiteView) => void; onEdit: (site: SourceSiteView) => void; onDelete: (site: SourceSiteView) => void };

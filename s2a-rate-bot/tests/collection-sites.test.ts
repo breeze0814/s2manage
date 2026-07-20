@@ -55,16 +55,19 @@ test("collection site CRUD encrypts credentials and never returns their values",
   await withCollection(successCollector(), async ({ service, databasePath }) => {
     const created = await service.create(sourceInput());
     assert.equal(created.name, "Sub2 Source");
+    assert.equal(created.websiteUrl, "https://www.source.example.com");
     assert.equal(created.hasPassword, true);
     assert.equal("password" in created, false);
 
-    const updated = await service.update(created.id, { ...sourceInput(), name: "Updated", enabled: false, password: "" });
+    const updated = await service.update(created.id, { ...sourceInput(), name: "Updated", websiteUrl: "https://updated.example.com/path?from=s2a", enabled: false, password: "" });
     assert.equal(updated.name, "Updated");
+    assert.equal(updated.websiteUrl, "https://updated.example.com/path?from=s2a");
     assert.equal(updated.enabled, false);
     assert.equal(updated.hasPassword, true, "blank password should preserve the stored credential");
     const database = new DatabaseSync(databasePath);
-    const row = database.prepare("SELECT password_enc FROM collection_sites WHERE id = ?").get(created.id) as { password_enc: string };
+    const row = database.prepare("SELECT website_url, password_enc FROM collection_sites WHERE id = ?").get(created.id) as { website_url: string; password_enc: string };
     database.close();
+    assert.equal(row.website_url, "https://updated.example.com/path?from=s2a");
     assert.match(row.password_enc, /^enc:v1:/);
     assert.doesNotMatch(row.password_enc, /source-password/);
   });
@@ -82,6 +85,15 @@ test("successful refresh persists balance, rates, and a success run", async () =
     assert.equal(refreshed.balance, 12.5);
     assert.equal(refreshed.consecutiveFailures, 0);
     assert.deepEqual(rates.map((rate: { groupId: string; effectiveRate: number }) => [rate.groupId, rate.effectiveRate]), [["vip", 2]]);
+  });
+});
+
+test("collection site website accepts empty values and rejects unsafe protocols", async () => {
+  await withCollection(successCollector(), async ({ service }) => {
+    assert.equal((await service.create(sourceInput({ websiteUrl: "" }))).websiteUrl, "");
+    await assert.rejects(service.create(sourceInput({ websiteUrl: "javascript:alert(1)" })), /官网必须是 HTTP 或 HTTPS/);
+    await assert.rejects(service.create(sourceInput({ websiteUrl: "ftp://source.example.com" })), /官网必须是 HTTP 或 HTTPS/);
+    await assert.rejects(service.create(sourceInput({ websiteUrl: "not-a-url" })), /官网必须是 HTTP 或 HTTPS/);
   });
 });
 test("New API token authentication requires an access token", async () => {

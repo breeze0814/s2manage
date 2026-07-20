@@ -63,7 +63,7 @@ function collectionStore(database: DatabaseSync): CollectionStore {
 function createSite(database: DatabaseSync, site: SiteWrite) {
   const timestamp = nowIso();
   const result = database.prepare(`${siteInsertSql()} VALUES (
-    :name, :siteType, :baseUrl, :authMode, :username, :newApiUserId, :passwordEnc, :accessTokenEnc,
+    :name, :siteType, :baseUrl, :websiteUrl, :authMode, :username, :newApiUserId, :passwordEnc, :accessTokenEnc,
     :refreshTokenEnc, :rechargeRatio, :intervalSeconds, :useProxy, :enabled, :createdAt, :updatedAt
   )`).run({ ...siteBindings(site, timestamp), createdAt: timestamp });
   return requiredSite(database, Number(result.lastInsertRowid));
@@ -71,7 +71,7 @@ function createSite(database: DatabaseSync, site: SiteWrite) {
 
 function updateSite(database: DatabaseSync, id: number, site: SiteWrite) {
   const result = database.prepare(`UPDATE collection_sites SET name=:name, site_type=:siteType,
-    base_url=:baseUrl, auth_mode=:authMode, username=:username, new_api_user_id=:newApiUserId,
+    base_url=:baseUrl, website_url=:websiteUrl, auth_mode=:authMode, username=:username, new_api_user_id=:newApiUserId,
     password_enc=:passwordEnc,
     access_token_enc=:accessTokenEnc, refresh_token_enc=:refreshTokenEnc,
     recharge_ratio=:rechargeRatio, interval_seconds=:intervalSeconds, use_proxy=:useProxy,
@@ -82,7 +82,7 @@ function updateSite(database: DatabaseSync, id: number, site: SiteWrite) {
 
 function siteInsertSql() {
   return `INSERT INTO collection_sites (
-    name, site_type, base_url, auth_mode, username, new_api_user_id, password_enc, access_token_enc,
+    name, site_type, base_url, website_url, auth_mode, username, new_api_user_id, password_enc, access_token_enc,
     refresh_token_enc, recharge_ratio, interval_seconds, use_proxy, enabled, created_at, updated_at
   )`;
 }
@@ -243,7 +243,8 @@ function mapChange(row: Record<string, unknown>): CollectionRateChange {
 function mapSite(row: Record<string, unknown>): CollectionSiteStored {
   return {
     id: Number(row.id), name: String(row.name), siteType: String(row.site_type) as CollectionSiteStored["siteType"],
-    baseUrl: String(row.base_url), authMode: String(row.auth_mode) as CollectionSiteStored["authMode"], username: String(row.username),
+    baseUrl: String(row.base_url), websiteUrl: String(row.website_url ?? ""),
+    authMode: String(row.auth_mode) as CollectionSiteStored["authMode"], username: String(row.username),
     newApiUserId: String(row.new_api_user_id ?? ""),
     passwordEnc: String(row.password_enc), accessTokenEnc: String(row.access_token_enc), refreshTokenEnc: String(row.refresh_token_enc),
     rechargeRatio: Number(row.recharge_ratio), intervalSeconds: Number(row.interval_seconds), useProxy: Number(row.use_proxy) === 1,
