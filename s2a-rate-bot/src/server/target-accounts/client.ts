@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { JsonHttpClient } from "../../adapters/http-client.ts";
+import type { HttpClient } from "../../adapters/http-client.ts";
+import { testTargetAccountChannel } from "./test-client.ts";
 import type { TargetAccount, TargetAccountClient } from "./types.ts";
 
 const ACCOUNT_PAGE_SIZE = 1_000;
@@ -9,7 +10,6 @@ const remoteAccountSchema = z.object({
   name: z.string().trim().min(1),
   platform: z.string().trim().min(1),
   status: z.string().trim().min(1),
-  schedulable: z.boolean(),
   rate_multiplier: z.coerce.number().finite().nullable().optional(),
   priority: z.coerce.number().int().nullable().optional(),
   group_ids: z.array(z.coerce.number().int().positive()).optional(),
@@ -19,7 +19,7 @@ const remoteAccountSchema = z.object({
 export function createSub2TargetAccountClient(input: {
   readonly baseUrl: string;
   readonly adminApiKey: string;
-  readonly http: JsonHttpClient;
+  readonly http: HttpClient;
 }): TargetAccountClient {
   const request = (method: "GET" | "POST", path: string, body?: Record<string, unknown>) => input.http.request({
     url: `${input.baseUrl.replace(/\/+$/, "")}/api/v1/admin${path}`,
@@ -29,7 +29,7 @@ export function createSub2TargetAccountClient(input: {
   });
   return {
     listAccounts: async () => listAllAccounts(request),
-    setSchedulable: async (accountId, schedulable) => parseAccount(await request("POST", `/accounts/${accountId}/schedulable`, { schedulable })),
+    testChannel: (accountId) => testTargetAccountChannel({ ...input, accountId }),
   };
 }
 
@@ -77,7 +77,6 @@ function parseAccount(payload: unknown): TargetAccount {
     name: account.name,
     platform: account.platform,
     status: account.status,
-    schedulable: account.schedulable,
     rateMultiplier: account.rate_multiplier ?? null,
     priority: account.priority ?? null,
     groupIds: [...new Set(groupIds)],

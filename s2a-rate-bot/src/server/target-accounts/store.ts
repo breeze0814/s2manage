@@ -1,12 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
-import { ensureDatabaseDirectory, flag, nowIso, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
-import type { TargetAccount } from "./types.ts";
+import { ensureDatabaseDirectory, nowIso, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
+import type { TargetAccount, TargetAccountBinding, TargetAccountTestState, TargetAccountView } from "./types.ts";
 
 export type TargetAccountStore = {
-  readonly list: () => TargetAccount[];
+  readonly get: (accountId: number) => TargetAccountView | null;
+  readonly list: () => TargetAccountView[];
   readonly replaceAll: (accounts: readonly TargetAccount[]) => void;
-  readonly save: (account: TargetAccount) => void;
+  readonly saveBinding: (accountId: number, binding: TargetAccountBinding | null) => void;
+  readonly recordTest: (accountId: number, state: TargetAccountTestState) => void;
   readonly close: () => void;
 };
 
@@ -16,15 +18,31 @@ export function createSqliteTargetAccountStore(databaseUrl: string): TargetAccou
   const database = new DatabaseSync(path, { timeout: 5_000 });
   initializeSqliteSchema(database);
   return {
+    get: (accountId) => getAccount(database, accountId),
     list: () => listAccounts(database),
     replaceAll: (accounts) => replaceAccounts(database, accounts),
-    save: (account) => saveAccount(database, account),
+    saveBinding: (accountId, binding) => saveBinding(database, accountId, binding),
+    recordTest: (accountId, state) => recordTest(database, accountId, state),
     close: () => database.close(),
   };
 }
 
+const ACCOUNT_VIEW_SELECT = `SELECT accounts.*,
+  bindings.source_site_id AS binding_source_site_id,
+  bindings.source_group_id AS binding_source_group_id,
+  tests.status AS test_status, tests.message AS test_message,
+  tests.latency_ms AS test_latency_ms, tests.model AS test_model, tests.tested_at
+  FROM target_account_snapshots AS accounts
+  LEFT JOIN target_account_bindings AS bindings ON bindings.account_id = accounts.account_id
+  LEFT JOIN target_account_test_results AS tests ON tests.account_id = accounts.account_id`;
+
+function getAccount(database: DatabaseSync, accountId: number) {
+  const row = database.prepare(`${ACCOUNT_VIEW_SELECT} WHERE accounts.account_id = ?`).get(accountId) as Record<string, unknown> | undefined;
+  return row ? mapAccount(row) : null;
+}
+
 function listAccounts(database: DatabaseSync) {
-  const rows = database.prepare("SELECT * FROM target_account_snapshots ORDER BY account_id").all() as Record<string, unknown>[];
+  const rows = database.prepare(`${ACCOUNT_VIEW_SELECT} ORDER BY accounts.account_id`).all() as Record<string, unknown>[];
   return rows.map(mapAccount);
 }
 
@@ -32,28 +50,71 @@ function replaceAccounts(database: DatabaseSync, accounts: readonly TargetAccoun
   transaction(database, () => {
     database.prepare("DELETE FROM target_account_snapshots").run();
     for (const account of accounts) saveAccount(database, account);
+    removeOrphanAccountState(database);
   });
 }
 
 function saveAccount(database: DatabaseSync, account: TargetAccount) {
-  database.prepare(`INSERT INTO target_account_snapshots VALUES (
-    :id, :name, :platform, :status, :schedulable, :rateMultiplier, :priority, :groupIds, :updatedAt)
+  database.prepare(`INSERT INTO target_account_snapshots
+    (account_id, account_name, platform, status, rate_multiplier, priority, group_ids_json, updated_at)
+    VALUES (:id, :name, :platform, :status, :rateMultiplier, :priority, :groupIds, :updatedAt)
     ON CONFLICT(account_id) DO UPDATE SET account_name=excluded.account_name,
-    platform=excluded.platform, status=excluded.status, schedulable=excluded.schedulable,
+    platform=excluded.platform, status=excluded.status,
     rate_multiplier=excluded.rate_multiplier, priority=excluded.priority,
     group_ids_json=excluded.group_ids_json, updated_at=excluded.updated_at`).run(accountBindings(account));
 }
 
 function accountBindings(account: TargetAccount) {
-  return { ...account, schedulable: flag(account.schedulable), groupIds: JSON.stringify(account.groupIds), updatedAt: nowIso() };
+  return { ...account, groupIds: JSON.stringify(account.groupIds), updatedAt: nowIso() };
 }
 
-function mapAccount(row: Record<string, unknown>): TargetAccount {
+function saveBinding(database: DatabaseSync, accountId: number, binding: TargetAccountBinding | null) {
+  if (!binding) {
+    database.prepare("DELETE FROM target_account_bindings WHERE account_id = ?").run(accountId);
+    return;
+  }
+  database.prepare(`INSERT INTO target_account_bindings (account_id, source_site_id, source_group_id, updated_at)
+    VALUES (?, ?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET source_site_id=excluded.source_site_id,
+    source_group_id=excluded.source_group_id, updated_at=excluded.updated_at`)
+    .run(accountId, binding.sourceSiteId, binding.sourceGroupId, nowIso());
+}
+
+function recordTest(database: DatabaseSync, accountId: number, state: TargetAccountTestState) {
+  database.prepare(`INSERT INTO target_account_test_results
+    (account_id, status, message, latency_ms, model, tested_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(account_id) DO UPDATE SET status=excluded.status, message=excluded.message,
+    latency_ms=excluded.latency_ms, model=excluded.model, tested_at=excluded.tested_at`)
+    .run(accountId, state.status, state.message, state.latencyMs, state.model ?? null, state.testedAt);
+}
+
+function removeOrphanAccountState(database: DatabaseSync) {
+  database.prepare("DELETE FROM target_account_bindings WHERE account_id NOT IN (SELECT account_id FROM target_account_snapshots)").run();
+  database.prepare("DELETE FROM target_account_test_results WHERE account_id NOT IN (SELECT account_id FROM target_account_snapshots)").run();
+}
+
+function mapAccount(row: Record<string, unknown>): TargetAccountView {
   return {
     id: Number(row.account_id), name: String(row.account_name), platform: String(row.platform),
-    status: String(row.status), schedulable: Number(row.schedulable) === 1,
+    status: String(row.status),
     rateMultiplier: nullableNumber(row.rate_multiplier), priority: nullableNumber(row.priority),
     groupIds: parseGroupIds(row.group_ids_json),
+    binding: mapBinding(row),
+    lastTest: mapTestState(row),
+  };
+}
+
+function mapBinding(row: Record<string, unknown>) {
+  if (row.binding_source_site_id === null || row.binding_source_site_id === undefined) return null;
+  return { sourceSiteId: Number(row.binding_source_site_id), sourceGroupId: String(row.binding_source_group_id) };
+}
+
+function mapTestState(row: Record<string, unknown>): TargetAccountTestState | null {
+  if (!row.test_status) return null;
+  return {
+    status: String(row.test_status) as TargetAccountTestState["status"],
+    message: String(row.test_message), latencyMs: Number(row.test_latency_ms),
+    ...(row.test_model ? { model: String(row.test_model) } : {}),
+    testedAt: String(row.tested_at),
   };
 }
 

@@ -8,7 +8,7 @@ import { test } from "node:test";
 const ROOT = new URL("../", import.meta.url);
 
 async function loadModules() {
-  const paths = ["src/server/worker/service.ts", "src/server/worker/store.ts", "src/server/worker/concurrency.ts"];
+  const paths = ["src/server/worker/service.ts", "src/server/worker/store.ts", "src/server/concurrency.ts"];
   for (const path of paths) assert.equal(existsSync(new URL(path, ROOT)), true, `${path} should exist`);
   const [service, store] = await Promise.all([
     import("../src/server/worker/service.ts"),

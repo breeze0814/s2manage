@@ -1,4 +1,4 @@
-import { mapConcurrent } from "./concurrency.ts";
+import { mapConcurrent } from "../concurrency.ts";
 import type { WorkerRunRecord, WorkerRunStore } from "./store.ts";
 
 export type WorkerRunStatus = "running" | "success" | "partial" | "failed";
@@ -87,7 +87,7 @@ async function executeCycle(input: WorkerDependencies, startedAt: string) {
   const settings = await input.settings();
   const sources = await input.collection.list();
   const due = sources.filter((source) => isDue(source, input.now()));
-  const sourceResults = await mapConcurrent(due, settings.concurrency, async (source) => refreshSource(input, source));
+  const sourceResults = await mapConcurrent({ items: due, concurrency: settings.concurrency, task: (source) => refreshSource(input, source) });
   const sourceStats = summarizeResults(sourceResults);
   const groupStats = settings.targetConfigured
     ? await applyTargetRules(input)
@@ -114,7 +114,7 @@ async function applyTargetRules(input: WorkerDependencies): Promise<TaskStats> {
   try {
     const groups = await input.targetGroups.list();
     const enabled = groups.filter((group) => group.rule.enabled);
-    const results = await mapConcurrent(enabled, 1, async (group) => applyGroup(input, group));
+    const results = await mapConcurrent({ items: enabled, concurrency: 1, task: (group) => applyGroup(input, group) });
     const stats = summarizeResults(results);
     return { ...stats, skipped: stats.skipped + groups.length - enabled.length };
   } catch (error) {

@@ -18,7 +18,13 @@ export function Select({ value, options, ariaLabel, disabled = false, triggerIco
 }>) {
   return (
     <SelectPrimitive.Root value={value} disabled={disabled} onValueChange={onValueChange}>
-      <SelectPrimitive.Trigger aria-label={ariaLabel} title={ariaLabel} className={triggerIcon ? "compact-icon-button" : "form-control flex items-center justify-between gap-2 text-left"}>
+      <SelectPrimitive.Trigger
+        aria-label={ariaLabel}
+        title={ariaLabel}
+        className={triggerIcon
+          ? "compact-icon-button"
+          : "form-control flex min-w-0 items-center justify-between gap-2 overflow-hidden text-left [&>span:first-child]:truncate"}
+      >
         {triggerIcon ?? <SelectPrimitive.Value />}
         {triggerIcon ? <span className="sr-only"><SelectPrimitive.Value /></span> : <SelectPrimitive.Icon><ChevronDown className="size-4 text-muted" /></SelectPrimitive.Icon>}
       </SelectPrimitive.Trigger>

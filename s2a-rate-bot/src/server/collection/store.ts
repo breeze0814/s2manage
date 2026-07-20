@@ -165,6 +165,11 @@ function removeMissingBindings(database: DatabaseSync, siteId: number) {
       SELECT 1 FROM collection_group_rates AS rates
       WHERE rates.site_id = :siteId AND rates.group_id = bindings.source_group_id
     )`).run({ siteId });
+  database.prepare(`DELETE FROM target_account_bindings AS bindings
+    WHERE bindings.source_site_id = :siteId AND NOT EXISTS (
+      SELECT 1 FROM collection_group_rates AS rates
+      WHERE rates.site_id = :siteId AND rates.group_id = bindings.source_group_id
+    )`).run({ siteId });
   database.prepare(`UPDATE target_group_rules AS rules SET enabled=0, last_error=:error, updated_at=:updatedAt
     WHERE rules.enabled=1 AND NOT EXISTS (
       SELECT 1 FROM target_group_bindings AS bindings WHERE bindings.group_id = rules.group_id

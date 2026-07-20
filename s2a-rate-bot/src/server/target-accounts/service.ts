@@ -1,20 +1,27 @@
 import { z } from "zod";
+import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
+import { mapConcurrent } from "../concurrency.ts";
 import type { TargetAccountStore } from "./store.ts";
-import type { TargetAccountClient } from "./types.ts";
+import type { TargetAccount, TargetAccountBinding, TargetAccountClient, TargetAccountTestExecution, TargetAccountTestState } from "./types.ts";
 
 const accountIdSchema = z.number().int().positive();
+const bindingSchema = z.object({ sourceSiteId: z.number().int().positive(), sourceGroupId: z.string().trim().min(1) }).nullable();
 
 export type TargetAccountService = {
   readonly list: () => Promise<ReturnType<TargetAccountStore["list"]>>;
   readonly refresh: () => Promise<ReturnType<TargetAccountStore["list"]>>;
-  readonly setSchedulable: (accountId: number, schedulable: boolean) => Promise<Awaited<ReturnType<TargetAccountClient["setSchedulable"]>>>;
+  readonly saveBinding: (accountId: number, binding: unknown) => Promise<ReturnType<TargetAccountStore["get"]>>;
+  readonly testChannel: (accountId: number) => Promise<TargetAccountTestExecution>;
+  readonly testAllChannels: () => Promise<Awaited<ReturnType<typeof testAllChannels>>>;
 };
 
-export function createTargetAccountService(input: { readonly client: TargetAccountClient; readonly store: TargetAccountStore }): TargetAccountService {
+export function createTargetAccountService(input: AccountDependencies): TargetAccountService {
   return {
     list: async () => input.store.list(),
     refresh: async () => refreshAccounts(input),
-    setSchedulable: (accountId, schedulable) => setSchedulable(input, accountId, schedulable),
+    saveBinding: (accountId, binding) => saveBinding(input, accountId, binding),
+    testChannel: (accountId) => testChannel(input, accountId),
+    testAllChannels: () => testAllChannels(input),
   };
 }
 
@@ -23,10 +30,73 @@ async function refreshAccounts(input: AccountDependencies) {
   return input.store.list();
 }
 
-async function setSchedulable(input: AccountDependencies, accountId: number, schedulable: boolean) {
-  const account = await input.client.setSchedulable(accountIdSchema.parse(accountId), z.boolean().parse(schedulable));
-  input.store.save(account);
+async function saveBinding(input: AccountDependencies, rawAccountId: number, rawBinding: unknown) {
+  const accountId = accountIdSchema.parse(rawAccountId);
+  const binding = bindingSchema.parse(rawBinding);
+  requireAccount(input.store, accountId);
+  if (binding && !bindingExists(binding, await input.sourceRates())) {
+    throw new Error(`采集分组不存在: ${binding.sourceSiteId}:${binding.sourceGroupId}`);
+  }
+  input.store.saveBinding(accountId, binding);
+  return requireAccount(input.store, accountId);
+}
+
+async function testChannel(input: AccountDependencies, rawAccountId: number) {
+  const account = requireAccount(input.store, accountIdSchema.parse(rawAccountId));
+  return executeChannelTest(input, account);
+}
+
+async function testAllChannels(input: AccountDependencies) {
+  const accounts = input.store.list();
+  const executions = await mapConcurrent({
+    items: accounts,
+    concurrency: await input.testConcurrency(),
+    task: (account) => executeChannelTest(input, account),
+  });
+  return { accounts: input.store.list(), summary: testSummary(executions) };
+}
+
+async function executeChannelTest(input: AccountDependencies, account: TargetAccount): Promise<TargetAccountTestExecution> {
+  const startedAt = Date.now();
+  let state: TargetAccountTestState;
+  try {
+    const result = await input.client.testChannel(account.id);
+    state = {
+      status: result.success ? "available" : "unavailable",
+      message: result.message, latencyMs: Math.round(result.latencyMs),
+      ...(result.model ? { model: result.model } : {}), testedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    state = { status: "error", message: errorMessage(error), latencyMs: Date.now() - startedAt, testedAt: new Date().toISOString() };
+  }
+  input.store.recordTest(account.id, state);
+  return { account: requireAccount(input.store, account.id), test: state };
+}
+
+function testSummary(executions: readonly TargetAccountTestExecution[]) {
+  return {
+    total: executions.length,
+    available: executions.filter((item) => item.test.status === "available").length,
+    unavailable: executions.filter((item) => item.test.status === "unavailable").length,
+    errors: executions.filter((item) => item.test.status === "error").length,
+  };
+}
+
+function requireAccount(store: TargetAccountStore, accountId: number) {
+  const account = store.get(accountId);
+  if (!account) throw new Error(`目标账号不存在: ${accountId}`);
   return account;
 }
 
-type AccountDependencies = Parameters<typeof createTargetAccountService>[0];
+function bindingExists(binding: TargetAccountBinding, rates: readonly SourceRateSnapshot[]) {
+  return rates.some((rate) => rate.sourceSiteId === binding.sourceSiteId && rate.groupId === binding.sourceGroupId);
+}
+
+function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
+
+type AccountDependencies = {
+  readonly client: TargetAccountClient;
+  readonly store: TargetAccountStore;
+  readonly sourceRates: () => Promise<readonly SourceRateSnapshot[]>;
+  readonly testConcurrency: () => Promise<number>;
+};

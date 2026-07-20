@@ -6,7 +6,9 @@ const RATE_CHANGE_SCHEMA_VERSION = 11;
 const NEW_API_USER_SCHEMA_VERSION = 12;
 const RATE_PLATFORM_SCHEMA_VERSION = 13;
 const REFRESH_VERSION_SCHEMA_VERSION = 14;
-const SCHEMA_VERSION = REFRESH_VERSION_SCHEMA_VERSION;
+const ACCOUNT_SCHEDULABLE_REMOVAL_SCHEMA_VERSION = 15;
+const ACCOUNT_LOCAL_STATE_SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = ACCOUNT_LOCAL_STATE_SCHEMA_VERSION;
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -113,11 +115,25 @@ const CREATE_TABLES = [
     account_name TEXT NOT NULL,
     platform TEXT NOT NULL,
     status TEXT NOT NULL,
-    schedulable INTEGER NOT NULL CHECK (schedulable IN (0, 1)),
     rate_multiplier REAL,
     priority INTEGER,
     group_ids_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS target_account_bindings (
+    account_id INTEGER PRIMARY KEY,
+    source_site_id INTEGER NOT NULL,
+    source_group_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (source_site_id) REFERENCES collection_sites(id) ON DELETE CASCADE
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS target_account_test_results (
+    account_id INTEGER PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN ('available', 'unavailable', 'error')),
+    message TEXT NOT NULL,
+    latency_ms INTEGER NOT NULL,
+    model TEXT,
+    tested_at TEXT NOT NULL
   ) STRICT`,
   `CREATE TABLE IF NOT EXISTS target_group_snapshots (
     group_id INTEGER PRIMARY KEY,
@@ -182,6 +198,7 @@ function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureTargetGroupPlatform(database);
   ensureNewApiUserId(database);
   ensureRefreshVersion(database);
+  ensureTargetAccountSnapshotSchema(database);
   if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {
     database.exec(`UPDATE target_group_rules
       SET parameters_json = json_set(parameters_json, '$.minimum', 0)
@@ -200,6 +217,35 @@ function ensureRefreshVersion(database: DatabaseSync) {
   const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
   if (columns.some((column) => column.name === "refresh_version")) return;
   database.exec("ALTER TABLE collection_sites ADD COLUMN refresh_version INTEGER NOT NULL DEFAULT 0");
+}
+
+function ensureTargetAccountSnapshotSchema(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(target_account_snapshots)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "schedulable")) return;
+  database.exec("SAVEPOINT remove_target_account_schedulable");
+  try {
+    database.exec(`CREATE TABLE target_account_snapshots_v15 (
+      account_id INTEGER PRIMARY KEY,
+      account_name TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      status TEXT NOT NULL,
+      rate_multiplier REAL,
+      priority INTEGER,
+      group_ids_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT`);
+    database.exec(`INSERT INTO target_account_snapshots_v15
+      (account_id, account_name, platform, status, rate_multiplier, priority, group_ids_json, updated_at)
+      SELECT account_id, account_name, platform, status, rate_multiplier, priority, group_ids_json, updated_at
+      FROM target_account_snapshots`);
+    database.exec("DROP TABLE target_account_snapshots");
+    database.exec("ALTER TABLE target_account_snapshots_v15 RENAME TO target_account_snapshots");
+    database.exec("RELEASE SAVEPOINT remove_target_account_schedulable");
+  } catch (error) {
+    database.exec("ROLLBACK TO SAVEPOINT remove_target_account_schedulable");
+    database.exec("RELEASE SAVEPOINT remove_target_account_schedulable");
+    throw error;
+  }
 }
 
 function ensureTargetRechargeRatio(database: DatabaseSync) {

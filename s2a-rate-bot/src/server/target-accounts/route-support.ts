@@ -6,7 +6,7 @@ import { RequestBodyError } from "../http/request-body.ts";
 export function targetAccountError(error: unknown) {
   const status = error instanceof AuthRequiredError ? error.status : error instanceof RequestBodyError || error instanceof ZodError ? 400 : 500;
   const message = error instanceof ZodError
-    ? error.issues[0]?.message ?? "账号调度参数无效"
+    ? error.issues[0]?.message ?? "账号参数无效"
     : error instanceof Error ? error.message : String(error);
   return NextResponse.json({ error: message }, { status });
 }

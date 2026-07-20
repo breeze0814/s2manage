@@ -12,17 +12,22 @@ export type JsonRequest = {
   readonly proxyUrl?: string | null;
 };
 
-export type JsonClientRequest = Omit<JsonRequest, "timeoutMs" | "proxyUrl">;
+export type HttpClientRequest = Omit<JsonRequest, "proxyUrl">;
+export type JsonClientRequest = HttpClientRequest;
+export type TextHttpResponse = { readonly status: number; readonly text: string; readonly headers: Record<string, string> };
 export type JsonHttpClient = {
   readonly request: <T = unknown>(input: JsonClientRequest) => Promise<T>;
 };
+export type TextHttpClient = { readonly requestText: (input: HttpClientRequest) => Promise<TextHttpResponse> };
+export type HttpClient = JsonHttpClient & TextHttpClient;
 
 export function createJsonHttpClient(options: {
   readonly timeoutMs: number;
   readonly proxyUrl: string | null;
-}): JsonHttpClient {
+}): HttpClient {
   return {
-    request: (input) => requestJson({ ...input, ...options }),
+    request: (input) => requestJson({ ...options, ...input }),
+    requestText: (input) => requestTextResponse({ ...options, ...input }),
   };
 }
 
@@ -33,12 +38,26 @@ export async function requestJson<T = unknown>(input: JsonRequest): Promise<T> {
 }
 
 export async function requestJsonResponse<T = unknown>(input: JsonRequest) {
+  return requestResponse(input, (result) => {
+    if (!result.ok) throw new HttpResponseError(result.status, result.text);
+    return { data: (result.text.trim() ? JSON.parse(result.text) : {}) as T, headers: result.headers, status: result.status };
+  });
+}
+
+export async function requestTextResponse(input: JsonRequest): Promise<TextHttpResponse> {
+  return requestResponse(input, (result) => {
+    if (!result.ok) throw new HttpResponseError(result.status, result.text);
+    return { text: result.text, headers: result.headers, status: result.status };
+  });
+}
+
+async function requestResponse<T>(input: JsonRequest, parse: (result: FetchTextResponse) => T): Promise<T> {
   const startedAt = Date.now();
   try {
     const result = await fetchText(input);
-    if (!result.ok) throw new HttpResponseError(result.status, result.text);
+    const response = parse(result);
     await logExternalRequest({ input, startedAt, status: result.status });
-    return { data: (result.text.trim() ? JSON.parse(result.text) : {}) as T, headers: result.headers, status: result.status };
+    return response;
   } catch (error) {
     await logExternalRequest({ input, startedAt, status: error instanceof HttpResponseError ? error.status : null, error });
     throw error;
@@ -64,7 +83,9 @@ async function logExternalRequest(entry: Readonly<{
 
 function safeRequestUrl(value: string) { const url = new URL(value); return `${url.origin}${url.pathname}`; }
 
-async function fetchText(input: JsonRequest) {
+type FetchTextResponse = { readonly ok: boolean; readonly status: number; readonly text: string; readonly headers: Record<string, string> };
+
+async function fetchText(input: JsonRequest): Promise<FetchTextResponse> {
   const controller = new AbortController();
   const dispatcher = proxyDispatcher(input.proxyUrl);
   const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? DEFAULT_TIMEOUT_MS);

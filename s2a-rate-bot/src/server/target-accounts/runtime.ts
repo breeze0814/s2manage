@@ -1,4 +1,5 @@
 import { createJsonHttpClient } from "../../adapters/http-client.ts";
+import { getRuntimeCollectionService } from "../collection/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createSub2TargetAccountClient } from "./client.ts";
 import { createTargetAccountService, type TargetAccountService } from "./service.ts";
@@ -6,23 +7,50 @@ import { createSqliteTargetAccountStore } from "./store.ts";
 import type { TargetAccountClient } from "./types.ts";
 
 const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
-const globalAccounts = globalThis as typeof globalThis & { s2aTargetAccountService?: TargetAccountService };
+// Increment when the cached service contract or its dependencies change.
+const TARGET_ACCOUNT_RUNTIME_VERSION = 1;
 
-export function getRuntimeTargetAccountService(env: NodeJS.ProcessEnv = process.env) {
-  if (env === process.env && globalAccounts.s2aTargetAccountService) return globalAccounts.s2aTargetAccountService;
+type TargetAccountRuntime = Readonly<{
+  version: number;
+  service: TargetAccountService;
+  dispose: () => void;
+}>;
+
+type TargetAccountRuntimeCache = TargetAccountRuntime | TargetAccountService;
+const globalAccounts = globalThis as typeof globalThis & { s2aTargetAccountService?: TargetAccountRuntimeCache };
+
+export function getRuntimeTargetAccountService(env: NodeJS.ProcessEnv = process.env): TargetAccountService {
+  const cached = globalAccounts.s2aTargetAccountService;
+  if (env === process.env && isRuntimeCache(cached)) {
+    if (cached.version === TARGET_ACCOUNT_RUNTIME_VERSION) return cached.service;
+    cached.dispose();
+  }
+  const runtime = buildTargetAccountRuntime(env);
+  if (env === process.env) globalAccounts.s2aTargetAccountService = runtime;
+  return runtime.service;
+}
+
+function buildTargetAccountRuntime(env: NodeJS.ProcessEnv): TargetAccountRuntime {
   const settings = getRuntimeSettingsService(env);
+  const collection = getRuntimeCollectionService(env);
+  const store = createSqliteTargetAccountStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
   const service = createTargetAccountService({
     client: dynamicClient(settings),
-    store: createSqliteTargetAccountStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL),
+    store,
+    sourceRates: () => collection.rates(),
+    testConcurrency: async () => (await settings.get()).worker.concurrency,
   });
-  if (env === process.env) globalAccounts.s2aTargetAccountService = service;
-  return service;
+  return { version: TARGET_ACCOUNT_RUNTIME_VERSION, service, dispose: store.close };
+}
+
+function isRuntimeCache(cache: TargetAccountRuntimeCache | undefined): cache is TargetAccountRuntime {
+  return Boolean(cache && "version" in cache && "service" in cache && "dispose" in cache);
 }
 
 function dynamicClient(settings: ReturnType<typeof getRuntimeSettingsService>): TargetAccountClient {
   return {
     listAccounts: async () => (await configuredClient(settings)).listAccounts(),
-    setSchedulable: async (accountId, schedulable) => (await configuredClient(settings)).setSchedulable(accountId, schedulable),
+    testChannel: async (accountId) => (await configuredClient(settings)).testChannel(accountId),
   };
 }
 
