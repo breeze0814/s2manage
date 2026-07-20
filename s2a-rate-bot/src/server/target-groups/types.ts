@@ -6,6 +6,8 @@ export type TargetGroup = {
   readonly rate_multiplier?: number | null;
 };
 
+import { TARGET_RULE_VERSION } from "../../core/rule-version.ts";
+
 export type RuleType = "first" | "average" | "min" | "max" | "avg_formula";
 export type RuleParameters = {
   readonly offset: number;
@@ -22,7 +24,7 @@ export type TargetRule = {
   readonly targetGroupId: number;
   readonly targetGroupName: string;
   readonly enabled: boolean;
-  readonly ruleVersion: 1;
+  readonly ruleVersion: typeof TARGET_RULE_VERSION;
   readonly ruleType: RuleType;
   readonly parameters: RuleParameters;
   readonly currentRate: number | null;

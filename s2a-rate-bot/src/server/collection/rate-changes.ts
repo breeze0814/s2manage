@@ -21,9 +21,9 @@ export function compareRateSnapshots(
 }
 
 function compareCurrentRate(rate: SourceRateSnapshot, previous?: SourceRateSnapshot) {
-  if (!previous) return [rateChange(rate, "added", null, rate.effectiveRate)];
+  if (!previous) return [rateChange({ rate, changeType: "added", oldRate: null, newRate: rate.effectiveRate })];
   if (Object.is(previous.effectiveRate, rate.effectiveRate)) return [];
-  return [rateChange(rate, "updated", previous.effectiveRate, rate.effectiveRate)];
+  return [rateChange({ rate, changeType: "updated", oldRate: previous.effectiveRate, newRate: rate.effectiveRate })];
 }
 
 function deletedRates(
@@ -32,21 +32,21 @@ function deletedRates(
 ) {
   return previous
     .filter((rate) => !currentById.has(rate.groupId))
-    .map((rate) => rateChange(rate, "deleted", rate.effectiveRate, null));
+    .map((rate) => rateChange({ rate, changeType: "deleted", oldRate: rate.effectiveRate, newRate: null }));
 }
 
-function rateChange(
-  rate: SourceRateSnapshot,
-  changeType: CollectionRateChangeType,
-  oldRate: number | null,
-  newRate: number | null,
-): PendingRateChange {
+function rateChange(input: Readonly<{
+  rate: SourceRateSnapshot;
+  changeType: CollectionRateChangeType;
+  oldRate: number | null;
+  newRate: number | null;
+}>): PendingRateChange {
   return {
-    groupId: rate.groupId,
-    groupName: rate.groupName,
-    platform: rate.platform ?? null,
-    changeType,
-    oldRate,
-    newRate,
+    groupId: input.rate.groupId,
+    groupName: input.rate.groupName,
+    platform: input.rate.platform ?? null,
+    changeType: input.changeType,
+    oldRate: input.oldRate,
+    newRate: input.newRate,
   };
 }

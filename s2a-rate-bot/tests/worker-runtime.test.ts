@@ -40,10 +40,10 @@ test("worker collects due Sub2API and NewAPI sites with configured concurrency",
   let maxActive = 0;
   const refreshed: number[] = [];
   const sites = [
-    site(1, "sub2api", null, true),
-    site(2, "newapi", null, true),
-    site(3, "sub2api", new Date("2026-07-11T00:00:00Z").toISOString(), true),
-    site(4, "newapi", null, false),
+    site(1),
+    site(2),
+    site(3, { lastRunAt: new Date("2026-07-11T00:00:00Z").toISOString() }),
+    site(4, { enabled: false }),
   ];
   const dependencies = baseDependencies({
     now: () => new Date("2026-07-11T00:05:00Z"),
@@ -71,7 +71,7 @@ test("worker collects due Sub2API and NewAPI sites with configured concurrency",
 test("worker records collection and rule failures without hiding successful tasks", async () => {
   const dependencies = baseDependencies({
     collection: {
-      list: async () => [site(1, "sub2api", null, true), site(2, "newapi", null, true)],
+      list: async () => [site(1), site(2)],
       refresh: async (id: number) => { if (id === 2) throw new Error("newapi unavailable"); },
     },
     targetGroups: {
@@ -97,7 +97,7 @@ test("overlapping worker cycles are rejected explicitly", async () => {
   let release: (() => void) | undefined;
   const waiting = new Promise<void>((resolve) => { release = resolve; });
   const dependencies = baseDependencies({
-    collection: { list: async () => [site(1, "sub2api", null, true)], refresh: async () => waiting },
+    collection: { list: async () => [site(1)], refresh: async () => waiting },
   });
 
   await withWorker(dependencies, async ({ worker }) => {
@@ -131,8 +131,8 @@ function baseDependencies(overrides: Partial<WorkerDependencies> = {}): WorkerDe
   };
 }
 
-function site(id: number, siteType: string, lastRunAt: string | null, enabled: boolean) {
-  return { id, name: `Site ${id}`, siteType, enabled, intervalSeconds: 600, lastRunAt };
+function site(id: number, options: Readonly<{ lastRunAt?: string | null; enabled?: boolean }> = {}) {
+  return { id, name: `Site ${id}`, enabled: options.enabled ?? true, intervalSeconds: 600, lastRunAt: options.lastRunAt ?? null };
 }
 
 type WorkerDependencies = {

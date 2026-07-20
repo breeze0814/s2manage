@@ -30,16 +30,16 @@ export function createSqliteMaintenance(
   const intervalHours = options.intervalHours ?? DEFAULT_INTERVAL_HOURS;
   const retentionDays = options.retentionDays ?? DEFAULT_RETENTION_DAYS;
   return {
-    runIfDue: (now = new Date()) => runIfDue(database, now, intervalHours, retentionDays),
+    runIfDue: (now = new Date()) => runIfDue(database, { now, intervalHours, retentionDays }),
     close: () => database.close(),
   };
 }
 
-function runIfDue(database: DatabaseSync, now: Date, intervalHours: number, retentionDays: number) {
-  validateOptions(intervalHours, retentionDays);
-  if (!cleanupDue(database, now, intervalHours)) return null;
-  const cutoff = new Date(now.getTime() - retentionDays * DAYS_TO_MS).toISOString();
-  const result = deleteExpiredHistory(database, cutoff, now.toISOString());
+function runIfDue(database: DatabaseSync, input: Readonly<{ now: Date; intervalHours: number; retentionDays: number }>) {
+  validateOptions(input.intervalHours, input.retentionDays);
+  if (!cleanupDue(database, input.now, input.intervalHours)) return null;
+  const cutoff = new Date(input.now.getTime() - input.retentionDays * DAYS_TO_MS).toISOString();
+  const result = deleteExpiredHistory(database, cutoff, input.now.toISOString());
   if (result.collectionRuns + result.workerRuns > 0) compactDatabase(database);
   return { ...result, cutoff };
 }

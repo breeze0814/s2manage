@@ -71,6 +71,23 @@ test("account service reads SQLite until an explicit remote refresh", async () =
   });
 });
 
+test("target account client follows every pagination page", async () => {
+  const requests: string[] = [];
+  await withServer((request, response) => {
+    requests.push(request.url ?? "");
+    const page = request.url?.includes("page=2") ? 2 : 1;
+    const item = remoteAccount(true, page === 1 ? 9 : 10);
+    json(response, { data: { items: [item], page, page_size: 1, total: 2 } });
+  }, async (baseUrl) => {
+    const accounts = await (await accountClient(baseUrl)).listAccounts();
+    assert.deepEqual(accounts.map((item) => item.id), [9, 10]);
+    assert.deepEqual(requests, [
+      "/api/v1/admin/accounts?page=1&page_size=1000",
+      "/api/v1/admin/accounts?page=2&page_size=1000",
+    ]);
+  });
+});
+
 test("account routes and dashboard expose remote refresh and schedulable controls", () => {
   const files = [
     "src/app/api/accounts/route.ts",
@@ -133,8 +150,8 @@ function createAccountRemote() {
   };
 }
 
-function remoteAccount(schedulable: boolean) {
-  return { id: 9, name: "OpenAI A", platform: "openai", status: "active", schedulable, rate_multiplier: 1.25, priority: 3, account_groups: [{ group_id: 7 }] };
+function remoteAccount(schedulable: boolean, id = 9) {
+  return { id, name: id === 9 ? "OpenAI A" : `OpenAI ${id}`, platform: "openai", status: "active", schedulable, rate_multiplier: 1.25, priority: 3, account_groups: [{ group_id: 7 }] };
 }
 
 function account(schedulable: boolean) {

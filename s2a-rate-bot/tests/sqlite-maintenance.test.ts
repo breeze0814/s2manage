@@ -39,8 +39,8 @@ test("scheduled SQLite maintenance removes expired history and keeps recent reco
 function seedCollectionHistory(databaseUrl: string) {
   const store = createSqliteCollectionStore(databaseUrl);
   const site = store.create(siteInput());
-  store.recordSuccess(site.id, overview(site.id, 1), OLD_TIMESTAMP);
-  store.recordSuccess(site.id, overview(site.id, 2), NOW.toISOString());
+  store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 1), startedAt: OLD_TIMESTAMP });
+  store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 2), startedAt: NOW.toISOString() });
   store.close();
 }
 

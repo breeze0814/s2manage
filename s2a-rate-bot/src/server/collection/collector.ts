@@ -3,14 +3,14 @@ import { collectNewApiSourceRates, collectSub2ApiSourceRates, resolveNewApiAuthS
 import type { CollectionCollector, CollectionSiteRuntime } from "./types.ts";
 
 export function createDefaultCollectionCollector(): CollectionCollector {
-  return { collect: (input) => collectSite(input.site, input.timeoutMs, input.proxyUrl, input.targetRechargeRatio) };
+  return { collect: (input) => collectSite(input) };
 }
 
-async function collectSite(site: CollectionSiteRuntime, timeoutMs: number, proxyUrl: string | null, targetRechargeRatio: number) {
-  const request = sourceRequest(site, timeoutMs, proxyUrl, targetRechargeRatio);
-  const credentials = await resolveCredentials(site, request);
+async function collectSite(input: Parameters<CollectionCollector["collect"]>[0]) {
+  const request = sourceRequest(input);
+  const credentials = await resolveCredentials(input.site, request);
   const authenticated = { ...request, auth: { mode: "manual_token" as const, accessToken: credentials.accessToken } };
-  if (site.siteType === "newapi") {
+  if (input.site.siteType === "newapi") {
     const [account, rates] = await Promise.all([
       getNewApiSourceAccount(authenticated),
       collectNewApiSourceRates(authenticated),
@@ -28,17 +28,17 @@ function resolveCredentials(site: CollectionSiteRuntime, request: SourceRateRequ
   return site.siteType === "newapi" ? resolveNewApiAuthSession(request) : resolveSub2ApiAuthSession(request);
 }
 
-function sourceRequest(site: CollectionSiteRuntime, timeoutMs: number, proxyUrl: string | null, targetRechargeRatio: number): SourceRateRequest {
+function sourceRequest(input: Parameters<CollectionCollector["collect"]>[0]): SourceRateRequest {
   return {
-    sourceSiteId: site.id,
-    baseUrl: site.baseUrl,
-    newApiUserId: site.newApiUserId,
-    auth: site.authMode === "password"
-      ? { mode: "password", username: site.username, password: site.password }
-      : { mode: "manual_token", accessToken: site.accessToken, rtToken: site.refreshToken },
-    rechargeRatio: site.rechargeRatio,
-    targetRechargeRatio,
-    timeoutMs,
-    proxyUrl: site.useProxy ? proxyUrl : null,
+    sourceSiteId: input.site.id,
+    baseUrl: input.site.baseUrl,
+    newApiUserId: input.site.newApiUserId,
+    auth: input.site.authMode === "password"
+      ? { mode: "password", username: input.site.username, password: input.site.password }
+      : { mode: "manual_token", accessToken: input.site.accessToken, rtToken: input.site.refreshToken },
+    rechargeRatio: input.site.rechargeRatio,
+    targetRechargeRatio: input.targetRechargeRatio,
+    timeoutMs: input.timeoutMs,
+    proxyUrl: input.site.useProxy ? input.proxyUrl : null,
   };
 }

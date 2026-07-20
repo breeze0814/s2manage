@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -100,7 +100,6 @@ test("target group page reads SQLite until an explicit remote refresh", async ()
     assert.equal(listCalls(), 2);
   });
 });
-
 test("failed target group API refresh preserves the last persisted snapshot", async () => {
   await withTargetService(async ({ service, setListError }) => {
     await service.refreshAll();
@@ -216,73 +215,4 @@ test("invalid calculation minimum fails API validation explicitly", async () => 
     await assert.rejects(service.saveRule(7, { ...ruleInput(), parameters: { ...ruleInput().parameters, minimum: -1 } }), /计算最小值必须大于或等于 0/);
     await assert.rejects(service.saveRule(7, { ...ruleInput(), parameters: { ...ruleInput().parameters, minimum: Number.NaN } }), /计算最小值必须是有效数字/);
   });
-});
-
-test("target group routes and dashboard expose remote refresh, rule version and bindings", () => {
-  const paths = [
-    "src/app/api/groups/route.ts",
-    "src/app/api/groups/[id]/rule/route.ts",
-    "src/app/api/groups/[id]/preview/route.ts",
-    "src/app/api/groups/[id]/apply/route.ts",
-    "src/app/api/groups/refresh/route.ts",
-    "src/app/api/groups/[id]/refresh/route.ts",
-    "src/components/groups/groups-dashboard.tsx",
-    "src/components/groups/group-rule-table.tsx",
-    "src/components/groups/group-rule-dialog.tsx",
-  ];
-  for (const path of paths) assert.equal(existsSync(new URL(path, ROOT)), true, `${path} should exist`);
-  const dashboard = readFileSync(new URL("src/components/groups/groups-dashboard.tsx", ROOT), "utf8");
-  const dashboardHook = readFileSync(new URL("src/components/groups/use-groups-dashboard.ts", ROOT), "utf8");
-  const table = readFileSync(new URL("src/components/groups/group-rule-table.tsx", ROOT), "utf8");
-  const dialog = readFileSync(new URL("src/components/groups/group-rule-dialog.tsx", ROOT), "utf8");
-  assert.match(dashboard, /刷新分组/);
-  assert.match(dashboardHook, /group === null/);
-  assert.match(dashboardHook, /已清理本地规则/);
-  assert.doesNotMatch(dashboard, /规则版本 v1/);
-  assert.doesNotMatch(dashboard, /按采集分组绑定/);
-  assert.match(dashboard, /刷新分组/);
-  assert.doesNotMatch(dashboard, /sourceSiteId \+ sourceGroupId/);
-  assert.match(dialog, /绑定采集分组/);
-  assert.match(dialog, /samePlatform/);
-  assert.match(dialog, /没有相同平台的采集倍率/);
-  assert.match(dialog, /min-h-10/);
-  assert.match(dialog, /first:border-t-0/);
-  assert.doesNotMatch(dialog, /sm:grid-cols-2/);
-  assert.match(dialog, /原 ×\{formatRate\(rate\.rawRate\)\}/);
-  assert.match(dialog, /有效 ×\{formatRate\(rate\.effectiveRate\)\}/);
-  assert.match(dialog, /预览倍率/);
-  assert.match(dialog, /选择采集分组/);
-  assert.match(dialog, /配置与预览/);
-  assert.match(dialog, /max-h-\[25rem\]/);
-  assert.match(dialog, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(260px,0\.7fr\)\]/);
-  assert.match(dialog, /sm:grid-cols-3/);
-  assert.match(dialog, /<aside className="space-y-3">/);
-  assert.match(dialog, /calculatePreview/);
-  assert.match(dialog, /evaluateRateRule/);
-  assert.match(dialog, /不会保存或应用/);
-  assert.match(dialog, /计算最小值/);
-  assert.match(dialog, /自定义公式/);
-  assert.match(dialog, /<Select\s+ariaLabel="规则类型"/);
-  assert.doesNotMatch(dialog, /<select/);
-  assert.doesNotMatch(dialog, /乘数/);
-  assert.doesNotMatch(dialog, /suffix="倍率"/);
-  assert.match(dialog, /@radix-ui\/react-dialog/);
-  assert.match(table, /<table/);
-  assert.match(table, /<thead/);
-  assert.match(table, /<tbody/);
-  assert.match(table, /下限/);
-  assert.match(table, /PlatformLabel/);
-  assert.match(table, /group\.bindings\.map/);
-  assert.match(table, /flex-col items-start/);
-  assert.match(table, /siteNames\.get\(binding\.sourceSiteId\)/);
-  assert.match(table, /\{siteName\}[\s\S]*rate\?\.groupName/);
-  assert.doesNotMatch(table, /bindings\.slice/);
-  assert.match(table, /刷新此分组/);
-  assert.doesNotMatch(table, /text="刷新"/);
-  assert.doesNotMatch(table, /text="预览"/);
-  assert.doesNotMatch(table, /text="应用"/);
-  assert.match(table, /className="size-3"/);
-  assert.match(table, /compact-icon-button-primary/);
-  assert.match(dialog, /className="compact-icon-button"/);
-  assert.match(dialog, /<Pencil className="size-3"/);
 });

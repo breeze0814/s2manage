@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { SecretCipher } from "../crypto.ts";
-import type { CollectionChangesQuery, CollectionStore } from "./store.ts";
+import { CollectionRefreshSupersededError, type CollectionChangesQuery, type CollectionStore } from "./store.ts";
 import type { CollectionCollector, CollectionRequestOptions, CollectionSiteInput, CollectionSiteRuntime, CollectionSiteStored, CollectionSiteView } from "./types.ts";
 
 export const collectionSiteSchema = z.object({
@@ -68,16 +68,47 @@ async function refreshSite(input: CollectionDependencies, id: number) {
   const stored = requiredSite(input.store, id);
   if (!stored.enabled) throw new Error("采集站已停用");
   const site = runtimeSite(stored, input.cipher);
+  const refreshVersion = input.store.beginRefresh(id);
   const options = await input.requestOptions();
   const startedAt = new Date().toISOString();
   try {
     const overview = await input.collector.collect({ site, ...options });
-    input.store.recordSuccess(id, overview, startedAt, encryptedCredentials(overview, input.cipher));
+    input.store.recordSuccess({
+      siteId: id,
+      refreshVersion,
+      overview,
+      startedAt,
+      credentials: encryptedCredentials(overview, input.cipher),
+    });
     return siteView(requiredSite(input.store, id), input.cipher);
   } catch (error) {
+    if (error instanceof CollectionRefreshSupersededError) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    input.store.recordFailure(id, message, startedAt);
+    recordRefreshFailure(input.store, { siteId: id, refreshVersion, message, startedAt, originalError: error });
     throw error;
+  }
+}
+
+function recordRefreshFailure(
+  store: CollectionStore,
+  input: Readonly<{
+    siteId: number;
+    refreshVersion: number;
+    message: string;
+    startedAt: string;
+    originalError: unknown;
+  }>,
+) {
+  try {
+    store.recordFailure({
+      siteId: input.siteId,
+      refreshVersion: input.refreshVersion,
+      error: input.message,
+      startedAt: input.startedAt,
+    });
+  } catch (error) {
+    if (error instanceof CollectionRefreshSupersededError) throw error;
+    throw new AggregateError([input.originalError, error], "采集失败且无法记录失败状态");
   }
 }
 
@@ -151,15 +182,21 @@ function requiredSite(store: CollectionStore, id: number) {
 }
 
 function validateAuthentication(site: CollectionSiteInput, context: z.RefinementCtx) {
-  if (site.authMode === "password" && (!site.username || !site.password)) {
-    context.addIssue({ code: "custom", message: "账号密码认证需要用户名和密码" });
-  }
-  if (site.siteType === "newapi" && site.authMode === "manual_token" && !site.accessToken) {
-    context.addIssue({ code: "custom", message: "New API Token 认证需要 Access Token" });
-  }
-  if (site.siteType === "sub2api" && site.authMode === "manual_token" && !site.accessToken && !site.refreshToken) {
-    context.addIssue({ code: "custom", message: "Token 认证需要 Access Token 或 Refresh Token" });
-  }
+  if (site.authMode === "password") return validatePasswordAuthentication(site, context);
+  if (site.siteType === "newapi") return validateNewApiToken(site, context);
+  validateSub2ApiToken(site, context);
+}
+
+function validatePasswordAuthentication(site: CollectionSiteInput, context: z.RefinementCtx) {
+  if (!site.username || !site.password) context.addIssue({ code: "custom", message: "账号密码认证需要用户名和密码" });
+}
+
+function validateNewApiToken(site: CollectionSiteInput, context: z.RefinementCtx) {
+  if (!site.accessToken) context.addIssue({ code: "custom", message: "New API Token 认证需要 Access Token" });
+}
+
+function validateSub2ApiToken(site: CollectionSiteInput, context: z.RefinementCtx) {
+  if (!site.accessToken && !site.refreshToken) context.addIssue({ code: "custom", message: "Token 认证需要 Access Token 或 Refresh Token" });
 }
 
 type CollectionDependencies = Parameters<typeof createCollectionService>[0];

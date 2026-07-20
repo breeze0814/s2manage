@@ -4,9 +4,10 @@ import { ZodError } from "zod";
 import { getRuntimeAuthService } from "./runtime.ts";
 import { authCredentialsSchema } from "./service.ts";
 import { SESSION_COOKIE_NAME, sessionCookieOptions } from "./session.ts";
+import { readJsonBody, RequestBodyError } from "../http/request-body.ts";
 
 export async function credentialsFromRequest(request: Request) {
-  return authCredentialsSchema.parse(await request.json());
+  return authCredentialsSchema.parse(await readJsonBody(request));
 }
 
 export function authenticatedResponse(token: string) {
@@ -25,7 +26,7 @@ export function authErrorResponse(error: unknown, status: number) {
   const message = error instanceof ZodError
     ? error.issues[0]?.message ?? "输入无效"
     : error instanceof Error ? error.message : String(error);
-  return NextResponse.json({ error: message }, { status });
+  return NextResponse.json({ error: message }, { status: error instanceof RequestBodyError || error instanceof ZodError ? 400 : status });
 }
 
 export function runtimeAuth() {

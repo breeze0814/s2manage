@@ -37,10 +37,10 @@ export async function requestJsonResponse<T = unknown>(input: JsonRequest) {
   try {
     const result = await fetchText(input);
     if (!result.ok) throw new HttpResponseError(result.status, result.text);
-    await logExternalRequest(input, startedAt, result.status);
+    await logExternalRequest({ input, startedAt, status: result.status });
     return { data: (result.text.trim() ? JSON.parse(result.text) : {}) as T, headers: result.headers, status: result.status };
   } catch (error) {
-    await logExternalRequest(input, startedAt, error instanceof HttpResponseError ? error.status : null, error);
+    await logExternalRequest({ input, startedAt, status: error instanceof HttpResponseError ? error.status : null, error });
     throw error;
   }
 }
@@ -49,11 +49,16 @@ class HttpResponseError extends Error {
   constructor(readonly status: number, text: string) { super(`HTTP ${status}: ${text.slice(0, 300)}`); }
 }
 
-async function logExternalRequest(input: JsonRequest, startedAt: number, status: number | null, error?: unknown) {
+async function logExternalRequest(entry: Readonly<{
+  input: JsonRequest;
+  startedAt: number;
+  status: number | null;
+  error?: unknown;
+}>) {
   await writeExternalApiLog({
-    timestamp: new Date().toISOString(), method: input.method, url: safeRequestUrl(input.url), status,
-    durationMs: Date.now() - startedAt, outcome: error ? "failed" : "success",
-    ...(error ? { error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500) } : {}),
+    timestamp: new Date().toISOString(), method: entry.input.method, url: safeRequestUrl(entry.input.url), status: entry.status,
+    durationMs: Date.now() - entry.startedAt, outcome: entry.error ? "failed" : "success",
+    ...(entry.error ? { error: entry.error instanceof Error ? entry.error.message.slice(0, 500) : String(entry.error).slice(0, 500) } : {}),
   });
 }
 

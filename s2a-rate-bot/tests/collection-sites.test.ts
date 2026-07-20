@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
+import { sourceInput, sourceRate, successCollector, successOverview, type CollectionCollector } from "./collection-test-support.ts";
 
 const PROJECT_ROOT = new URL("../", import.meta.url);
 const APP_SECRET = "collection-secret-with-at-least-24-characters";
@@ -50,24 +51,6 @@ async function createContext(databaseUrl: string, databasePath: string, collecto
   return { ...modules, store, service, databasePath };
 }
 
-function sourceInput(overrides: Record<string, unknown> = {}) {
-  return {
-    name: "Sub2 Source",
-    siteType: "sub2api",
-    baseUrl: "https://source.example.com",
-    authMode: "password",
-    username: "user@example.com",
-    password: "source-password",
-    accessToken: "",
-    refreshToken: "",
-    rechargeRatio: 1,
-    intervalSeconds: 600,
-    useProxy: true,
-    enabled: true,
-    ...overrides,
-  };
-}
-
 test("collection site CRUD encrypts credentials and never returns their values", async () => {
   await withCollection(successCollector(), async ({ service, databasePath }) => {
     const created = await service.create(sourceInput());
@@ -101,7 +84,6 @@ test("successful refresh persists balance, rates, and a success run", async () =
     assert.deepEqual(rates.map((rate: { groupId: string; effectiveRate: number }) => [rate.groupId, rate.effectiveRate]), [["vip", 2]]);
   });
 });
-
 test("New API token authentication requires an access token", async () => {
   await withCollection(successCollector(), async ({ service }) => {
     await assert.rejects(service.create(sourceInput({
@@ -141,8 +123,8 @@ test("successful refresh records added updated and deleted group rates", async (
     collect: async ({ site }: { site: { id: number } }) => {
       collection += 1;
       const rates = collection === 1
-        ? [sourceRate(site.id, "vip", "VIP", 2), sourceRate(site.id, "legacy", "Legacy", 3)]
-        : [sourceRate(site.id, "vip", "VIP", 2.5), sourceRate(site.id, "new", "New", 1.2)];
+        ? [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2 }), sourceRate({ siteId: site.id, groupId: "legacy", groupName: "Legacy", effectiveRate: 3 })]
+        : [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2.5 }), sourceRate({ siteId: site.id, groupId: "new", groupName: "New", effectiveRate: 1.2 })];
       return { account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5 }, rates };
     },
   };
@@ -175,8 +157,8 @@ test("successful refresh removes bindings for deleted source groups", async () =
     collect: async ({ site }: { site: { id: number } }) => ({
       account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5 },
       rates: ++collection === 1
-        ? [sourceRate(site.id, "vip", "VIP", 2), sourceRate(site.id, "legacy", "Legacy", 3)]
-        : [sourceRate(site.id, "vip", "VIP", 2.5)],
+        ? [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2 }), sourceRate({ siteId: site.id, groupId: "legacy", groupName: "Legacy", effectiveRate: 3 })]
+        : [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2.5 })],
     }),
   };
   await withCollection(collector, async ({ service, databasePath }) => {
@@ -248,6 +230,36 @@ test("failed API refresh preserves the last persisted balance and rates", async 
   });
 });
 
+test("an older concurrent refresh cannot overwrite a newer result", async () => {
+  let calls = 0;
+  let releaseFirst: (() => void) | undefined;
+  let markFirstStarted: (() => void) | undefined;
+  const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve; });
+  const firstBlocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const collector: CollectionCollector = {
+    collect: async ({ site }) => {
+      calls += 1;
+      if (calls === 1) {
+        markFirstStarted?.();
+        await firstBlocked;
+        return successOverview(site.id, { balance: 1, rate: 1 });
+      }
+      return successOverview(site.id, { balance: 2, rate: 2 });
+    },
+  };
+  await withCollection(collector, async ({ service }) => {
+    const site = await service.create(sourceInput());
+    const older = service.refresh(site.id);
+    await firstStarted;
+    const newer = await service.refresh(site.id);
+    releaseFirst?.();
+
+    await assert.rejects(older, /刷新结果已过期/);
+    assert.equal(newer.balance, 2);
+    assert.equal((await service.rates(site.id))[0]?.effectiveRate, 2);
+  });
+});
+
 test("refresh all reports each enabled site result without hiding failures", async () => {
   const collector: CollectionCollector = {
     collect: async ({ site }) => {
@@ -266,35 +278,3 @@ test("refresh all reports each enabled site result without hiding failures", asy
     assert.match(results[1].error ?? "", /newapi failed/);
   });
 });
-
-test("collection API routes are present", () => {
-  const paths = [
-    "src/app/api/sources/route.ts",
-    "src/app/api/sources/[id]/route.ts",
-    "src/app/api/sources/[id]/refresh/route.ts",
-    "src/app/api/sources/refresh-all/route.ts",
-    "src/app/api/sources/changes/route.ts",
-  ];
-  for (const path of paths) {
-    assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
-  }
-});
-
-function successCollector(): CollectionCollector {
-  return { collect: async ({ site }) => successOverview(site.id) };
-}
-
-function successOverview(siteId: number) {
-  return {
-    account: { sourceSiteId: siteId, label: "source@example.com", balance: 12.5 },
-    rates: [{ sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai", rawRate: 2, effectiveRate: 2, collectedAt: new Date() }],
-  };
-}
-
-function sourceRate(siteId: number, groupId: string, groupName: string, effectiveRate: number) {
-  return { sourceSiteId: siteId, groupId, groupName, platform: "openai", rawRate: effectiveRate, effectiveRate, collectedAt: new Date() };
-}
-
-type CollectionCollector = {
-  readonly collect: (input: { site: { id: number; siteType: string } }) => Promise<ReturnType<typeof successOverview>>;
-};

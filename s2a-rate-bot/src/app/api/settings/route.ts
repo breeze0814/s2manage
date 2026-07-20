@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { AuthRequiredError, requireAuthenticatedRequest } from "../../../server/auth/route-support.ts";
+import { readJsonObject, RequestBodyError } from "../../../server/http/request-body.ts";
 import { getRuntimeSettingsService } from "../../../server/settings/runtime.ts";
 
 export const runtime = "nodejs";
@@ -20,7 +21,7 @@ export async function PUT(request: NextRequest) {
     await requireAuthenticatedRequest(request);
     const service = getRuntimeSettingsService();
     const current = await service.get();
-    const body = await request.json() as Record<string, unknown>;
+    const body = await readJsonObject(request);
     const saved = await service.save(mergeAdminKey(body, current.target?.adminApiKey));
     return NextResponse.json(maskSettings(saved));
   } catch (error) {
@@ -40,7 +41,7 @@ function maskSettings<T extends { target: { adminApiKey: string } | null }>(sett
 }
 
 function settingsError(error: unknown) {
-  const status = error instanceof AuthRequiredError ? error.status : error instanceof ZodError ? 400 : 500;
+  const status = error instanceof AuthRequiredError ? error.status : error instanceof RequestBodyError || error instanceof ZodError ? 400 : 500;
   const message = error instanceof ZodError
     ? error.issues[0]?.message ?? "配置无效"
     : error instanceof Error ? error.message : String(error);

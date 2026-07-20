@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { TARGET_RULE_VERSION } from "../../core/rule-version.ts";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, flag, nowIso, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
 import type { SourceBinding, TargetGroup, TargetRule } from "./types.ts";
@@ -131,9 +132,11 @@ function recordError(database: DatabaseSync, groupId: number, error: string) {
 }
 
 function mapRule(row: Record<string, unknown>): TargetRule {
+  const ruleVersion = Number(row.rule_version);
+  if (ruleVersion !== TARGET_RULE_VERSION) throw new Error(`不支持的倍率规则版本: ${ruleVersion}`);
   return {
     targetGroupId: Number(row.group_id), targetGroupName: String(row.group_name), enabled: Number(row.enabled) === 1,
-    ruleVersion: 1, ruleType: String(row.rule_type) as TargetRule["ruleType"],
+    ruleVersion, ruleType: String(row.rule_type) as TargetRule["ruleType"],
     parameters: JSON.parse(String(row.parameters_json)) as TargetRule["parameters"],
     currentRate: row.current_rate === null ? null : Number(row.current_rate),
     lastAppliedAt: nullableText(row.last_applied_at), lastError: nullableText(row.last_error),

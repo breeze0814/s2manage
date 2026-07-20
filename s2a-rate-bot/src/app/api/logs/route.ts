@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { AuthRequiredError, requireAuthenticatedRequest } from "../../../server/auth/route-support";
 import { BUSINESS_LOG_FILES } from "../../../server/logging/business-logger";
+import { parseJsonLogTail } from "../../../server/logging/log-reader";
 
 export const runtime = "nodejs";
 const LOG_DIRECTORY = resolve(process.cwd(), "logs");
@@ -29,20 +30,12 @@ async function readBusinessLog(type: LogType) {
     const info = await stat(path);
     const content = await readFile(path);
     const start = Math.max(0, content.length - MAX_LOG_BYTES);
-    const entries = parseEntries(content.subarray(start).toString("utf8"));
+    const entries = parseJsonLogTail(content.subarray(start), { truncatedAtStart: start > 0 });
     return { type, file, size: info.size, modifiedAt: info.mtime.toISOString(), entries: entries.slice(-MAX_ENTRIES).reverse() };
   } catch (error) {
     if (isMissingFile(error)) return { type, file, size: 0, modifiedAt: null, entries: [] };
     throw error;
   }
-}
-
-function parseEntries(content: string) {
-  const lines = content.split(/\r?\n/).filter(Boolean);
-  return lines.map((line, index) => {
-    try { return JSON.parse(line) as Record<string, unknown>; }
-    catch (error) { throw new Error(`日志第 ${index + 1} 行不是有效 JSON`, { cause: error }); }
-  });
 }
 
 function logType(value: string | null): LogType {

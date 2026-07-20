@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireAuthenticatedRequest } from "../../../../../server/auth/route-support.ts";
+import { readJsonBody } from "../../../../../server/http/request-body.ts";
 import { targetGroupError, targetGroupId } from "../../../../../server/target-groups/route-support.ts";
 import { getRuntimeTargetGroupService } from "../../../../../server/target-groups/runtime.ts";
 
@@ -10,7 +11,7 @@ type Context = { readonly params: { readonly id: string } };
 export async function PUT(request: NextRequest, context: Context) {
   try {
     await requireAuthenticatedRequest(request);
-    const group = await getRuntimeTargetGroupService().saveRule(targetGroupId(context.params.id), await request.json());
+    const group = await getRuntimeTargetGroupService().saveRule(targetGroupId(context.params.id), await readJsonBody(request));
     return NextResponse.json({ group });
   } catch (error) {
     return targetGroupError(error);

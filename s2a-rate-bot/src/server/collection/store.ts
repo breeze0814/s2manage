@@ -19,17 +19,21 @@ export type CollectionStore = {
   readonly get: (id: number) => CollectionSiteStored | null;
   readonly list: () => CollectionSiteStored[];
   readonly delete: (id: number) => void;
-  readonly recordSuccess: (siteId: number, overview: CollectionOverview, startedAt: string, credentials?: EncryptedCredentials) => void;
-  readonly recordFailure: (siteId: number, error: string, startedAt: string) => void;
+  readonly beginRefresh: (siteId: number) => number;
+  readonly recordSuccess: (input: RefreshSuccess) => void;
+  readonly recordFailure: (input: RefreshFailure) => void;
   readonly rates: (siteId?: number) => SourceRateSnapshot[];
   readonly setRatePlatform: (siteId: number, groupId: string, platform: string | null) => SourceRateSnapshot;
   readonly changes: (query?: CollectionChangesQuery) => CollectionRateChange[];
   readonly close: () => void;
 };
 
-type StatusFields = "accountLabel" | "balance" | "lastRunAt" | "lastSuccessAt" | "lastStatus" | "lastError" | "consecutiveFailures";
+type StatusFields = "accountLabel" | "balance" | "lastRunAt" | "lastSuccessAt" | "lastStatus" | "lastError" | "consecutiveFailures" | "refreshVersion";
 type SiteWrite = Omit<CollectionSiteStored, "id" | StatusFields>;
 export type EncryptedCredentials = { readonly accessTokenEnc?: string; readonly refreshTokenEnc?: string };
+type RefreshSuccess = RefreshIdentity & { readonly overview: CollectionOverview; readonly credentials?: EncryptedCredentials };
+type RefreshFailure = RefreshIdentity & { readonly error: string };
+type RefreshIdentity = { readonly siteId: number; readonly refreshVersion: number; readonly startedAt: string };
 
 export function createSqliteCollectionStore(databaseUrl: string): CollectionStore {
   const path = sqlitePath(databaseUrl);
@@ -46,10 +50,11 @@ function collectionStore(database: DatabaseSync): CollectionStore {
     get: (id) => readSite(database, id),
     list: () => listSites(database),
     delete: (id) => deleteSite(database, id),
-    recordSuccess: (siteId, overview, startedAt, credentials) => recordSuccess(database, siteId, overview, startedAt, credentials),
-    recordFailure: (siteId, error, startedAt) => recordFailure(database, siteId, error, startedAt),
+    beginRefresh: (siteId) => beginRefresh(database, siteId),
+    recordSuccess: (input) => recordSuccess(database, input),
+    recordFailure: (input) => recordFailure(database, input),
     rates: (siteId) => readRates(database, siteId),
-    setRatePlatform: (siteId, groupId, platform) => setRatePlatform(database, siteId, groupId, platform),
+    setRatePlatform: (siteId, groupId, platform) => setRatePlatform(database, { siteId, groupId, platform }),
     changes: (query) => readChanges(database, query),
     close: () => database.close(),
   };
@@ -70,7 +75,7 @@ function updateSite(database: DatabaseSync, id: number, site: SiteWrite) {
     password_enc=:passwordEnc,
     access_token_enc=:accessTokenEnc, refresh_token_enc=:refreshTokenEnc,
     recharge_ratio=:rechargeRatio, interval_seconds=:intervalSeconds, use_proxy=:useProxy,
-    enabled=:enabled, updated_at=:updatedAt WHERE id=:id`).run({ ...siteBindings(site, nowIso()), id });
+    enabled=:enabled, refresh_version=refresh_version+1, updated_at=:updatedAt WHERE id=:id`).run({ ...siteBindings(site, nowIso()), id });
   if (result.changes !== 1) throw new Error(`采集站不存在: ${id}`);
   return requiredSite(database, id);
 }
@@ -106,31 +111,45 @@ function deleteSite(database: DatabaseSync, id: number) {
   if (result.changes !== 1) throw new Error(`采集站不存在: ${id}`);
 }
 
-function recordSuccess(database: DatabaseSync, siteId: number, overview: CollectionOverview, startedAt: string, credentials?: EncryptedCredentials) {
+function beginRefresh(database: DatabaseSync, siteId: number) {
+  const row = database.prepare(`UPDATE collection_sites SET refresh_version=refresh_version+1
+    WHERE id=? RETURNING refresh_version`).get(siteId) as { refresh_version: number } | undefined;
+  if (!row) throw new Error(`采集站不存在: ${siteId}`);
+  return Number(row.refresh_version);
+}
+
+function recordSuccess(database: DatabaseSync, input: RefreshSuccess) {
   const finishedAt = nowIso();
   transaction(database, () => {
-    const changes = compareRateSnapshots(readRates(database, siteId), overview.rates);
+    assertCurrentRefresh(database, input.siteId, input.refreshVersion);
+    const changes = compareRateSnapshots(readRates(database, input.siteId), input.overview.rates);
     database.prepare(`UPDATE collection_sites SET account_label=:label, balance=:balance,
       last_run_at=:finishedAt, last_success_at=:finishedAt, last_status='success', last_error=NULL,
       consecutive_failures=0, access_token_enc=COALESCE(:accessTokenEnc, access_token_enc),
       refresh_token_enc=COALESCE(:refreshTokenEnc, refresh_token_enc), updated_at=:finishedAt
-      WHERE id=:siteId`).run({ siteId, label: overview.account.label, balance: overview.account.balance,
-      accessTokenEnc: credentials?.accessTokenEnc ?? null, refreshTokenEnc: credentials?.refreshTokenEnc ?? null, finishedAt });
-    const runId = insertRun(database, { siteId, status: "success", error: null, groupCount: overview.rates.length, startedAt, finishedAt });
-    insertChanges(database, { runId, siteId, changes, collectedAt: finishedAt });
-    replaceRates(database, siteId, overview.rates);
-    removeMissingBindings(database, siteId);
+      WHERE id=:siteId`).run({ siteId: input.siteId, label: input.overview.account.label, balance: input.overview.account.balance,
+      accessTokenEnc: input.credentials?.accessTokenEnc ?? null, refreshTokenEnc: input.credentials?.refreshTokenEnc ?? null, finishedAt });
+    const runId = insertRun(database, { siteId: input.siteId, status: "success", error: null, groupCount: input.overview.rates.length, startedAt: input.startedAt, finishedAt });
+    insertChanges(database, { runId, siteId: input.siteId, changes, collectedAt: finishedAt });
+    replaceRates(database, input.siteId, input.overview.rates);
+    removeMissingBindings(database, input.siteId);
   });
 }
 
-function recordFailure(database: DatabaseSync, siteId: number, error: string, startedAt: string) {
+function recordFailure(database: DatabaseSync, input: RefreshFailure) {
   const finishedAt = nowIso();
   transaction(database, () => {
+    assertCurrentRefresh(database, input.siteId, input.refreshVersion);
     database.prepare(`UPDATE collection_sites SET last_run_at=:finishedAt, last_status='failed',
       last_error=:error, consecutive_failures=consecutive_failures+1, updated_at=:finishedAt
-      WHERE id=:siteId`).run({ siteId, error, finishedAt });
-    insertRun(database, { siteId, status: "failed", error, groupCount: 0, startedAt, finishedAt });
+      WHERE id=:siteId`).run({ siteId: input.siteId, error: input.error, finishedAt });
+    insertRun(database, { siteId: input.siteId, status: "failed", error: input.error, groupCount: 0, startedAt: input.startedAt, finishedAt });
   });
+}
+
+function assertCurrentRefresh(database: DatabaseSync, siteId: number, refreshVersion: number) {
+  const row = database.prepare("SELECT refresh_version FROM collection_sites WHERE id = ?").get(siteId) as { refresh_version: number } | undefined;
+  if (Number(row?.refresh_version) !== refreshVersion) throw new CollectionRefreshSupersededError(siteId);
 }
 
 function replaceRates(database: DatabaseSync, siteId: number, rates: readonly SourceRateSnapshot[]) {
@@ -182,16 +201,16 @@ function readRates(database: DatabaseSync, siteId?: number): SourceRateSnapshot[
   return rows.map((row) => ({ sourceSiteId: Number(row.site_id), groupId: String(row.group_id), groupName: String(row.group_name), platform: row.platform_override ? String(row.platform_override) : row.platform ? String(row.platform) : undefined, platformOverride: nullableText(row.platform_override), rawRate: row.raw_rate === null ? null : Number(row.raw_rate), effectiveRate: Number(row.effective_rate), collectedAt: new Date(String(row.collected_at)) }));
 }
 
-function setRatePlatform(database: DatabaseSync, siteId: number, groupId: string, platform: string | null) {
-  const exists = database.prepare("SELECT 1 FROM collection_group_rates WHERE site_id = ? AND group_id = ?").get(siteId, groupId);
-  if (!exists) throw new Error(`采集分组不存在: ${siteId}:${groupId}`);
-  if (platform) {
+function setRatePlatform(database: DatabaseSync, input: Readonly<{ siteId: number; groupId: string; platform: string | null }>) {
+  const exists = database.prepare("SELECT 1 FROM collection_group_rates WHERE site_id = ? AND group_id = ?").get(input.siteId, input.groupId);
+  if (!exists) throw new Error(`采集分组不存在: ${input.siteId}:${input.groupId}`);
+  if (input.platform) {
     database.prepare(`INSERT INTO collection_group_platform_overrides (site_id, group_id, platform, updated_at)
-      VALUES (?, ?, ?, ?) ON CONFLICT(site_id, group_id) DO UPDATE SET platform=excluded.platform, updated_at=excluded.updated_at`).run(siteId, groupId, platform, nowIso());
+      VALUES (?, ?, ?, ?) ON CONFLICT(site_id, group_id) DO UPDATE SET platform=excluded.platform, updated_at=excluded.updated_at`).run(input.siteId, input.groupId, input.platform, nowIso());
   } else {
-    database.prepare("DELETE FROM collection_group_platform_overrides WHERE site_id = ? AND group_id = ?").run(siteId, groupId);
+    database.prepare("DELETE FROM collection_group_platform_overrides WHERE site_id = ? AND group_id = ?").run(input.siteId, input.groupId);
   }
-  return readRates(database, siteId).find((rate) => rate.groupId === groupId)!;
+  return readRates(database, input.siteId).find((rate) => rate.groupId === input.groupId)!;
 }
 
 function readChanges(database: DatabaseSync, query: CollectionChangesQuery = {}): CollectionRateChange[] {
@@ -226,8 +245,14 @@ function mapSite(row: Record<string, unknown>): CollectionSiteStored {
     enabled: Number(row.enabled) === 1, accountLabel: nullableText(row.account_label), balance: nullableNumber(row.balance),
     lastRunAt: nullableText(row.last_run_at), lastSuccessAt: nullableText(row.last_success_at),
     lastStatus: nullableText(row.last_status) as CollectionSiteStored["lastStatus"], lastError: nullableText(row.last_error),
-    consecutiveFailures: Number(row.consecutive_failures),
+    consecutiveFailures: Number(row.consecutive_failures), refreshVersion: Number(row.refresh_version),
   };
+}
+
+export class CollectionRefreshSupersededError extends Error {
+  constructor(siteId: number) {
+    super(`采集站 ${siteId} 的刷新结果已过期，未写入本地状态`);
+  }
 }
 
 function nullableText(value: unknown) { return value === null || value === undefined ? null : String(value); }

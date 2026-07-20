@@ -92,7 +92,13 @@ async function executeCycle(input: WorkerDependencies, startedAt: string) {
   const groupStats = settings.targetConfigured
     ? await applyTargetRules(input)
     : emptyStats();
-  return completedSummary(startedAt, input.now().toISOString(), sources.length - due.length, sourceStats, groupStats);
+  return completedSummary({
+    startedAt,
+    finishedAt: input.now().toISOString(),
+    skippedSources: sources.length - due.length,
+    source: sourceStats,
+    group: groupStats,
+  });
 }
 
 async function refreshSource(input: WorkerDependencies, source: WorkerSource): Promise<TaskResult> {
@@ -133,19 +139,25 @@ function isDue(source: WorkerSource, now: Date) {
   return lastRunAt + source.intervalSeconds * 1_000 <= now.getTime();
 }
 
-function completedSummary(startedAt: string, finishedAt: string, skippedSources: number, source: TaskStats, group: TaskStats): WorkerRunSummary {
-  const errors = [...source.errors, ...group.errors];
+function completedSummary(input: Readonly<{
+  startedAt: string;
+  finishedAt: string;
+  skippedSources: number;
+  source: TaskStats;
+  group: TaskStats;
+}>): WorkerRunSummary {
+  const errors = [...input.source.errors, ...input.group.errors];
   return {
-    status: runStatus(source.success + group.success, errors.length),
-    collectedSources: source.success,
-    skippedSources,
-    failedSources: source.failed,
-    appliedGroups: group.success,
-    skippedGroups: group.skipped,
-    failedGroups: group.failed,
+    status: runStatus(input.source.success + input.group.success, errors.length),
+    collectedSources: input.source.success,
+    skippedSources: input.skippedSources,
+    failedSources: input.source.failed,
+    appliedGroups: input.group.success,
+    skippedGroups: input.group.skipped,
+    failedGroups: input.group.failed,
     errors,
-    startedAt,
-    finishedAt,
+    startedAt: input.startedAt,
+    finishedAt: input.finishedAt,
   };
 }
 

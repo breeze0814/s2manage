@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { JsonHttpClient } from "../../adapters/http-client.ts";
 import type { TargetAccount, TargetAccountClient } from "./types.ts";
 
+const ACCOUNT_PAGE_SIZE = 1_000;
+
 const remoteAccountSchema = z.object({
   id: z.coerce.number().int().positive(),
   name: z.string().trim().min(1),
@@ -26,16 +28,45 @@ export function createSub2TargetAccountClient(input: {
     body,
   });
   return {
-    listAccounts: async () => parseAccountList(await request("GET", "/accounts?page=1&page_size=1000")),
+    listAccounts: async () => listAllAccounts(request),
     setSchedulable: async (accountId, schedulable) => parseAccount(await request("POST", `/accounts/${accountId}/schedulable`, { schedulable })),
   };
 }
 
-function parseAccountList(payload: unknown) {
+async function listAllAccounts(request: RemoteRequest) {
+  const accounts: TargetAccount[] = [];
+  const accountIds = new Set<number>();
+  let page = 1;
+  while (true) {
+    const result = parseAccountPage(await request("GET", accountPagePath(page)), page);
+    appendUniqueAccounts(accounts, accountIds, result.accounts);
+    if (!result.hasMore) return accounts;
+    page += 1;
+  }
+}
+
+function parseAccountPage(payload: unknown, requestedPage: number) {
   const value = unwrapData(payload);
-  const list = Array.isArray(value) ? value : recordItems(value);
-  if (!list) throw new Error("Invalid target account list response");
-  return list.map(parseAccount);
+  if (Array.isArray(value)) return { accounts: value.map(parseAccount), hasMore: false };
+  const record = objectRecord(value, "Invalid target account list response");
+  if (!Array.isArray(record.items)) throw new Error("Invalid target account list response");
+  const accounts = record.items.map(parseAccount);
+  return { accounts, hasMore: hasNextPage(record, requestedPage, accounts.length) };
+}
+
+function hasNextPage(record: Record<string, unknown>, requestedPage: number, itemCount: number) {
+  const page = positiveInteger(record.page) ?? requestedPage;
+  const pageSize = positiveInteger(record.page_size ?? record.pageSize) ?? ACCOUNT_PAGE_SIZE;
+  const total = nonNegativeInteger(record.total);
+  return total === null ? itemCount === ACCOUNT_PAGE_SIZE : page * pageSize < total;
+}
+
+function appendUniqueAccounts(target: TargetAccount[], ids: Set<number>, accounts: readonly TargetAccount[]) {
+  for (const account of accounts) {
+    if (ids.has(account.id)) throw new Error(`目标账号分页返回重复账号: ${account.id}`);
+    ids.add(account.id);
+    target.push(account);
+  }
 }
 
 function parseAccount(payload: unknown): TargetAccount {
@@ -59,12 +90,25 @@ function unwrapData(value: unknown): unknown {
   return "data" in record ? record.data : value;
 }
 
-function recordItems(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const items = (value as Record<string, unknown>).items;
-  return Array.isArray(items) ? items : null;
+function objectRecord(value: unknown, message: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(message);
+  return value as Record<string, unknown>;
 }
+
+function positiveInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function nonNegativeInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : null;
+}
+
+function accountPagePath(page: number) { return `/accounts?page=${page}&page_size=${ACCOUNT_PAGE_SIZE}`; }
 
 function adminHeaders(adminApiKey: string) {
   return { "x-api-key": adminApiKey, accept: "application/json", "content-type": "application/json; charset=utf-8" };
 }
+
+type RemoteRequest = (method: "GET" | "POST", path: string, body?: Record<string, unknown>) => Promise<unknown>;

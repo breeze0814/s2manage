@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TARGET_RULE_VERSION } from "../../core/rule-version.ts";
 import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
 import { resolveRateUpdate } from "../../core/rate-rule.ts";
 import type { TargetGroupStore } from "./store.ts";
@@ -15,7 +16,7 @@ const STALE_SOURCE_BINDING_ERROR = "已删除的采集源分组已自动取消�
 const bindingSchema = z.object({ sourceSiteId: z.number().int().positive(), sourceGroupId: z.string().trim().min(1) });
 export const targetRuleSchema = z.object({
   enabled: z.boolean(),
-  ruleVersion: z.number().int().refine((value) => value === 1, "不支持的倍率规则版本"),
+  ruleVersion: z.number().int().refine((value) => value === TARGET_RULE_VERSION, "不支持的倍率规则版本"),
   ruleType: z.enum(["first", "average", "min", "max", "avg_formula"]),
   parameters: parametersSchema,
   bindings: z.array(bindingSchema),
@@ -78,7 +79,7 @@ async function saveRule(input: TargetDependencies, groupId: number, raw: unknown
   const rule: TargetRule = {
     targetGroupId: group.id, targetGroupName: group.name,
     enabled: parsed.enabled && reconciliation.bindings.length > 0,
-    ruleVersion: 1, ruleType: parsed.ruleType, parameters: parsed.parameters,
+    ruleVersion: parsed.ruleVersion, ruleType: parsed.ruleType, parameters: parsed.parameters,
     currentRate: group.rate_multiplier ?? null, lastAppliedAt: input.store.getRule(groupId)?.lastAppliedAt ?? null,
     lastError: reconciliation.removed ? STALE_SOURCE_BINDING_ERROR : null,
   };
@@ -140,7 +141,7 @@ function groupView(store: TargetGroupStore, group: TargetGroup): TargetGroupView
 }
 
 function defaultRule(group: TargetGroup): TargetRule {
-  return { targetGroupId: group.id, targetGroupName: group.name, enabled: false, ruleVersion: 1, ruleType: "first", parameters: defaultParameters(), currentRate: group.rate_multiplier ?? null, lastAppliedAt: null, lastError: null };
+  return { targetGroupId: group.id, targetGroupName: group.name, enabled: false, ruleVersion: TARGET_RULE_VERSION, ruleType: "first", parameters: defaultParameters(), currentRate: group.rate_multiplier ?? null, lastAppliedAt: null, lastError: null };
 }
 
 function defaultParameters(): RuleParameters { return { offset: 0, minimum: 0, formula: "avg" }; }

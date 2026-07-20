@@ -109,12 +109,18 @@ export async function resolveNewApiAccessToken(input: SourceRateRequest) {
 
 export async function resolveNewApiAuthSession(input: SourceRateRequest): Promise<SourceAuthSession> {
   const auth = normalizeAuth(input);
-  if (auth.mode === "manual_token") {
-    const accessToken = auth.accessToken.trim();
-    if (!accessToken && auth.rtToken?.trim()) throw new Error("NewAPI 不支持 rtToken 刷新，请填写 accessToken 或使用账号密码");
-    if (!accessToken) throw new Error("采集站 accessToken 不能为空");
-    return { accessToken };
-  }
+  if (auth.mode === "manual_token") return manualNewApiSession(auth);
+  return loginNewApiSession(input, auth);
+}
+
+function manualNewApiSession(auth: Extract<SourceAuth, { mode: "manual_token" }>) {
+  const accessToken = auth.accessToken.trim();
+  if (!accessToken && auth.rtToken?.trim()) throw new Error("NewAPI 不支持 rtToken 刷新，请填写 accessToken 或使用账号密码");
+  if (!accessToken) throw new Error("采集站 accessToken 不能为空");
+  return { accessToken };
+}
+
+async function loginNewApiSession(input: SourceRateRequest, auth: Extract<SourceAuth, { mode: "password" }>) {
   const response = await requestJsonResponse({
     url: `${trimBaseUrl(input.baseUrl)}/api/user/login`,
     method: "POST",

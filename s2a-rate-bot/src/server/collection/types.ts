@@ -33,6 +33,7 @@ export type CollectionSiteStored = Omit<CollectionSiteInput, "password" | "acces
   readonly lastStatus: "success" | "failed" | null;
   readonly lastError: string | null;
   readonly consecutiveFailures: number;
+  readonly refreshVersion: number;
 };
 
 export type CollectionSiteRuntime = Omit<CollectionSiteStored, "passwordEnc" | "accessTokenEnc" | "refreshTokenEnc"> & {

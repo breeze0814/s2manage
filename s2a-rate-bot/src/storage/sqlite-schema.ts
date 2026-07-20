@@ -5,7 +5,8 @@ const LOCAL_SNAPSHOT_SCHEMA_VERSION = 10;
 const RATE_CHANGE_SCHEMA_VERSION = 11;
 const NEW_API_USER_SCHEMA_VERSION = 12;
 const RATE_PLATFORM_SCHEMA_VERSION = 13;
-const SCHEMA_VERSION = RATE_PLATFORM_SCHEMA_VERSION;
+const REFRESH_VERSION_SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = REFRESH_VERSION_SCHEMA_VERSION;
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -58,6 +59,7 @@ const CREATE_TABLES = [
     last_status TEXT,
     last_error TEXT,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    refresh_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   ) STRICT`,
@@ -179,6 +181,7 @@ function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureTargetRechargeRatio(database);
   ensureTargetGroupPlatform(database);
   ensureNewApiUserId(database);
+  ensureRefreshVersion(database);
   if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {
     database.exec(`UPDATE target_group_rules
       SET parameters_json = json_set(parameters_json, '$.minimum', 0)
@@ -191,6 +194,12 @@ function ensureNewApiUserId(database: DatabaseSync) {
   const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
   if (columns.some((column) => column.name === "new_api_user_id")) return;
   database.exec("ALTER TABLE collection_sites ADD COLUMN new_api_user_id TEXT NOT NULL DEFAULT ''");
+}
+
+function ensureRefreshVersion(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "refresh_version")) return;
+  database.exec("ALTER TABLE collection_sites ADD COLUMN refresh_version INTEGER NOT NULL DEFAULT 0");
 }
 
 function ensureTargetRechargeRatio(database: DatabaseSync) {

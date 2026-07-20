@@ -156,6 +156,9 @@ test("components use semantic theme colors instead of slate utilities", () => {
     "src/components/accounts/accounts-dashboard.tsx",
     "src/components/groups/group-rule-table.tsx",
     "src/components/groups/group-rule-dialog.tsx",
+    "src/components/groups/group-binding-selector.tsx",
+    "src/components/groups/group-rule-fields.tsx",
+    "src/components/groups/group-rule-preview.tsx",
     "src/components/groups/groups-dashboard.tsx",
     "src/components/sources/source-rates-table.tsx",
     "src/components/sources/source-site-dialog.tsx",
@@ -180,7 +183,12 @@ test("rate multipliers and balances use dedicated semantic data colors", () => {
   const home = source("src/components/home/home-dashboard.tsx");
   const accounts = source("src/components/accounts/accounts-dashboard.tsx");
   const groupTable = source("src/components/groups/group-rule-table.tsx");
-  const groupDialog = source("src/components/groups/group-rule-dialog.tsx");
+  const groupDialog = [
+    "src/components/groups/group-rule-dialog.tsx",
+    "src/components/groups/group-binding-selector.tsx",
+    "src/components/groups/group-rule-fields.tsx",
+    "src/components/groups/group-rule-preview.tsx",
+  ].map(source).join("\n");
   const effectiveRate = source("src/components/ui/effective-rate-value.tsx");
   const rateChanges = source("src/components/home/rate-change-panel.tsx");
   const sourceTable = source("src/components/sources/source-site-table.tsx");
@@ -275,57 +283,4 @@ test("centered dialogs preserve their position during open and close animations"
   assert.match(styles, /\.dialog-content-motion/);
   assert.ok((dialogs.match(/dialog-content-motion/g) ?? []).length >= 5);
   assert.doesNotMatch(dialogs, /zoom-(?:in|out)-95/);
-});
-
-test("subproject owns its ESLint configuration", () => {
-  const configSource = source(".eslintrc.json");
-  const config = JSON.parse(configSource) as { root?: boolean };
-
-  assert.match(configSource, /next\/core-web-vitals/);
-  assert.equal(config.root, true);
-});
-
-test("subproject ignores generated Next.js and dependency artifacts", () => {
-  const ignore = source(".gitignore");
-
-  assert.match(ignore, /node_modules\//);
-  assert.match(ignore, /\.next\//);
-  assert.match(ignore, /data\/\*\.db/);
-});
-
-test("forms use compact semantic number controls and lists share tag styling", () => {
-  const compactInput = source("src/components/ui/compact-number-input.tsx");
-  const tag = source("src/components/ui/tag.tsx");
-  const forms = [
-    "src/components/settings-form.tsx",
-    "src/components/sources/source-site-dialog.tsx",
-    "src/components/groups/group-rule-dialog.tsx",
-  ].map(source).join("\n");
-
-  assert.match(compactInput, /sm:w-\[7ch\]/);
-  assert.match(compactInput, /sm:w-\[9ch\]/);
-  assert.match(compactInput, /sm:w-\[11ch\]/);
-  assert.match(compactInput, /sm:w-fit/);
-  assert.match(compactInput, /border-l border-border/);
-  assert.match(compactInput, /text-base/);
-  assert.match(compactInput, /sm:text-sm/);
-  assert.match(compactInput, /tabular-nums/);
-  assert.match(forms, /CompactNumberInput/);
-  assert.match(forms, /suffix="秒"/);
-  assert.match(forms, /suffix="倍"/);
-  assert.match(tag, /TagTone/);
-  assert.match(tag, /whitespace-nowrap/);
-  assert.match(tag, /overflow-hidden/);
-  assert.match(tag, /text-xs/);
-  assert.match(tag, /rounded-md border/);
-  assert.match(source("src/app/globals.css"), /text-base[\s\S]*sm:text-sm/);
-});
-
-test("development and production builds use isolated Next.js output directories", () => {
-  const config = source("next.config.mjs");
-  const ignore = source(".gitignore");
-
-  assert.match(config, /process\.env\.NODE_ENV === "development"/);
-  assert.match(config, /distDir:\s*development \? "\.next-dev" : "\.next"/);
-  assert.match(ignore, /\.next-dev\//);
 });

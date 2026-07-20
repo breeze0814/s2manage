@@ -161,7 +161,7 @@ export function resolveRateUpdate(input: {
 }): RateUpdateDecision {
   const currentRate = input.target.currentRate === null ? null : normalizeRateMultiplier(input.target.currentRate);
   if (!input.rule.enabled) {
-    return skipDecision(input.target, currentRate, currentRate, "rate rule disabled");
+    return skipDecision({ target: input.target, currentRate, nextRate: currentRate, reason: "rate rule disabled" });
   }
   const nextRate = evaluateRateRule({
     rule: input.rule,
@@ -169,7 +169,7 @@ export function resolveRateUpdate(input: {
     currentRate,
   });
   if (currentRate !== null && ratesEqual(currentRate, nextRate)) {
-    return skipDecision(input.target, currentRate, nextRate, "target rate unchanged");
+    return skipDecision({ target: input.target, currentRate, nextRate, reason: "target rate unchanged" });
   }
   return {
     action: "update",
@@ -180,18 +180,18 @@ export function resolveRateUpdate(input: {
   };
 }
 
-function skipDecision(
-  target: RateTarget,
-  currentRate: number | null,
-  nextRate: number | null,
-  reason: string,
-): RateUpdateDecision {
+function skipDecision(input: Readonly<{
+  target: RateTarget;
+  currentRate: number | null;
+  nextRate: number | null;
+  reason: string;
+}>): RateUpdateDecision {
   return {
     action: "skip",
-    targetId: target.id,
-    targetName: target.name,
-    currentRate,
-    nextRate,
-    reason,
+    targetId: input.target.id,
+    targetName: input.target.name,
+    currentRate: input.currentRate,
+    nextRate: input.nextRate,
+    reason: input.reason,
   };
 }

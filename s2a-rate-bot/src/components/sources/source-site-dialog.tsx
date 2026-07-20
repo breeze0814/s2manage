@@ -90,30 +90,7 @@ function SiteForm({
   return (
     <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
       <div className="space-y-5 overflow-y-auto bg-background/40 px-4 py-5 sm:px-6">
-        <fieldset className="space-y-4 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5">
-          <SectionLegend icon={<Database />} title="基本信息" description="采集站名称、类型和访问地址" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="站点名称">
-              <Input value={form.name} onChange={(value) => update("name", value)} />
-            </Field>
-            <Field label="站点类型">
-              <Select ariaLabel="站点类型" value={form.siteType} options={SITE_TYPE_OPTIONS} onValueChange={(value) => updateSiteType(value as SourceSiteForm["siteType"], update)} />
-            </Field>
-          </div>
-          <Field label="站点地址">
-            <Input type="url" value={form.baseUrl} onChange={(value) => update("baseUrl", value)} placeholder="https://source.example.com" />
-          </Field>
-          {form.siteType === "newapi" ? <Field label="New-Api-User" hint="部分 New API 接口要求填写当前用户 ID，例如 4465。"><Input value={form.newApiUserId} onChange={(value) => update("newApiUserId", value)} placeholder="4465" /></Field> : null}
-          <div className="border-t border-border pt-4">
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted">采集策略</p>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)] md:items-end">
-              <Field label="充值倍率"><CompactNumberInput required min="0.0001" step="any" suffix="倍" tone="rate" value={form.rechargeRatio} onChange={(value) => update("rechargeRatio", value)} /></Field>
-              <Field label="采集间隔"><CompactNumberInput required min="1" step="1" suffix="秒" width="medium" value={form.intervalSeconds} onChange={(value) => update("intervalSeconds", value)} /></Field>
-              <Toggle label="使用全局代理" checked={form.useProxy} onChange={(value) => update("useProxy", value)} />
-              <Toggle label="启用采集" checked={form.enabled} onChange={(value) => update("enabled", value)} />
-            </div>
-          </div>
-        </fieldset>
+        <SiteMainFields form={form} update={update} />
         <AuthMode form={form} update={update} />
       </div>
       <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
@@ -127,6 +104,30 @@ function SiteForm({
       </div>
     </form>
   );
+}
+
+function SiteMainFields({ form, update }: Readonly<{ form: SourceSiteForm; update: UpdateForm }>) {
+  return <fieldset className="space-y-4 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5">
+    <SectionLegend icon={<Database />} title="基本信息" description="采集站名称、类型和访问地址" />
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="站点名称"><Input value={form.name} onChange={(value) => update("name", value)} /></Field>
+      <Field label="站点类型"><Select ariaLabel="站点类型" value={form.siteType} options={SITE_TYPE_OPTIONS}
+        onValueChange={(value) => updateSiteType(value as SourceSiteForm["siteType"], update)} /></Field>
+    </div>
+    <Field label="站点地址"><Input type="url" value={form.baseUrl} onChange={(value) => update("baseUrl", value)} placeholder="https://source.example.com" /></Field>
+    {form.siteType === "newapi" ? <Field label="New-Api-User" hint="部分 New API 接口要求填写当前用户 ID，例如 4465。">
+      <Input value={form.newApiUserId} onChange={(value) => update("newApiUserId", value)} placeholder="4465" />
+    </Field> : null}
+    <div className="border-t border-border pt-4">
+      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted">采集策略</p>
+      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)] md:items-end">
+        <Field label="充值倍率"><CompactNumberInput required min="0.0001" step="any" suffix="倍" tone="rate" value={form.rechargeRatio} onChange={(value) => update("rechargeRatio", value)} /></Field>
+        <Field label="采集间隔"><CompactNumberInput required min="1" step="1" suffix="秒" width="medium" value={form.intervalSeconds} onChange={(value) => update("intervalSeconds", value)} /></Field>
+        <Toggle label="使用全局代理" checked={form.useProxy} onChange={(value) => update("useProxy", value)} />
+        <Toggle label="启用采集" checked={form.enabled} onChange={(value) => update("enabled", value)} />
+      </div>
+    </div>
+  </fieldset>;
 }
 
 function AuthMode({ form, update }: Readonly<{ form: SourceSiteForm; update: UpdateForm }>) {
