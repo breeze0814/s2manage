@@ -14,6 +14,9 @@ type WorkerRun = {
   readonly appliedGroups: number;
   readonly skippedGroups: number;
   readonly failedGroups: number;
+  readonly sentNotifications: number;
+  readonly skippedNotifications: number;
+  readonly failedNotifications: number;
   readonly errors: readonly string[];
   readonly startedAt: string;
   readonly finishedAt: string | null;
@@ -48,6 +51,9 @@ function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
         <Metric label="规则应用" value={run.appliedGroups} />
         <Metric label="规则跳过" value={run.skippedGroups} />
         <Metric label="规则失败" value={run.failedGroups} />
+        <Metric label="通知成功" value={run.sentNotifications} />
+        <Metric label="通知跳过" value={run.skippedNotifications} />
+        <Metric label="通知失败" value={run.failedNotifications} />
       </dl>
       {run.errors.length ? <ul className="space-y-1 text-xs text-red-700 dark:text-red-300">{run.errors.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}</ul> : null}
     </div>

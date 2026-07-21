@@ -16,7 +16,7 @@ export function SettingsDialog() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(96vw,960px)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex h-[min(760px,92dvh)] max-h-[92dvh] w-[min(96vw,960px)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
           <SettingsDialogHeader />
           <SettingsForm presentation="dialog" onSaved={() => setOpen(false)} />
         </Dialog.Content>

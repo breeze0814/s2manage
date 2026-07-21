@@ -32,8 +32,9 @@ function createWorkerRunStore(database: DatabaseSync): WorkerRunStore {
 function startRun(database: DatabaseSync, startedAt: string) {
   const result = database.prepare(`INSERT INTO worker_runs (
     status, collected_sources, skipped_sources, failed_sources, applied_groups,
-    skipped_groups, failed_groups, errors_json, started_at, finished_at
-  ) VALUES ('running', 0, 0, 0, 0, 0, 0, '[]', ?, NULL)`).run(startedAt);
+    skipped_groups, failed_groups, sent_notifications, skipped_notifications,
+    failed_notifications, errors_json, started_at, finished_at
+  ) VALUES ('running', 0, 0, 0, 0, 0, 0, 0, 0, 0, '[]', ?, NULL)`).run(startedAt);
   return Number(result.lastInsertRowid);
 }
 
@@ -42,6 +43,8 @@ function finishRun(database: DatabaseSync, id: number, summary: WorkerRunSummary
     collected_sources=:collectedSources, skipped_sources=:skippedSources,
     failed_sources=:failedSources, applied_groups=:appliedGroups,
     skipped_groups=:skippedGroups, failed_groups=:failedGroups,
+    sent_notifications=:sentNotifications, skipped_notifications=:skippedNotifications,
+    failed_notifications=:failedNotifications,
     errors_json=:errorsJson, finished_at=:finishedAt WHERE id=:id`).run({
     id,
     status: summary.status,
@@ -51,6 +54,9 @@ function finishRun(database: DatabaseSync, id: number, summary: WorkerRunSummary
     appliedGroups: summary.appliedGroups,
     skippedGroups: summary.skippedGroups,
     failedGroups: summary.failedGroups,
+    sentNotifications: summary.sentNotifications,
+    skippedNotifications: summary.skippedNotifications,
+    failedNotifications: summary.failedNotifications,
     errorsJson: JSON.stringify(summary.errors),
     finishedAt: summary.finishedAt,
   });
@@ -69,6 +75,9 @@ function latestRun(database: DatabaseSync): WorkerRunRecord | null {
     appliedGroups: Number(row.applied_groups),
     skippedGroups: Number(row.skipped_groups),
     failedGroups: Number(row.failed_groups),
+    sentNotifications: Number(row.sent_notifications),
+    skippedNotifications: Number(row.skipped_notifications),
+    failedNotifications: Number(row.failed_notifications),
     errors: parseErrors(row.errors_json),
     startedAt: String(row.started_at),
     finishedAt: row.finished_at === null ? null : String(row.finished_at),

@@ -80,5 +80,6 @@ function overview(siteId: number, rate: number) {
 
 function summary(timestamp: string) {
   return { status: "success" as const, collectedSources: 1, skippedSources: 0, failedSources: 0,
-    appliedGroups: 0, skippedGroups: 0, failedGroups: 0, errors: [], startedAt: timestamp, finishedAt: timestamp };
+    appliedGroups: 0, skippedGroups: 0, failedGroups: 0, sentNotifications: 0,
+    skippedNotifications: 2, failedNotifications: 0, errors: [], startedAt: timestamp, finishedAt: timestamp };
 }

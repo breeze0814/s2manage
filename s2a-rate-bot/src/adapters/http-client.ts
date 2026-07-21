@@ -81,7 +81,13 @@ async function logExternalRequest(entry: Readonly<{
   });
 }
 
-function safeRequestUrl(value: string) { const url = new URL(value); return `${url.origin}${url.pathname}`; }
+export function safeRequestUrl(value: string) {
+  const url = new URL(value);
+  const pathname = url.hostname === "api.telegram.org"
+    ? url.pathname.replace(/^\/bot[^/]+/, "/bot[redacted]")
+    : url.pathname;
+  return `${url.origin}${pathname}`;
+}
 
 type FetchTextResponse = { readonly ok: boolean; readonly status: number; readonly text: string; readonly headers: Record<string, string> };
 

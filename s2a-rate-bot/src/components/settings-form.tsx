@@ -6,6 +6,10 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CompactNumberInput } from "./ui/compact-number-input";
 import { WorkerStatusPanel } from "./worker-status-panel";
+import { TelegramSettingsFields, type TelegramFormValue } from "./telegram-settings-fields";
+import { SettingsNavigation, type SettingsSection } from "./settings-navigation";
+
+type PendingAction = "save" | "testTarget" | "testTelegram" | null;
 
 type SettingsFormState = {
   targetName: string;
@@ -18,6 +22,8 @@ type SettingsFormState = {
   workerIntervalSeconds: string;
   workerTimeoutSeconds: string;
   workerConcurrency: string;
+  telegram: TelegramFormValue;
+  hasTelegramBotToken: boolean;
 };
 
 const EMPTY_FORM: SettingsFormState = {
@@ -31,12 +37,15 @@ const EMPTY_FORM: SettingsFormState = {
   workerIntervalSeconds: "600",
   workerTimeoutSeconds: "25",
   workerConcurrency: "3",
+  telegram: { botToken: "", chatId: "", hourlyBalanceEnabled: false, rateChangeEnabled: false },
+  hasTelegramBotToken: false,
 };
 
 export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ presentation?: "page" | "dialog"; onSaved?: () => void }>) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<"save" | "test" | null>(null);
+  const [pending, setPending] = useState<PendingAction>(null);
+  const [section, setSection] = useState<SettingsSection>("target");
   useEffect(() => { void loadSettings({ setForm, setLoading }); }, []);
   const update = <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -47,7 +56,7 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
     void saveSettings({ form, setForm, setPending, onSaved });
   };
   if (loading) return <LoadingSettings presentation={presentation} />;
-  const fields = <div className="grid items-start gap-5 xl:grid-cols-2"><div className="space-y-5"><TargetFields form={form} update={update} /><ProxyFields form={form} update={update} /></div><WorkerFields form={form} update={update} /></div>;
+  const fields = <div className="space-y-5"><SettingsNavigation active={section} onChange={setSection} /><div className="min-w-0">{sectionPanel({ section, form, update, pending, setPending })}</div></div>;
   if (presentation === "dialog") {
     return (
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
@@ -134,14 +143,14 @@ function TextInput(input: Readonly<{ value: string; onChange: (value: string) =>
   return <input {...input} onChange={(event) => input.onChange(event.target.value)} className="form-control" />;
 }
 
-function ActionBar({ pending, onTest, compact = false }: Readonly<{ pending: "save" | "test" | null; onTest: () => void; compact?: boolean }>) {
+function ActionBar({ pending, onTest, compact = false }: Readonly<{ pending: PendingAction; onTest: () => void; compact?: boolean }>) {
   const layout = compact
     ? "flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:justify-end sm:px-6"
     : "sticky bottom-20 z-20 flex flex-col gap-2 rounded-2xl border border-border bg-surface/95 p-3 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end lg:bottom-4";
   return (
     <div className={layout}>
       <button type="button" onClick={onTest} disabled={pending !== null} className="secondary-button">
-        {pending === "test" ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}测试目标站
+        {pending === "testTarget" ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}测试目标站
       </button>
       <button type="submit" disabled={pending !== null} className="primary-button">
         {pending === "save" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}保存配置
@@ -185,12 +194,35 @@ async function saveSettings(input: SaveActions) {
 }
 
 async function testTarget(input: Pick<SaveActions, "setPending">) {
-  input.setPending("test");
+  input.setPending("testTarget");
   try {
     const response = await fetch("/api/settings/test-target", { method: "POST" });
     const body = await response.json() as { message?: string; error?: string };
     if (!response.ok) throw new Error(body.error ?? "目标站连接失败");
     toast.success(body.message ?? "目标站连接成功");
+  } catch (error) {
+    toast.error(errorMessage(error));
+  } finally {
+    input.setPending(null);
+  }
+}
+
+function sectionPanel(input: Readonly<{ section: SettingsSection; form: SettingsFormState; update: SettingsFormUpdate; pending: PendingAction; setPending: (value: PendingAction) => void }>) {
+  if (input.section === "target") return <TargetFields form={input.form} update={input.update} />;
+  if (input.section === "proxy") return <ProxyFields form={input.form} update={input.update} />;
+  if (input.section === "worker") return <WorkerFields form={input.form} update={input.update} />;
+  return <SettingsCard title="Telegram Bot" description="向指定会话推送采集站余额和倍率变动"><TelegramSettingsFields value={input.form.telegram} hasBotToken={input.form.hasTelegramBotToken} testing={input.pending === "testTelegram"} disabled={input.pending !== null} onChange={(value) => input.update("telegram", value)} onTest={() => { void testTelegram({ form: input.form, setPending: input.setPending }); }} /></SettingsCard>;
+}
+
+async function testTelegram(input: Pick<SaveActions, "form" | "setPending">) {
+  input.setPending("testTelegram");
+  try {
+    const response = await fetch("/api/settings/test-telegram", { method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ botToken: input.form.telegram.botToken, chatId: input.form.telegram.chatId }) });
+    const body = await response.json() as { message?: string; error?: string };
+    if (!response.ok) throw new Error(body.error ?? "Telegram 测试消息发送失败");
+    toast.success(body.message ?? "Telegram 测试消息已发送");
   } catch (error) {
     toast.error(errorMessage(error));
   } finally {
@@ -207,6 +239,7 @@ function settingsPayload(form: SettingsFormState) {
       timeoutSeconds: Number(form.workerTimeoutSeconds),
       concurrency: Number(form.workerConcurrency),
     },
+    telegram: form.telegram,
   };
 }
 
@@ -222,6 +255,8 @@ function formFromResponse(data: SettingsResponse): SettingsFormState {
     workerIntervalSeconds: String(data.worker.intervalSeconds),
     workerTimeoutSeconds: String(data.worker.timeoutSeconds),
     workerConcurrency: String(data.worker.concurrency),
+    telegram: data.telegram,
+    hasTelegramBotToken: data.hasTelegramBotToken,
   };
 }
 
@@ -234,7 +269,11 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-type SettingsFieldsProps = { form: SettingsFormState; update: <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => void };
+type SettingsFormUpdate = <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => void;
+type SettingsFieldsProps = { form: SettingsFormState; update: SettingsFormUpdate };
 type StateActions = { setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setLoading: (value: boolean) => void };
-type SaveActions = { form: SettingsFormState; setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setPending: (value: "save" | "test" | null) => void; onSaved?: () => void };
-type SettingsResponse = { target: { name: string; baseUrl: string; rechargeRatio: number } | null; hasAdminApiKey: boolean; proxy: { enabled: boolean; proxyUrl: string }; worker: { intervalSeconds: number; timeoutSeconds: number; concurrency: number } };
+type SaveActions = { form: SettingsFormState; setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setPending: (value: PendingAction) => void; onSaved?: () => void };
+type SettingsResponse = { target: { name: string; baseUrl: string; rechargeRatio: number } | null;
+  hasAdminApiKey: boolean; hasTelegramBotToken: boolean;
+  proxy: { enabled: boolean; proxyUrl: string }; worker: { intervalSeconds: number; timeoutSeconds: number; concurrency: number };
+  telegram: TelegramFormValue };

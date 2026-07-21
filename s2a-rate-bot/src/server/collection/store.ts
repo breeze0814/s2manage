@@ -11,6 +11,7 @@ const MISSING_BINDINGS_RULE_ERROR = "绑定的采集分组已删除，倍率规�
 export type CollectionChangesQuery = {
   readonly limit?: number;
   readonly since?: string;
+  readonly afterId?: number;
 };
 
 export type CollectionStore = {
@@ -220,12 +221,15 @@ function setRatePlatform(database: DatabaseSync, input: Readonly<{ siteId: numbe
 
 function readChanges(database: DatabaseSync, query: CollectionChangesQuery = {}): CollectionRateChange[] {
   const limit = query.limit ?? DEFAULT_CHANGE_LIMIT;
+  const order = query.afterId === undefined ? "changes.collected_at DESC, changes.id DESC" : "changes.id ASC";
   const rows = database.prepare(`SELECT changes.*, sites.name AS site_name
     FROM collection_rate_changes AS changes
     JOIN collection_sites AS sites ON sites.id = changes.site_id
     WHERE (:since IS NULL OR changes.collected_at >= :since)
-    ORDER BY changes.collected_at DESC, changes.id DESC LIMIT :limit`).all({
+      AND (:afterId IS NULL OR changes.id > :afterId)
+    ORDER BY ${order} LIMIT :limit`).all({
       since: query.since ?? null,
+      afterId: query.afterId ?? null,
       limit,
     }) as Record<string, unknown>[];
   return rows.map(mapChange);

@@ -43,10 +43,12 @@ function settingsInput() {
     target: { name: "Main", baseUrl: "https://target.example.com", adminApiKey: "target-admin-secret", rechargeRatio: 1 },
     proxy: { enabled: true, proxyUrl: "http://127.0.0.1:7890" },
     worker: { intervalSeconds: 600, timeoutSeconds: 25, concurrency: 3 },
+    telegram: { botToken: "123456:telegram-test-token", chatId: "-1001234567890",
+      hourlyBalanceEnabled: true, rateChangeEnabled: true },
   } as const;
 }
 
-test("settings service encrypts the target Admin Key at rest", async () => {
+test("settings service encrypts target and Telegram credentials at rest", async () => {
   await withTempDatabase(async (databaseUrl, databasePath) => {
     const modules = await loadSettingsModules();
     const store = modules.store.createSqliteSettingsStore(databaseUrl);
@@ -62,10 +64,14 @@ test("settings service encrypts the target Admin Key at rest", async () => {
     }
 
     const database = new DatabaseSync(databasePath);
-    const row = database.prepare("SELECT target_admin_key_enc FROM app_settings WHERE id = 1").get() as { target_admin_key_enc: string };
+    const row = database.prepare("SELECT target_admin_key_enc, telegram_bot_token_enc FROM app_settings WHERE id = 1").get() as {
+      target_admin_key_enc: string; telegram_bot_token_enc: string;
+    };
     database.close();
     assert.notEqual(row.target_admin_key_enc, "target-admin-secret");
     assert.match(row.target_admin_key_enc, /^enc:v1:/);
+    assert.notEqual(row.telegram_bot_token_enc, settingsInput().telegram.botToken);
+    assert.match(row.telegram_bot_token_enc, /^enc:v1:/);
   });
 });
 
@@ -152,25 +158,36 @@ test("settings API, target test API, and settings form are present", () => {
   const paths = [
     "src/app/api/settings/route.ts",
     "src/app/api/settings/test-target/route.ts",
+    "src/app/api/settings/test-telegram/route.ts",
     "src/components/settings-dialog.tsx",
     "src/components/settings-form.tsx",
+    "src/components/settings-navigation.tsx",
     "src/components/worker-status-panel.tsx",
   ];
   for (const path of paths) {
     assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
   }
   const form = readFileSync(new URL("src/components/settings-form.tsx", PROJECT_ROOT), "utf8");
+  const navigation = readFileSync(new URL("src/components/settings-navigation.tsx", PROJECT_ROOT), "utf8");
   const targetTest = readFileSync(new URL("src/app/api/settings/test-target/route.ts", PROJECT_ROOT), "utf8");
+  const telegramTest = readFileSync(new URL("src/app/api/settings/test-telegram/route.ts", PROJECT_ROOT), "utf8");
   const dialog = readFileSync(new URL("src/components/settings-dialog.tsx", PROJECT_ROOT), "utf8");
   const status = readFileSync(new URL("src/components/worker-status-panel.tsx", PROJECT_ROOT), "utf8");
   assert.match(dialog, /SettingsForm/);
   assert.match(dialog, /打开全局配置/);
+  assert.match(dialog, /h-\[min\(760px,92dvh\)\]/);
   assert.match(form, /presentation/);
   assert.match(form, /WorkerStatusPanel/);
   assert.match(form, /targetRechargeRatio/);
   assert.match(form, /充值倍率/);
+  assert.match(form, /TelegramSettingsFields/);
+  assert.match(form, /SettingsNavigation/);
+  assert.match(navigation, /全局配置分类/);
+  assert.match(navigation, /aria-current/);
+  assert.match(navigation, /sm:grid-cols-4/);
   assert.match(targetTest, /refreshAll/);
   assert.match(targetTest, /已同步/);
+  assert.match(telegramTest, /Telegram 测试消息已发送/);
   assert.match(status, /\/api\/worker\/status/);
   assert.match(status, /最近运行/);
   assert.match(status, /collectedSources/);

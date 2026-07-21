@@ -52,6 +52,8 @@ function logSummary(summary: WorkerCycleResult) {
     `sourceFailed=${summary.failedSources}`,
     `appliedGroups=${summary.appliedGroups}`,
     `groupFailed=${summary.failedGroups}`,
+    `notifications=${summary.sentNotifications}`,
+    `notificationFailed=${summary.failedNotifications}`,
   ].join(", "));
   for (const error of summary.errors) console.error(`[worker] ${error}`);
 }

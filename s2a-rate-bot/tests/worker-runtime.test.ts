@@ -87,6 +87,7 @@ test("worker records collection and rule failures without hiding successful task
     assert.equal(summary.failedSources, 1);
     assert.equal(summary.appliedGroups, 1);
     assert.equal(summary.failedGroups, 1);
+    assert.equal(summary.skippedNotifications, 2);
     assert.match(summary.errors.join("\n"), /newapi unavailable/);
     assert.match(summary.errors.join("\n"), /target rejected/);
     assert.equal(store.latest()?.status, "partial");
@@ -111,6 +112,20 @@ test("overlapping worker cycles are rejected explicitly", async () => {
   });
 });
 
+test("worker preserves completed task counts when notification startup fails", async () => {
+  const dependencies = baseDependencies({
+    collection: { list: async () => [site(1)], refresh: async () => undefined },
+    notifications: { run: async () => { throw new Error("notification settings invalid"); } },
+  });
+  await withWorker(dependencies, async ({ worker }) => {
+    const summary = await worker.runCycle();
+    assert.equal(summary.collectedSources, 1);
+    assert.equal(summary.failedNotifications, 1);
+    assert.equal(summary.status, "partial");
+    assert.match(summary.errors.join("\n"), /notification settings invalid/);
+  });
+});
+
 test("worker entry and status route use the generic worker service", () => {
   const entry = readFileSync(new URL("src/worker/main.ts", ROOT), "utf8");
   const status = readFileSync(new URL("src/app/api/worker/status/route.ts", ROOT), "utf8");
@@ -126,6 +141,7 @@ function baseDependencies(overrides: Partial<WorkerDependencies> = {}): WorkerDe
     settings: async () => ({ concurrency: 2, targetConfigured: true }),
     collection: { list: async () => [], refresh: async () => undefined },
     targetGroups: { list: async () => [], apply: async () => ({ action: "skip" }) },
+    notifications: { run: async () => ({ success: 0, skipped: 2, failed: 0, errors: [] }) },
     now: () => new Date("2026-07-11T01:00:00Z"),
     ...overrides,
   };
@@ -139,5 +155,6 @@ type WorkerDependencies = {
   readonly settings: () => Promise<{ concurrency: number; targetConfigured: boolean }>;
   readonly collection: { readonly list: () => Promise<ReturnType<typeof site>[]>; readonly refresh: (id: number) => Promise<unknown> };
   readonly targetGroups: { readonly list: () => Promise<Array<{ id: number; name: string; rule: { enabled: boolean } }>>; readonly apply: (id: number) => Promise<{ action: string }> };
+  readonly notifications: { readonly run: () => Promise<{ success: number; skipped: number; failed: number; errors: readonly string[] }> };
   readonly now: () => Date;
 };

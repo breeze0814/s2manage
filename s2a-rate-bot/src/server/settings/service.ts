@@ -27,10 +27,22 @@ const workerSettingsSchema = z.object({
   concurrency: z.number().int().positive("并发数必须是正整数"),
 });
 
+const telegramSettingsSchema = z.object({
+  botToken: z.string().trim(),
+  chatId: z.string().trim(),
+  hourlyBalanceEnabled: z.boolean(),
+  rateChangeEnabled: z.boolean(),
+}).superRefine((value, context) => {
+  if (!value.hourlyBalanceEnabled && !value.rateChangeEnabled) return;
+  if (!value.botToken) context.addIssue({ code: "custom", message: "启用 Telegram 推送时必须填写 Bot Token", path: ["botToken"] });
+  if (!value.chatId) context.addIssue({ code: "custom", message: "启用 Telegram 推送时必须填写 Chat ID", path: ["chatId"] });
+});
+
 export const appSettingsSchema = z.object({
   target: targetSettingsSchema,
   proxy: proxySettingsSchema,
   worker: workerSettingsSchema,
+  telegram: telegramSettingsSchema,
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -38,6 +50,7 @@ export type SettingsSnapshot = {
   readonly target: AppSettings["target"] | null;
   readonly proxy: AppSettings["proxy"];
   readonly worker: AppSettings["worker"];
+  readonly telegram: AppSettings["telegram"];
 };
 
 export type SettingsService = {
@@ -71,6 +84,12 @@ function settingsSnapshot(input: SettingsDependencies): SettingsSnapshot {
       timeoutSeconds: stored.workerTimeoutSeconds,
       concurrency: stored.workerConcurrency,
     },
+    telegram: {
+      botToken: stored.telegramBotTokenEnc ? input.cipher.decrypt(stored.telegramBotTokenEnc) : "",
+      chatId: stored.telegramChatId,
+      hourlyBalanceEnabled: stored.telegramHourlyBalanceEnabled,
+      rateChangeEnabled: stored.telegramRateChangeEnabled,
+    },
   };
 }
 
@@ -86,6 +105,10 @@ function saveSettings(input: SettingsDependencies, raw: unknown) {
     workerIntervalSeconds: settings.worker.intervalSeconds,
     workerTimeoutSeconds: settings.worker.timeoutSeconds,
     workerConcurrency: settings.worker.concurrency,
+    telegramBotTokenEnc: input.cipher.encrypt(settings.telegram.botToken),
+    telegramChatId: settings.telegram.chatId,
+    telegramHourlyBalanceEnabled: settings.telegram.hourlyBalanceEnabled,
+    telegramRateChangeEnabled: settings.telegram.rateChangeEnabled,
   });
   return settings;
 }
@@ -95,6 +118,7 @@ function defaultSettings(): SettingsSnapshot {
     target: null,
     proxy: { enabled: false, proxyUrl: "" },
     worker: { intervalSeconds: 600, timeoutSeconds: 25, concurrency: 3 },
+    telegram: { botToken: "", chatId: "", hourlyBalanceEnabled: false, rateChangeEnabled: false },
   };
 }
 

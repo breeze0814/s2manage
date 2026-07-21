@@ -22,22 +22,37 @@ export async function PUT(request: NextRequest) {
     const service = getRuntimeSettingsService();
     const current = await service.get();
     const body = await readJsonObject(request);
-    const saved = await service.save(mergeAdminKey(body, current.target?.adminApiKey));
+    const saved = await service.save(mergeStoredSecrets(body, {
+      adminApiKey: current.target?.adminApiKey,
+      telegramBotToken: current.telegram.botToken,
+    }));
     return NextResponse.json(maskSettings(saved));
   } catch (error) {
     return settingsError(error);
   }
 }
 
-function mergeAdminKey(body: Record<string, unknown>, currentKey?: string) {
+function mergeStoredSecrets(body: Record<string, unknown>, current: Readonly<{ adminApiKey?: string; telegramBotToken: string }>) {
   const target = body.target && typeof body.target === "object" ? body.target as Record<string, unknown> : {};
   const provided = typeof target.adminApiKey === "string" ? target.adminApiKey.trim() : "";
-  return { ...body, target: { ...target, adminApiKey: provided || currentKey || "" } };
+  const telegram = body.telegram && typeof body.telegram === "object" ? body.telegram as Record<string, unknown> : {};
+  const botToken = typeof telegram.botToken === "string" ? telegram.botToken.trim() : "";
+  return {
+    ...body,
+    target: { ...target, adminApiKey: provided || current.adminApiKey || "" },
+    telegram: { ...telegram, botToken: botToken || current.telegramBotToken },
+  };
 }
 
-function maskSettings<T extends { target: { adminApiKey: string } | null }>(settings: T) {
-  if (!settings.target) return { ...settings, hasAdminApiKey: false };
-  return { ...settings, target: { ...settings.target, adminApiKey: "" }, hasAdminApiKey: true };
+function maskSettings<T extends { target: { adminApiKey: string } | null; telegram: { botToken: string } }>(settings: T) {
+  const target = settings.target ? { ...settings.target, adminApiKey: "" } : null;
+  return {
+    ...settings,
+    target,
+    telegram: { ...settings.telegram, botToken: "" },
+    hasAdminApiKey: Boolean(settings.target?.adminApiKey),
+    hasTelegramBotToken: Boolean(settings.telegram.botToken),
+  };
 }
 
 function settingsError(error: unknown) {

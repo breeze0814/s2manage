@@ -5,6 +5,7 @@ import { createWorkerService } from "./service.ts";
 import { createSqliteWorkerRunStore } from "./store.ts";
 import { writeWorkerLog } from "../logging/business-logger.ts";
 import { createSqliteMaintenance } from "../../storage/sqlite-maintenance.ts";
+import { getRuntimeTelegramNotificationService } from "../telegram/runtime.ts";
 
 const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 type RuntimeWorkerService = ReturnType<typeof buildRuntimeWorkerService>;
@@ -24,10 +25,12 @@ function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
   const targetGroups = getRuntimeTargetGroupService(env);
   const runs = createSqliteWorkerRunStore(databaseUrl);
   const maintenance = createSqliteMaintenance(databaseUrl);
+  const notifications = getRuntimeTelegramNotificationService(env);
   const worker = createWorkerService({
     settings: async () => workerSettings(await settings.get()),
     collection,
     targetGroups,
+    notifications,
     runs,
     now: () => new Date(),
   });
@@ -35,7 +38,7 @@ function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
     ...worker,
     runCycle: async () => runMaintainedCycle(worker.runCycle, maintenance),
     intervalSeconds: async () => (await settings.get()).worker.intervalSeconds,
-    close: () => { maintenance.close(); runs.close(); },
+    close: () => { notifications.close(); maintenance.close(); runs.close(); },
   };
 }
 

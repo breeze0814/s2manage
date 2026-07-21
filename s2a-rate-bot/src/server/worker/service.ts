@@ -10,6 +10,9 @@ export type WorkerRunSummary = {
   readonly appliedGroups: number;
   readonly skippedGroups: number;
   readonly failedGroups: number;
+  readonly sentNotifications: number;
+  readonly skippedNotifications: number;
+  readonly failedNotifications: number;
   readonly errors: readonly string[];
   readonly startedAt: string;
   readonly finishedAt: string | null;
@@ -24,6 +27,9 @@ export type WorkerCycleResult = WorkerRunSummary | {
   readonly appliedGroups: 0;
   readonly skippedGroups: 0;
   readonly failedGroups: 0;
+  readonly sentNotifications: 0;
+  readonly skippedNotifications: 0;
+  readonly failedNotifications: 0;
   readonly errors: readonly [];
   readonly startedAt: null;
   readonly finishedAt: null;
@@ -52,6 +58,7 @@ export function createWorkerService(input: {
   readonly settings: () => Promise<{ readonly concurrency: number; readonly targetConfigured: boolean }>;
   readonly collection: { readonly list: () => Promise<readonly WorkerSource[]>; readonly refresh: (id: number) => Promise<unknown> };
   readonly targetGroups: { readonly list: () => Promise<readonly WorkerGroup[]>; readonly apply: (id: number) => Promise<{ readonly action: string }> };
+  readonly notifications: { readonly run: () => Promise<TaskStats> };
   readonly runs: WorkerRunStore;
   readonly now: () => Date;
 }): WorkerService {
@@ -92,12 +99,14 @@ async function executeCycle(input: WorkerDependencies, startedAt: string) {
   const groupStats = settings.targetConfigured
     ? await applyTargetRules(input)
     : emptyStats();
+  const notificationStats = await runNotifications(input);
   return completedSummary({
     startedAt,
     finishedAt: input.now().toISOString(),
     skippedSources: sources.length - due.length,
     source: sourceStats,
     group: groupStats,
+    notification: notificationStats,
   });
 }
 
@@ -145,24 +154,38 @@ function completedSummary(input: Readonly<{
   skippedSources: number;
   source: TaskStats;
   group: TaskStats;
+  notification: TaskStats;
 }>): WorkerRunSummary {
-  const errors = [...input.source.errors, ...input.group.errors];
+  const errors = [...input.source.errors, ...input.group.errors, ...input.notification.errors];
   return {
-    status: runStatus(input.source.success + input.group.success, errors.length),
+    status: runStatus(input.source.success + input.group.success + input.notification.success, errors.length),
     collectedSources: input.source.success,
     skippedSources: input.skippedSources,
     failedSources: input.source.failed,
     appliedGroups: input.group.success,
     skippedGroups: input.group.skipped,
     failedGroups: input.group.failed,
+    sentNotifications: input.notification.success,
+    skippedNotifications: input.notification.skipped,
+    failedNotifications: input.notification.failed,
     errors,
     startedAt: input.startedAt,
     finishedAt: input.finishedAt,
   };
 }
 
+async function runNotifications(input: WorkerDependencies): Promise<TaskStats> {
+  try {
+    return await input.notifications.run();
+  } catch (error) {
+    return { success: 0, skipped: 0, failed: 1, errors: [`Telegram 通知: ${errorMessage(error)}`] };
+  }
+}
+
 function failedSummary(startedAt: string, finishedAt: string, error: unknown): WorkerRunSummary {
-  return { status: "failed", collectedSources: 0, skippedSources: 0, failedSources: 0, appliedGroups: 0, skippedGroups: 0, failedGroups: 0, errors: [errorMessage(error)], startedAt, finishedAt };
+  return { status: "failed", collectedSources: 0, skippedSources: 0, failedSources: 0,
+    appliedGroups: 0, skippedGroups: 0, failedGroups: 0, sentNotifications: 0,
+    skippedNotifications: 0, failedNotifications: 0, errors: [errorMessage(error)], startedAt, finishedAt };
 }
 
 function summarizeResults(results: readonly TaskResult[]): TaskStats {
@@ -180,7 +203,10 @@ function runStatus(successes: number, failures: number): WorkerRunStatus {
 }
 
 function skippedCycle(): Extract<WorkerCycleResult, { status: "skipped" }> {
-  return { status: "skipped", reason: "already_running", collectedSources: 0, skippedSources: 0, failedSources: 0, appliedGroups: 0, skippedGroups: 0, failedGroups: 0, errors: [], startedAt: null, finishedAt: null };
+  return { status: "skipped", reason: "already_running", collectedSources: 0, skippedSources: 0,
+    failedSources: 0, appliedGroups: 0, skippedGroups: 0, failedGroups: 0,
+    sentNotifications: 0, skippedNotifications: 0, failedNotifications: 0,
+    errors: [], startedAt: null, finishedAt: null };
 }
 
 function emptyStats(): TaskStats { return { success: 0, skipped: 0, failed: 0, errors: [] }; }

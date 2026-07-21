@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { ensureTelegramSchema, TELEGRAM_SCHEMA_VERSION } from "./sqlite-telegram-schema.ts";
 
 const MINIMUM_PARAMETER_SCHEMA_VERSION = 9;
 const LOCAL_SNAPSHOT_SCHEMA_VERSION = 10;
@@ -8,7 +9,7 @@ const RATE_PLATFORM_SCHEMA_VERSION = 13;
 const REFRESH_VERSION_SCHEMA_VERSION = 14;
 const COLLECTION_SITE_WEBSITE_SCHEMA_VERSION = 17;
 const ACCOUNT_SCHEDULING_SCHEMA_VERSION = 18;
-const SCHEMA_VERSION = ACCOUNT_SCHEDULING_SCHEMA_VERSION;
+const SCHEMA_VERSION = TELEGRAM_SCHEMA_VERSION;
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -32,6 +33,10 @@ const CREATE_TABLES = [
     target_base_url TEXT NOT NULL,
     target_admin_key_enc TEXT NOT NULL,
     target_recharge_ratio REAL NOT NULL DEFAULT 1,
+    telegram_bot_token_enc TEXT NOT NULL DEFAULT '',
+    telegram_chat_id TEXT NOT NULL DEFAULT '',
+    telegram_hourly_balance_enabled INTEGER NOT NULL DEFAULT 0 CHECK (telegram_hourly_balance_enabled IN (0, 1)),
+    telegram_rate_change_enabled INTEGER NOT NULL DEFAULT 0 CHECK (telegram_rate_change_enabled IN (0, 1)),
     proxy_enabled INTEGER NOT NULL CHECK (proxy_enabled IN (0, 1)),
     proxy_url TEXT NOT NULL,
     worker_interval_seconds INTEGER NOT NULL,
@@ -175,6 +180,9 @@ const CREATE_TABLES = [
     applied_groups INTEGER NOT NULL,
     skipped_groups INTEGER NOT NULL,
     failed_groups INTEGER NOT NULL,
+    sent_notifications INTEGER NOT NULL DEFAULT 0,
+    skipped_notifications INTEGER NOT NULL DEFAULT 0,
+    failed_notifications INTEGER NOT NULL DEFAULT 0,
     errors_json TEXT NOT NULL,
     started_at TEXT NOT NULL,
     finished_at TEXT
@@ -203,6 +211,7 @@ function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureRefreshVersion(database);
   ensureCollectionSiteWebsiteUrl(database);
   ensureTargetAccountSchedulingSchema(database);
+  ensureTelegramSchema(database);
   if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {
     database.exec(`UPDATE target_group_rules
       SET parameters_json = json_set(parameters_json, '$.minimum', 0)
