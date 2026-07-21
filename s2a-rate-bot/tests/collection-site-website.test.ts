@@ -28,7 +28,7 @@ test("existing collection sites gain an empty website without losing data", asyn
     assert.equal(columns.some((column) => column.name === "website_url"), true);
     assert.equal(row.name, "Existing Source");
     assert.equal(row.website_url, "");
-    assert.equal(version.value, "17");
+    assert.equal(version.value, "18");
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

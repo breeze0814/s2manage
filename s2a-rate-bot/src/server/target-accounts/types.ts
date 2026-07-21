@@ -3,6 +3,7 @@ export type TargetAccount = {
   readonly name: string;
   readonly platform: string;
   readonly status: string;
+  readonly schedulable: boolean;
   readonly rateMultiplier: number | null;
   readonly priority: number | null;
   readonly groupIds: readonly number[];
@@ -11,6 +12,7 @@ export type TargetAccount = {
 export type TargetAccountBinding = {
   readonly sourceSiteId: number;
   readonly sourceGroupId: string;
+  readonly autoManageSchedulable: boolean;
 };
 
 export type TargetAccountTestStatus = "available" | "unavailable" | "error";
@@ -42,4 +44,5 @@ export type TargetAccountTestResult = {
 export type TargetAccountClient = {
   readonly listAccounts: () => Promise<readonly TargetAccount[]>;
   readonly testChannel: (accountId: number) => Promise<TargetAccountTestResult>;
+  readonly setSchedulable: (accountId: number, schedulable: boolean) => Promise<void>;
 };

@@ -8,7 +8,7 @@ import type { TargetAccountClient } from "./types.ts";
 
 const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 // Increment when the cached service contract or its dependencies change.
-const TARGET_ACCOUNT_RUNTIME_VERSION = 1;
+const TARGET_ACCOUNT_RUNTIME_VERSION = 2;
 
 type TargetAccountRuntime = Readonly<{
   version: number;
@@ -51,6 +51,7 @@ function dynamicClient(settings: ReturnType<typeof getRuntimeSettingsService>): 
   return {
     listAccounts: async () => (await configuredClient(settings)).listAccounts(),
     testChannel: async (accountId) => (await configuredClient(settings)).testChannel(accountId),
+    setSchedulable: async (accountId, schedulable) => (await configuredClient(settings)).setSchedulable(accountId, schedulable),
   };
 }
 

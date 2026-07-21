@@ -7,6 +7,7 @@ export type TargetAccountStore = {
   readonly get: (accountId: number) => TargetAccountView | null;
   readonly list: () => TargetAccountView[];
   readonly replaceAll: (accounts: readonly TargetAccount[]) => void;
+  readonly updateSchedulable: (accountId: number, schedulable: boolean) => void;
   readonly saveBinding: (accountId: number, binding: TargetAccountBinding | null) => void;
   readonly recordTest: (accountId: number, state: TargetAccountTestState) => void;
   readonly close: () => void;
@@ -21,6 +22,7 @@ export function createSqliteTargetAccountStore(databaseUrl: string): TargetAccou
     get: (accountId) => getAccount(database, accountId),
     list: () => listAccounts(database),
     replaceAll: (accounts) => replaceAccounts(database, accounts),
+    updateSchedulable: (accountId, schedulable) => updateSchedulable(database, accountId, schedulable),
     saveBinding: (accountId, binding) => saveBinding(database, accountId, binding),
     recordTest: (accountId, state) => recordTest(database, accountId, state),
     close: () => database.close(),
@@ -30,6 +32,7 @@ export function createSqliteTargetAccountStore(databaseUrl: string): TargetAccou
 const ACCOUNT_VIEW_SELECT = `SELECT accounts.*,
   bindings.source_site_id AS binding_source_site_id,
   bindings.source_group_id AS binding_source_group_id,
+  bindings.auto_manage_schedulable AS binding_auto_manage_schedulable,
   tests.status AS test_status, tests.message AS test_message,
   tests.latency_ms AS test_latency_ms, tests.model AS test_model, tests.tested_at
   FROM target_account_snapshots AS accounts
@@ -56,16 +59,21 @@ function replaceAccounts(database: DatabaseSync, accounts: readonly TargetAccoun
 
 function saveAccount(database: DatabaseSync, account: TargetAccount) {
   database.prepare(`INSERT INTO target_account_snapshots
-    (account_id, account_name, platform, status, rate_multiplier, priority, group_ids_json, updated_at)
-    VALUES (:id, :name, :platform, :status, :rateMultiplier, :priority, :groupIds, :updatedAt)
+    (account_id, account_name, platform, status, schedulable, rate_multiplier, priority, group_ids_json, updated_at)
+    VALUES (:id, :name, :platform, :status, :schedulable, :rateMultiplier, :priority, :groupIds, :updatedAt)
     ON CONFLICT(account_id) DO UPDATE SET account_name=excluded.account_name,
-    platform=excluded.platform, status=excluded.status,
+    platform=excluded.platform, status=excluded.status, schedulable=excluded.schedulable,
     rate_multiplier=excluded.rate_multiplier, priority=excluded.priority,
     group_ids_json=excluded.group_ids_json, updated_at=excluded.updated_at`).run(accountBindings(account));
 }
 
 function accountBindings(account: TargetAccount) {
-  return { ...account, groupIds: JSON.stringify(account.groupIds), updatedAt: nowIso() };
+  return { ...account, schedulable: account.schedulable ? 1 : 0, groupIds: JSON.stringify(account.groupIds), updatedAt: nowIso() };
+}
+
+function updateSchedulable(database: DatabaseSync, accountId: number, schedulable: boolean) {
+  database.prepare("UPDATE target_account_snapshots SET schedulable = ?, updated_at = ? WHERE account_id = ?")
+    .run(schedulable ? 1 : 0, nowIso(), accountId);
 }
 
 function saveBinding(database: DatabaseSync, accountId: number, binding: TargetAccountBinding | null) {
@@ -73,10 +81,12 @@ function saveBinding(database: DatabaseSync, accountId: number, binding: TargetA
     database.prepare("DELETE FROM target_account_bindings WHERE account_id = ?").run(accountId);
     return;
   }
-  database.prepare(`INSERT INTO target_account_bindings (account_id, source_site_id, source_group_id, updated_at)
-    VALUES (?, ?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET source_site_id=excluded.source_site_id,
-    source_group_id=excluded.source_group_id, updated_at=excluded.updated_at`)
-    .run(accountId, binding.sourceSiteId, binding.sourceGroupId, nowIso());
+  database.prepare(`INSERT INTO target_account_bindings
+    (account_id, source_site_id, source_group_id, auto_manage_schedulable, updated_at)
+    VALUES (?, ?, ?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET source_site_id=excluded.source_site_id,
+    source_group_id=excluded.source_group_id, auto_manage_schedulable=excluded.auto_manage_schedulable,
+    updated_at=excluded.updated_at`)
+    .run(accountId, binding.sourceSiteId, binding.sourceGroupId, binding.autoManageSchedulable ? 1 : 0, nowIso());
 }
 
 function recordTest(database: DatabaseSync, accountId: number, state: TargetAccountTestState) {
@@ -96,6 +106,7 @@ function mapAccount(row: Record<string, unknown>): TargetAccountView {
   return {
     id: Number(row.account_id), name: String(row.account_name), platform: String(row.platform),
     status: String(row.status),
+    schedulable: Number(row.schedulable) === 1,
     rateMultiplier: nullableNumber(row.rate_multiplier), priority: nullableNumber(row.priority),
     groupIds: parseGroupIds(row.group_ids_json),
     binding: mapBinding(row),
@@ -105,7 +116,10 @@ function mapAccount(row: Record<string, unknown>): TargetAccountView {
 
 function mapBinding(row: Record<string, unknown>) {
   if (row.binding_source_site_id === null || row.binding_source_site_id === undefined) return null;
-  return { sourceSiteId: Number(row.binding_source_site_id), sourceGroupId: String(row.binding_source_group_id) };
+  return {
+    sourceSiteId: Number(row.binding_source_site_id), sourceGroupId: String(row.binding_source_group_id),
+    autoManageSchedulable: Number(row.binding_auto_manage_schedulable) === 1,
+  };
 }
 
 function mapTestState(row: Record<string, unknown>): TargetAccountTestState | null {

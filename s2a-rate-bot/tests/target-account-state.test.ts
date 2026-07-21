@@ -10,12 +10,57 @@ import type { TargetAccountClient } from "../src/server/target-accounts/types.ts
 import { initializeSqliteSchema } from "../src/storage/sqlite-schema.ts";
 
 test("account source binding persists across remote account refreshes", async () => {
-  await withAccountService(defaultClient(), async ({ service }) => {
+  const changes: boolean[] = [];
+  const client = defaultClient(undefined, async (_accountId, schedulable) => { changes.push(schedulable); });
+  await withAccountService(client, async ({ service }) => {
     await service.refresh();
     const bound = await service.saveBinding(9, { sourceSiteId: 1, sourceGroupId: "vip" });
-    assert.deepEqual(bound?.binding, { sourceSiteId: 1, sourceGroupId: "vip" });
+    assert.deepEqual(bound?.binding, { sourceSiteId: 1, sourceGroupId: "vip", autoManageSchedulable: false });
+    await service.testChannel(9);
+    assert.deepEqual(changes, []);
     await assert.rejects(service.saveBinding(9, { sourceSiteId: 1, sourceGroupId: "missing" }), /采集分组不存在/);
-    assert.deepEqual((await service.refresh())[0]?.binding, { sourceSiteId: 1, sourceGroupId: "vip" });
+    assert.deepEqual((await service.refresh())[0]?.binding, { sourceSiteId: 1, sourceGroupId: "vip", autoManageSchedulable: false });
+  });
+});
+
+test("automated scheduling failures remain explicit after recording the test", async () => {
+  const client = defaultClient(undefined, async () => { throw new Error("schedule rejected"); });
+  await withAccountService(client, async ({ service }) => {
+    await service.refresh();
+    await service.saveBinding(9, { sourceSiteId: 1, sourceGroupId: "vip", autoManageSchedulable: true });
+    await assert.rejects(service.testChannel(9), /schedule rejected/);
+    assert.equal((await service.list())[0]?.lastTest?.status, "available");
+    assert.equal((await service.list())[0]?.schedulable, true);
+  });
+});
+
+test("manual account scheduling updates the remote API and local snapshot", async () => {
+  const changes: Array<{ accountId: number; schedulable: boolean }> = [];
+  const client = defaultClient(undefined, async (accountId, schedulable) => { changes.push({ accountId, schedulable }); });
+  await withAccountService(client, async ({ service }) => {
+    await service.refresh();
+    const account = await service.setSchedulable(9, false);
+    assert.equal(account?.schedulable, false);
+    assert.deepEqual(changes, [{ accountId: 9, schedulable: false }]);
+  });
+});
+
+test("enabled test automation follows success, rejection, and request errors", async () => {
+  const changes: boolean[] = [];
+  let outcome: "available" | "unavailable" | "error" = "available";
+  const client = defaultClient(async () => {
+    if (outcome === "error") throw new Error("upstream offline");
+    return { success: outcome === "available", message: outcome, latencyMs: 1 };
+  }, async (_accountId, schedulable) => { changes.push(schedulable); });
+  await withAccountService(client, async ({ service }) => {
+    await service.refresh();
+    await service.saveBinding(9, { sourceSiteId: 1, sourceGroupId: "vip", autoManageSchedulable: true });
+    assert.equal((await service.testChannel(9)).account.schedulable, true);
+    outcome = "unavailable";
+    assert.equal((await service.testChannel(9)).account.schedulable, false);
+    outcome = "error";
+    assert.equal((await service.testChannel(9)).account.schedulable, false);
+    assert.deepEqual(changes, [true, false, false]);
   });
 });
 
@@ -67,10 +112,13 @@ function seedSourceSite(path: string) {
   database.close();
 }
 
-function defaultClient(testChannel: TargetAccountClient["testChannel"] = async () => ({ success: true, message: "ok", latencyMs: 1 })) {
-  return { listAccounts: async () => [account(9), account(10)], testChannel };
+function defaultClient(
+  testChannel: TargetAccountClient["testChannel"] = async () => ({ success: true, message: "ok", latencyMs: 1 }),
+  setSchedulable: TargetAccountClient["setSchedulable"] = async () => {},
+) {
+  return { listAccounts: async () => [account(9), account(10)], testChannel, setSchedulable };
 }
 
-function account(id: number) { return { id, name: `Account ${id}`, platform: "openai", status: "active", rateMultiplier: 1, priority: id, groupIds: [7] }; }
+function account(id: number) { return { id, name: `Account ${id}`, platform: "openai", status: "active", schedulable: true, rateMultiplier: 1, priority: id, groupIds: [7] }; }
 function sourceRate() { return { sourceSiteId: 1, groupId: "vip", groupName: "VIP", platform: "openai", rawRate: 1, effectiveRate: 1, collectedAt: new Date() }; }
 type AccountContext = { readonly service: ReturnType<typeof createTargetAccountService> };

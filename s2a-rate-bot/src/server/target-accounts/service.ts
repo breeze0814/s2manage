@@ -2,15 +2,21 @@ import { z } from "zod";
 import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
 import { mapConcurrent } from "../concurrency.ts";
 import type { TargetAccountStore } from "./store.ts";
-import type { TargetAccount, TargetAccountBinding, TargetAccountClient, TargetAccountTestExecution, TargetAccountTestState } from "./types.ts";
+import type { TargetAccountBinding, TargetAccountClient, TargetAccountTestExecution, TargetAccountTestState, TargetAccountView } from "./types.ts";
 
 const accountIdSchema = z.number().int().positive();
-const bindingSchema = z.object({ sourceSiteId: z.number().int().positive(), sourceGroupId: z.string().trim().min(1) }).nullable();
+const bindingSchema = z.object({
+  sourceSiteId: z.number().int().positive(),
+  sourceGroupId: z.string().trim().min(1),
+  autoManageSchedulable: z.boolean().default(false),
+}).nullable();
+const schedulableSchema = z.boolean();
 
 export type TargetAccountService = {
   readonly list: () => Promise<ReturnType<TargetAccountStore["list"]>>;
   readonly refresh: () => Promise<ReturnType<TargetAccountStore["list"]>>;
   readonly saveBinding: (accountId: number, binding: unknown) => Promise<ReturnType<TargetAccountStore["get"]>>;
+  readonly setSchedulable: (accountId: number, schedulable: unknown) => Promise<ReturnType<TargetAccountStore["get"]>>;
   readonly testChannel: (accountId: number) => Promise<TargetAccountTestExecution>;
   readonly testAllChannels: () => Promise<Awaited<ReturnType<typeof testAllChannels>>>;
 };
@@ -20,6 +26,7 @@ export function createTargetAccountService(input: AccountDependencies): TargetAc
     list: async () => input.store.list(),
     refresh: async () => refreshAccounts(input),
     saveBinding: (accountId, binding) => saveBinding(input, accountId, binding),
+    setSchedulable: (accountId, schedulable) => setSchedulable(input, accountId, schedulable),
     testChannel: (accountId) => testChannel(input, accountId),
     testAllChannels: () => testAllChannels(input),
   };
@@ -41,6 +48,14 @@ async function saveBinding(input: AccountDependencies, rawAccountId: number, raw
   return requireAccount(input.store, accountId);
 }
 
+async function setSchedulable(input: AccountDependencies, rawAccountId: number, rawSchedulable: unknown) {
+  const accountId = accountIdSchema.parse(rawAccountId);
+  const schedulable = schedulableSchema.parse(rawSchedulable);
+  requireAccount(input.store, accountId);
+  await applySchedulable(input, accountId, schedulable);
+  return requireAccount(input.store, accountId);
+}
+
 async function testChannel(input: AccountDependencies, rawAccountId: number) {
   const account = requireAccount(input.store, accountIdSchema.parse(rawAccountId));
   return executeChannelTest(input, account);
@@ -56,7 +71,7 @@ async function testAllChannels(input: AccountDependencies) {
   return { accounts: input.store.list(), summary: testSummary(executions) };
 }
 
-async function executeChannelTest(input: AccountDependencies, account: TargetAccount): Promise<TargetAccountTestExecution> {
+async function executeChannelTest(input: AccountDependencies, account: TargetAccountView): Promise<TargetAccountTestExecution> {
   const startedAt = Date.now();
   let state: TargetAccountTestState;
   try {
@@ -70,7 +85,13 @@ async function executeChannelTest(input: AccountDependencies, account: TargetAcc
     state = { status: "error", message: errorMessage(error), latencyMs: Date.now() - startedAt, testedAt: new Date().toISOString() };
   }
   input.store.recordTest(account.id, state);
+  if (account.binding?.autoManageSchedulable) await applySchedulable(input, account.id, state.status === "available");
   return { account: requireAccount(input.store, account.id), test: state };
+}
+
+async function applySchedulable(input: AccountDependencies, accountId: number, schedulable: boolean) {
+  await input.client.setSchedulable(accountId, schedulable);
+  input.store.updateSchedulable(accountId, schedulable);
 }
 
 function testSummary(executions: readonly TargetAccountTestExecution[]) {

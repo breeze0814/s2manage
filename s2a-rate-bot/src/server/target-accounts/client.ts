@@ -10,6 +10,7 @@ const remoteAccountSchema = z.object({
   name: z.string().trim().min(1),
   platform: z.string().trim().min(1),
   status: z.string().trim().min(1),
+  schedulable: z.boolean(),
   rate_multiplier: z.coerce.number().finite().nullable().optional(),
   priority: z.coerce.number().int().nullable().optional(),
   group_ids: z.array(z.coerce.number().int().positive()).optional(),
@@ -30,6 +31,9 @@ export function createSub2TargetAccountClient(input: {
   return {
     listAccounts: async () => listAllAccounts(request),
     testChannel: (accountId) => testTargetAccountChannel({ ...input, accountId }),
+    setSchedulable: async (accountId, schedulable) => {
+      await request("POST", `/accounts/${accountId}/schedulable`, { schedulable });
+    },
   };
 }
 
@@ -77,6 +81,7 @@ function parseAccount(payload: unknown): TargetAccount {
     name: account.name,
     platform: account.platform,
     status: account.status,
+    schedulable: account.schedulable,
     rateMultiplier: account.rate_multiplier ?? null,
     priority: account.priority ?? null,
     groupIds: [...new Set(groupIds)],

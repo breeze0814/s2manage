@@ -15,16 +15,36 @@ export function useAccountsDashboard() {
   const [loading, setLoading] = useState(true);
   const [testPendingIds, setTestPendingIds] = useState<number[]>([]);
   const [bindingPendingId, setBindingPendingId] = useState<number | null>(null);
+  const [schedulePendingId, setSchedulePendingId] = useState<number | null>(null);
   const [batchTesting, setBatchTesting] = useState(false);
   useEffect(() => { void loadDashboard({ setAccounts, setGroups, setRates, setSites, setLoading }, false); }, []);
   return {
-    accounts, groups, rates, sites, loading, testPendingIds, bindingPendingId, batchTesting,
+    accounts, groups, rates, sites, loading, testPendingIds, bindingPendingId, schedulePendingId, batchTesting,
     refresh: () => void loadDashboard({ setAccounts, setGroups, setRates, setSites, setLoading }, true),
     bindSource: (account: TargetAccountView, binding: AccountSourceBinding | null) =>
       saveBinding({ account, binding, setAccounts, setBindingPendingId }),
     testChannel: (account: TargetAccountView) => void testChannel({ account, setAccounts, setTestPendingIds }),
+    setSchedulable: (account: TargetAccountView, schedulable: boolean) =>
+      setAccountSchedulable({ account, schedulable, setAccounts, setSchedulePendingId }),
     testAll: () => void testAllChannels({ accounts, setAccounts, setTestPendingIds, setBatchTesting }),
   };
+}
+
+async function setAccountSchedulable(input: ScheduleActions) {
+  input.setSchedulePendingId(input.account.id);
+  try {
+    const body = await api<{ account: TargetAccountView }>(`/api/accounts/${input.account.id}/schedulable`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ schedulable: input.schedulable }),
+    });
+    input.setAccounts((accounts) => replaceAccount(accounts, body.account));
+    toast.success(input.schedulable ? "账号调度已启用" : "账号调度已禁用");
+    return true;
+  } catch (error) {
+    toast.error("更新账号调度失败", { description: errorMessage(error) });
+    return false;
+  } finally {
+    input.setSchedulePendingId(null);
+  }
 }
 
 async function loadDashboard(actions: LoadActions, refreshRemote: boolean) {
@@ -127,5 +147,6 @@ type SetAccounts = React.Dispatch<React.SetStateAction<TargetAccountView[]>>;
 type SetIds = React.Dispatch<React.SetStateAction<number[]>>;
 type LoadActions = { readonly setAccounts: SetAccounts; readonly setGroups: React.Dispatch<React.SetStateAction<AccountGroupOption[]>>; readonly setRates: React.Dispatch<React.SetStateAction<AccountSourceRate[]>>; readonly setSites: React.Dispatch<React.SetStateAction<AccountSourceSite[]>>; readonly setLoading: (value: boolean) => void };
 type BindingActions = { readonly account: TargetAccountView; readonly binding: AccountSourceBinding | null; readonly setAccounts: SetAccounts; readonly setBindingPendingId: (value: number | null) => void };
+type ScheduleActions = { readonly account: TargetAccountView; readonly schedulable: boolean; readonly setAccounts: SetAccounts; readonly setSchedulePendingId: (value: number | null) => void };
 type TestActions = { readonly account: TargetAccountView; readonly setAccounts: SetAccounts; readonly setTestPendingIds: SetIds };
 type BatchTestActions = { readonly accounts: readonly TargetAccountView[]; readonly setAccounts: SetAccounts; readonly setTestPendingIds: SetIds; readonly setBatchTesting: (value: boolean) => void };

@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { createJsonHttpClient } from "../src/adapters/http-client.ts";
 import { initializeSqliteSchema } from "../src/storage/sqlite-schema.ts";
+import { readJson } from "./remote-test-support.ts";
 
 const ROOT = new URL("../", import.meta.url);
 const TARGET_ACCOUNT_TEST_PORT_START = 18221;
@@ -46,6 +47,14 @@ test("target account channel test calls the remote test endpoint and parses SSE"
     assert.equal(result.model, "gpt-4o-mini");
     assert.match(result.message, /pong/);
     assert.equal(remote.getTestRequests(), 1);
+  });
+});
+
+test("target account scheduling calls the remote admin endpoint", async () => {
+  const remote = createAccountRemote();
+  await withServer(remote.handler, async (baseUrl) => {
+    await (await accountClient(baseUrl)).setSchedulable(9, false);
+    assert.deepEqual(remote.getScheduleRequests(), [false]);
   });
 });
 
@@ -91,7 +100,7 @@ test("target account client follows every pagination page", async () => {
   });
 });
 
-test("account routes and dashboard expose refresh and channel test controls without scheduling writes", () => {
+test("account routes and dashboard expose refresh, test, and scheduling controls", () => {
   assertAccountRoutesExist();
   assertAccountsHook();
   assertAccountsDashboard();
@@ -102,6 +111,7 @@ function assertAccountRoutesExist() {
     "src/app/api/accounts/route.ts",
     "src/app/api/accounts/[id]/binding/route.ts",
     "src/app/api/accounts/[id]/test/route.ts",
+    "src/app/api/accounts/[id]/schedulable/route.ts",
     "src/app/api/accounts/test-all/route.ts",
     "src/app/api/accounts/refresh/route.ts",
     "src/server/target-accounts/store.ts",
@@ -122,7 +132,7 @@ function assertAccountsHook() {
   assert.match(hook, /\/binding/);
   assert.match(hook, /\/api\/accounts\/test-all/);
   assert.match(hook, /testChannel/);
-  assert.doesNotMatch(hook, /schedulable/);
+  assert.match(hook, /schedulable/);
   assert.match(hook, /loadAccounts/);
   assert.match(hook, /\/api\/accounts\/refresh/);
   assert.match(hook, /\/api\/groups/);
@@ -160,7 +170,8 @@ function assertAccountsDashboard() {
   assert.match(dashboard, /测试状态/);
   assert.match(dashboard, /TestStatus/);
   assert.match(dashboard, /aria-label=\{label\}/);
-  assert.doesNotMatch(dashboard, /参与调度|暂停调度|ScheduleSwitch/);
+  assert.match(dashboard, /参与调度/);
+  assert.match(dashboard, /ScheduleButton/);
   assert.match(dashboard, /account\.priority \?\? "-"/);
   assert.match(dashboard, /account\.rateMultiplier \?\? "-"/);
   assert.doesNotMatch(dashboard, /优先级 \{account\.priority/);
@@ -177,22 +188,32 @@ function assertAccountsDashboard() {
   assert.doesNotMatch(bindingDialog, /secondary-button min-h-\[3\.25rem\]/);
   assert.match(bindingDialog, /保存绑定/);
   assert.match(bindingDialog, /解除绑定/);
+  assert.match(bindingDialog, /测试失败禁用，成功启用/);
+  assert.match(bindingDialog, /autoManageSchedulable/);
 }
 
-test("schema migration removes schedulable from account snapshots and preserves account data", async () => {
+test("schema migration adds account scheduling columns and preserves account data", async () => {
   const directory = await mkdtemp(join(tmpdir(), "s2a-account-schema-"));
   const database = new DatabaseSync(join(directory, "app.db"));
   try {
     database.exec(`CREATE TABLE target_account_snapshots (
       account_id INTEGER PRIMARY KEY, account_name TEXT NOT NULL, platform TEXT NOT NULL,
-      status TEXT NOT NULL, schedulable INTEGER NOT NULL, rate_multiplier REAL,
+      status TEXT NOT NULL, rate_multiplier REAL,
       priority INTEGER, group_ids_json TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT`);
-    database.prepare("INSERT INTO target_account_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(9, "OpenAI A", "openai", "active", 1, 1.25, 3, "[7]", new Date().toISOString());
+    database.exec(`CREATE TABLE target_account_bindings (
+      account_id INTEGER PRIMARY KEY, source_site_id INTEGER NOT NULL,
+      source_group_id TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT`);
+    database.prepare("INSERT INTO target_account_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(9, "OpenAI A", "openai", "active", 1.25, 3, "[7]", new Date().toISOString());
+    database.prepare("INSERT INTO target_account_bindings VALUES (?, ?, ?, ?)")
+      .run(9, 1, "vip", new Date().toISOString());
     initializeSqliteSchema(database);
-    const columns = database.prepare("PRAGMA table_info(target_account_snapshots)").all() as Array<{ name: string }>;
-    assert.equal(columns.some((column) => column.name === "schedulable"), false);
+    const snapshot = database.prepare("SELECT schedulable FROM target_account_snapshots").get() as { schedulable: number };
+    const binding = database.prepare("SELECT auto_manage_schedulable FROM target_account_bindings").get() as { auto_manage_schedulable: number };
+    assert.equal(snapshot.schedulable, 1);
+    assert.equal(binding.auto_manage_schedulable, 0);
     assert.equal(tableExists(database, "target_account_bindings"), true);
     assert.equal(tableExists(database, "target_account_test_results"), true);
     assert.equal((database.prepare("SELECT account_name FROM target_account_snapshots").get() as { account_name: string }).account_name, "OpenAI A");
@@ -209,9 +230,11 @@ function tableExists(database: DatabaseSync, table: string) {
 function createAccountRemote() {
   let getRequests = 0;
   let testRequests = 0;
+  const scheduleRequests: boolean[] = [];
   return {
     getRequests: () => getRequests,
     getTestRequests: () => testRequests,
+    getScheduleRequests: () => scheduleRequests,
     handler: async (request: IncomingMessage, response: ServerResponse) => {
       assert.equal(request.headers["x-api-key"], "target-key");
       if (request.method === "GET" && request.url === "/api/v1/admin/accounts?page=1&page_size=1000") {
@@ -227,17 +250,23 @@ function createAccountRemote() {
           { type: "test_complete", success: true },
         ]);
       }
+      if (request.method === "POST" && request.url === "/api/v1/admin/accounts/9/schedulable") {
+        const body = await readJson(request) as { schedulable?: unknown };
+        assert.equal(typeof body.schedulable, "boolean");
+        scheduleRequests.push(body.schedulable as boolean);
+        return json(response, { data: { schedulable: body.schedulable } });
+      }
       return json(response, { message: "not found" }, 404);
     },
   };
 }
 
 function remoteAccount(id = 9) {
-  return { id, name: id === 9 ? "OpenAI A" : `OpenAI ${id}`, platform: "openai", status: "active", rate_multiplier: 1.25, priority: 3, account_groups: [{ group_id: 7 }] };
+  return { id, name: id === 9 ? "OpenAI A" : `OpenAI ${id}`, platform: "openai", status: "active", schedulable: true, rate_multiplier: 1.25, priority: 3, account_groups: [{ group_id: 7 }] };
 }
 
 function account() {
-  return { id: 9, name: "OpenAI A", platform: "openai", status: "active", rateMultiplier: 1.25, priority: 3, groupIds: [7] };
+  return { id: 9, name: "OpenAI A", platform: "openai", status: "active", schedulable: true, rateMultiplier: 1.25, priority: 3, groupIds: [7] };
 }
 
 async function withServer<T>(handler: (request: IncomingMessage, response: ServerResponse) => void, task: (baseUrl: string) => Promise<T>) {

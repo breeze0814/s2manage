@@ -3,6 +3,7 @@ export type TargetAccountView = {
   readonly name: string;
   readonly platform: string;
   readonly status: string;
+  readonly schedulable: boolean;
   readonly rateMultiplier: number | null;
   readonly priority: number | null;
   readonly groupIds: readonly number[];
@@ -10,7 +11,11 @@ export type TargetAccountView = {
   readonly lastTest: AccountTestState | null;
 };
 
-export type AccountSourceBinding = { readonly sourceSiteId: number; readonly sourceGroupId: string };
+export type AccountSourceBinding = {
+  readonly sourceSiteId: number;
+  readonly sourceGroupId: string;
+  readonly autoManageSchedulable: boolean;
+};
 export type AccountTestState = {
   readonly status: "available" | "unavailable" | "error";
   readonly message: string;

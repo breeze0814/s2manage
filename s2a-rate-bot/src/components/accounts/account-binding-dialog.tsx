@@ -1,6 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
+import * as Switch from "@radix-ui/react-switch";
 import { Loader2, Pencil, Save, Unlink, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Select, type SelectOption } from "../ui/select";
@@ -17,7 +18,7 @@ type BindingDialogProps = Readonly<{
   onSave: (binding: AccountSourceBinding | null) => Promise<boolean>;
 }>;
 
-type BindingDraft = Readonly<{ sourceSiteId: string; sourceGroupId: string }>;
+type BindingDraft = Readonly<{ sourceSiteId: string; sourceGroupId: string; autoManageSchedulable: boolean }>;
 
 export function AccountBindingDialog(input: BindingDialogProps) {
   const [open, setOpen] = useState(false);
@@ -94,17 +95,33 @@ function BindingForm({ input, draft, selectedRates, binding, onDraftChange, onSu
     <div className="space-y-5 overflow-y-auto bg-background/40 px-5 py-5 sm:px-6">
       <BindingField step="1" label="采集渠道">
         <Select ariaLabel="采集渠道" value={draft.sourceSiteId} options={siteOptions(input.sites, input.account.binding)}
-          disabled={input.pending} onValueChange={(sourceSiteId) => onDraftChange({ sourceSiteId, sourceGroupId: UNSELECTED })} />
+          disabled={input.pending} onValueChange={(sourceSiteId) => onDraftChange({ ...draft, sourceSiteId, sourceGroupId: UNSELECTED })} />
       </BindingField>
       <BindingField step="2" label="采集分组">
         <Select ariaLabel="采集分组" value={draft.sourceGroupId} options={groupOptions(selectedRates, draft.sourceSiteId)}
           disabled={input.pending || draft.sourceSiteId === UNSELECTED || selectedRates.length === 0}
           onValueChange={(sourceGroupId) => onDraftChange({ ...draft, sourceGroupId })} />
       </BindingField>
+      <BindingAutomationField accountId={input.account.id} enabled={draft.autoManageSchedulable}
+        onChange={(autoManageSchedulable) => onDraftChange({ ...draft, autoManageSchedulable })} />
     </div>
     <BindingActions bound={Boolean(input.account.binding)} pending={input.pending} saveDisabled={!binding || unchanged}
       onClear={onClear} />
   </form>;
+}
+
+function BindingAutomationField({ accountId, enabled, onChange }: Readonly<{ accountId: number; enabled: boolean; onChange: (value: boolean) => void }>) {
+  const controlId = `account-test-scheduling-${accountId}`;
+  return <label htmlFor={controlId} className="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-surface-muted/40 px-3">
+    <div>
+      <p className="text-sm font-medium">测试失败禁用，成功启用</p>
+      <p className="mt-0.5 text-xs font-normal text-muted">请求错误按失败处理</p>
+    </div>
+    <Switch.Root id={controlId} aria-label="测试结果自动启停调度" checked={enabled} onCheckedChange={onChange}
+      className="h-6 w-11 shrink-0 rounded-full bg-border-strong p-0.5 data-[state=checked]:bg-primary">
+      <Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" />
+    </Switch.Root>
+  </label>;
 }
 
 function BindingField({ step, label, children }: Readonly<{ step: string; label: string; children: React.ReactNode }>) {
@@ -154,8 +171,12 @@ function bindingDisplay(binding: AccountSourceBinding | null, rates: readonly Ac
   const rate = rates.find((item) => item.sourceSiteId === binding.sourceSiteId && item.groupId === binding.sourceGroupId);
   const siteName = sites.find((site) => site.id === binding.sourceSiteId)?.name ?? `渠道 #${binding.sourceSiteId}`;
   return rate
-    ? { primary: rate.groupName, secondary: `${siteName} · ×${formatRate(rate.effectiveRate)}` }
-    : { primary: binding.sourceGroupId, secondary: `${siteName} · 已失效` };
+    ? { primary: rate.groupName, secondary: `${siteName} · ×${formatRate(rate.effectiveRate)}${automationLabel(binding)}` }
+    : { primary: binding.sourceGroupId, secondary: `${siteName} · 已失效${automationLabel(binding)}` };
+}
+
+function automationLabel(binding: AccountSourceBinding) {
+  return binding.autoManageSchedulable ? " · 自动启停" : "";
 }
 
 function ratesForSite(rates: readonly AccountSourceRate[], sourceSiteId: string) {
@@ -166,17 +187,18 @@ function ratesForSite(rates: readonly AccountSourceRate[], sourceSiteId: string)
 function bindingFromDraft(draft: BindingDraft, rates: readonly AccountSourceRate[]): AccountSourceBinding | null {
   const sourceSiteId = Number(draft.sourceSiteId);
   if (!Number.isInteger(sourceSiteId) || !rates.some((rate) => rate.groupId === draft.sourceGroupId)) return null;
-  return { sourceSiteId, sourceGroupId: draft.sourceGroupId };
+  return { sourceSiteId, sourceGroupId: draft.sourceGroupId, autoManageSchedulable: draft.autoManageSchedulable };
 }
 
 function draftFromBinding(binding: AccountSourceBinding | null): BindingDraft {
   return binding
-    ? { sourceSiteId: String(binding.sourceSiteId), sourceGroupId: binding.sourceGroupId }
-    : { sourceSiteId: UNSELECTED, sourceGroupId: UNSELECTED };
+    ? { sourceSiteId: String(binding.sourceSiteId), sourceGroupId: binding.sourceGroupId, autoManageSchedulable: binding.autoManageSchedulable }
+    : { sourceSiteId: UNSELECTED, sourceGroupId: UNSELECTED, autoManageSchedulable: false };
 }
 
 function sameBinding(left: AccountSourceBinding | null, right: AccountSourceBinding | null) {
-  return left?.sourceSiteId === right?.sourceSiteId && left?.sourceGroupId === right?.sourceGroupId;
+  return left?.sourceSiteId === right?.sourceSiteId && left?.sourceGroupId === right?.sourceGroupId
+    && left?.autoManageSchedulable === right?.autoManageSchedulable;
 }
 
 function formatRate(value: number) { return Number(value.toFixed(4)).toString(); }
