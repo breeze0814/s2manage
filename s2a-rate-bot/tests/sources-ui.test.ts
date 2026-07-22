@@ -26,7 +26,9 @@ test("source dashboard distinguishes remote collection from local page reload", 
 
 test("source site management uses a blocking Dialog with complete lifecycle actions", () => {
   const dialog = source("src/components/sources/source-site-dialog.tsx");
+  const dashboard = source("src/components/sources/sources-dashboard.tsx");
   const table = source("src/components/sources/source-site-table.tsx");
+  const packageJson = source("package.json");
 
   assert.match(dialog, /@radix-ui\/react-dialog/);
   assert.match(dialog, /sub2api/);
@@ -56,19 +58,32 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(table, /target="_blank"/);
   assert.match(table, /rel="noopener noreferrer"/);
   assert.match(table, /未配置官网/);
+  assert.match(packageJson, /@radix-ui\/react-context-menu/);
+  assert.match(table, /@radix-ui\/react-context-menu/);
+  assert.match(table, /<ContextMenu\.Trigger asChild>/);
+  assert.match(table, /<ContextMenu\.Content/);
+  assert.match(table, /<ContextMenu\.Separator/);
+  assert.match(table, /onOpenChange=\{\(open\) => \{ if \(open\) props\.onSelect\(site\.id\); \}\}/);
+  assert.match(table, /data-\[state=open\]:border-primary/);
+  assert.match(table, /data-\[state=open\]:bg-primary\/5/);
+  assert.match(table, /text-danger data-\[highlighted\]:bg-danger\/10/);
   assert.match(table, /TypeTag/);
   assert.match(table, /SiteMeta/);
   assert.match(table, /充值 ×/);
   assert.doesNotMatch(table, /账号认证/);
   assert.doesNotMatch(table, /intervalSeconds/);
-  assert.match(table, /size-11[\s\S]*xl:size-9/);
-  assert.match(table, /grid gap-2\.5 border-t border-border pt-3/);
-  assert.match(table, /w-full shrink-0 justify-end gap-1\.5/);
+  assert.doesNotMatch(table, /ActionButtons|IconButton|SITE_ACTION_CLASS/);
+  assert.match(table, /grid gap-3/);
+  assert.match(table, /rounded-lg border bg-surface/);
+  assert.match(table, /border-primary bg-primary\/5 ring-1 ring-primary\/20/);
+  assert.match(table, /border-border-strong hover:border-primary\/40/);
+  assert.doesNotMatch(table, /divide-y|border-l-/);
+  assert.match(table, /border-t border-border pt-3/);
   assert.match(table, /role="listbox"/);
   assert.match(table, /role="option"/);
   assert.match(table, /aria-selected=\{props\.selected\}/);
-  assert.match(table, /border-l-primary bg-primary\/5/);
-  assert.match(table, /border-l-2 border-l-border-strong/);
+  assert.match(dashboard, /<section className="min-w-0" aria-labelledby="source-sites-title">/);
+  assert.doesNotMatch(dashboard, /<section className="panel min-w-0 overflow-hidden" aria-labelledby="source-sites-title">/);
   assert.doesNotMatch(table, /border-l-transparent/);
   assert.match(table, /余额/);
   assert.match(dialog, /bg-black\/60/);
@@ -93,7 +108,7 @@ test("aggregated source rate table combines group and site in one column", () =>
   assert.doesNotMatch(dashboard, /view\.sites\[0\]\?\.id/);
   assert.match(table, /展示全部/);
   assert.match(table, /matchesSite/);
-  assert.match(dashboard, /xl:grid-cols-\[minmax\(360px,0\.8fr\)_minmax\(0,1\.7fr\)\]/);
+  assert.match(dashboard, /xl:grid-cols-\[minmax\(320px,400px\)_minmax\(0,1fr\)\]/);
   assert.doesNotMatch(dashboard, /lg:grid-cols-/);
   assert.match(table, /采集站/);
   assert.match(table, /分组/);

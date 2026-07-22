@@ -16,10 +16,10 @@ export function SourcesDashboard() {
   return (
     <section className="page-stack">
       <DashboardHeader actions={<SourceActions bulkPending={view.bulkPending} onCreate={() => view.openDialog(null)} onRefreshAll={view.refreshAll} />} />
-      <div data-source-split-layout className="grid items-start gap-5 xl:grid-cols-[minmax(360px,0.8fr)_minmax(0,1.7fr)]">
-        <section className="panel min-w-0 overflow-hidden" aria-labelledby="source-sites-title">
-          <div className="panel-header"><div><h2 id="source-sites-title" className="panel-title">采集站</h2><p className="panel-description">管理认证、运行状态和单站刷新。</p></div><span className="whitespace-nowrap text-xs text-muted">共 {view.sites.length} 个站点</span></div>
-          <div className="p-3 sm:p-4"><SourceSiteTable sites={view.sites} selectedSiteId={activeSiteId} pendingId={view.pendingId} onSelect={setSelectedSiteId} onRefresh={view.refreshSite} onEdit={view.openDialog} onDelete={view.deleteSite} /></div>
+      <div data-source-split-layout className="grid items-start gap-5 xl:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
+        <section className="min-w-0" aria-labelledby="source-sites-title">
+          <div className="mb-3 flex min-h-12 items-start justify-between gap-4"><div><h2 id="source-sites-title" className="panel-title">采集站</h2><p className="panel-description">管理认证、运行状态和单站刷新。</p></div><span className="whitespace-nowrap pt-1 text-xs text-muted">共 {view.sites.length} 个站点</span></div>
+          <SourceSiteTable sites={view.sites} selectedSiteId={activeSiteId} pendingId={view.pendingId} onSelect={setSelectedSiteId} onRefresh={view.refreshSite} onEdit={view.openDialog} onDelete={view.deleteSite} />
         </section>
         <SourceRatesTable rates={view.rates} sites={view.sites} selectedSiteId={activeSiteId} platformPending={view.platformPending} search={view.search} onSearch={view.setSearch} onPlatformChange={view.setRatePlatform} onShowAll={() => setSelectedSiteId(null)} />
       </div>
