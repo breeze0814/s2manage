@@ -19,7 +19,7 @@ export function EnabledField({ name, enabled, onChange }: Readonly<{
   enabled: boolean;
   onChange: (value: boolean) => void;
 }>) {
-  return <div className="flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-muted/40 px-3">
+  return <div className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface-muted/40 px-3">
     <div><p className="text-sm font-medium">启用倍率规则</p><p className="text-xs text-muted">关闭后将无法预览或应用此规则。</p></div>
     <Switch.Root aria-label={`${name}规则启用状态`} checked={enabled} onCheckedChange={onChange}
       className="h-6 w-11 rounded-full bg-border-strong p-0.5 data-[state=checked]:bg-primary">

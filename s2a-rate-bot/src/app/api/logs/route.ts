@@ -4,12 +4,14 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { AuthRequiredError, requireAuthenticatedRequest } from "../../../server/auth/route-support";
 import { BUSINESS_LOG_FILES } from "../../../server/logging/business-logger";
-import { parseJsonLogTail } from "../../../server/logging/log-reader";
+import { filterRecentLogEntries, parseJsonLogTail } from "../../../server/logging/log-reader";
 
 export const runtime = "nodejs";
 const LOG_DIRECTORY = resolve(process.cwd(), "logs");
 const MAX_LOG_BYTES = 500_000;
 const MAX_ENTRIES = 500;
+const LOG_RETENTION_DAYS = 2;
+const DAYS_TO_MS = 24 * 60 * 60 * 1_000;
 type LogType = keyof typeof BUSINESS_LOG_FILES;
 
 export async function GET(request: NextRequest) {
@@ -30,7 +32,11 @@ async function readBusinessLog(type: LogType) {
     const info = await stat(path);
     const content = await readFile(path);
     const start = Math.max(0, content.length - MAX_LOG_BYTES);
-    const entries = parseJsonLogTail(content.subarray(start), { truncatedAtStart: start > 0 });
+    const cutoff = Date.now() - LOG_RETENTION_DAYS * DAYS_TO_MS;
+    const entries = filterRecentLogEntries(
+      parseJsonLogTail(content.subarray(start), { truncatedAtStart: start > 0 }),
+      cutoff,
+    );
     return { type, file, size: info.size, modifiedAt: info.mtime.toISOString(), entries: entries.slice(-MAX_ENTRIES).reverse() };
   } catch (error) {
     if (isMissingFile(error)) return { type, file, size: 0, modifiedAt: null, entries: [] };

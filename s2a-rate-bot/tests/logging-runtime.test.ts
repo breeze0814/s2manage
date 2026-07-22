@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parseJsonLogTail } from "../src/server/logging/log-reader.ts";
+import { filterRecentLogEntries, parseJsonLogTail } from "../src/server/logging/log-reader.ts";
 import { readHeartbeatStatus, writeHeartbeatSnapshot } from "../src/server/worker/heartbeat.ts";
 
 test("log tail skips byte-boundary fragments and an actively appended final fragment", () => {
@@ -23,6 +23,16 @@ test("log tail skips byte-boundary fragments and an actively appended final frag
 test("log tail still exposes malformed complete JSON entries", () => {
   const content = Buffer.from('{"id":1}\nnot-json\n');
   assert.throws(() => parseJsonLogTail(content, { truncatedAtStart: false }), /日志第 2 行不是有效 JSON/);
+});
+
+test("log retention keeps only entries at or after the two-day cutoff", () => {
+  const entries = [
+    { timestamp: "2026-07-12T11:59:59.999Z", event: "expired" },
+    { timestamp: "2026-07-12T12:00:00.000Z", event: "boundary" },
+    { timestamp: "2026-07-14T12:00:00.000Z", event: "recent" },
+  ];
+  assert.deepEqual(filterRecentLogEntries(entries, new Date("2026-07-12T12:00:00.000Z").getTime()), entries.slice(1));
+  assert.throws(() => filterRecentLogEntries([{ timestamp: "invalid" }], 0), /日志时间戳无效/);
 });
 
 test("heartbeat snapshots always leave a complete JSON document", async () => {

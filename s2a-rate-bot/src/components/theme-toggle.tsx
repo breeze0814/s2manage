@@ -26,7 +26,7 @@ export function ThemeToggle() {
       aria-label="切换明暗主题"
       aria-pressed={dark}
       onClick={toggle}
-      className="icon-button bg-surface-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+      className="icon-button bg-surface-muted text-foreground"
     >
       {dark ? <Sun className="size-4" aria-hidden="true" /> : <Moon className="size-4" aria-hidden="true" />}
     </button>

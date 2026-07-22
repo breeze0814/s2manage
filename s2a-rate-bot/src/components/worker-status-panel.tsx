@@ -28,7 +28,7 @@ export function WorkerStatusPanel() {
   const [failed, setFailed] = useState(false);
   useEffect(() => { void loadWorkerStatus({ setRun, setLoading, setFailed }); }, []);
   return (
-    <section className="space-y-4 rounded-xl border border-border bg-surface-muted/60 p-4" aria-labelledby="worker-status-title">
+    <section className="space-y-4 border-t border-border pt-4" aria-labelledby="worker-status-title">
       <div className="flex items-center justify-between gap-3">
         <div><h3 id="worker-status-title" className="text-sm font-semibold text-foreground">最近运行</h3><p className="text-xs text-muted">来自 Worker 持久化运行摘要。</p></div>
         <button type="button" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setFailed })} disabled={loading} className="icon-button">
@@ -55,7 +55,7 @@ function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
         <Metric label="通知跳过" value={run.skippedNotifications} />
         <Metric label="通知失败" value={run.failedNotifications} />
       </dl>
-      {run.errors.length ? <ul className="space-y-1 text-xs text-red-700 dark:text-red-300">{run.errors.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}</ul> : null}
+      {run.errors.length ? <ul className="space-y-1 text-xs text-danger">{run.errors.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}</ul> : null}
     </div>
   );
 }

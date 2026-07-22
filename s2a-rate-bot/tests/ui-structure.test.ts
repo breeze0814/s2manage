@@ -81,23 +81,22 @@ test("browser tab uses a compact theme-aligned SVG icon", () => {
   assert.doesNotMatch(icon, /<text/);
 });
 
-test("top-level page titles use consistent English and Chinese pairs", () => {
+test("top-level page titles use consistent Chinese hierarchy", () => {
   const titles = [
-    ["src/components/home/home-dashboard.tsx", "System Overview", "系统概览"],
-    ["src/components/groups/groups-dashboard.tsx", "Rate Groups", "分组倍率"],
-    ["src/components/sources/sources-dashboard.tsx", "Rate Sources", "倍率采集"],
-    ["src/components/accounts/accounts-dashboard.tsx", "Account Pool", "号池管理"],
-    ["src/components/logs/logs-dashboard.tsx", "System Logs", "系统日志"],
-    ["src/components/settings-form.tsx", "Global Settings", "全局配置"],
+    ["src/components/home/home-dashboard.tsx", "系统概览", "采集站、目标分组、倍率变化与 Worker 运行状态"],
+    ["src/components/groups/groups-dashboard.tsx", "分组倍率", "配置目标分组绑定、计算规则与应用状态"],
+    ["src/components/sources/sources-dashboard.tsx", "倍率采集", "管理采集站与最近一次成功倍率快照"],
+    ["src/components/accounts/accounts-dashboard.tsx", "账号调度", "查看账号状态、倍率绑定与调度可用性"],
+    ["src/components/logs/logs-dashboard.tsx", "系统日志", "外部 API 调用与 Worker 执行记录"],
+    ["src/components/settings-form.tsx", "全局配置", "目标站、代理、Worker 与 Telegram 通知设置"],
   ] as const;
 
-  for (const [path, english, chinese] of titles) {
+  for (const [path, title, description] of titles) {
     const component = source(path);
-    assert.match(component, new RegExp(`page-heading[^>]*>${english}<`));
-    assert.match(component, new RegExp(`page-description[^>]*>${chinese}<`));
+    assert.match(component, new RegExp(`page-heading[^>]*>${title}<`));
+    assert.match(component, new RegExp(`page-description[^>]*>${description}<`));
   }
   const settingsDialog = source("src/components/settings-dialog.tsx");
-  assert.match(settingsDialog, /Global Settings/);
   assert.match(settingsDialog, /全局配置/);
 });
 
@@ -112,13 +111,35 @@ test("responsive shell uses a Vercel-style top navigation without horizontal pag
   assert.match(shell, /justify-self-center/);
   assert.match(shell, /justify-self-end/);
   assert.ok((shell.match(/max-w-screen-2xl/g) ?? []).length >= 2);
-  assert.match(shell, /md:grid/);
-  assert.match(shell, /md:hidden/);
+  assert.match(shell, /lg:grid/);
+  assert.match(shell, /lg:hidden/);
   assert.match(shell, /overflow-x-auto/);
   assert.doesNotMatch(shell, /fixed inset-x-0 bottom-0/);
 });
 
-test("warm stone themes expose semantic tokens before hydration", () => {
+test("desktop pages share a stable heading and data layout", () => {
+  const styles = source("src/app/globals.css");
+  const accounts = source("src/components/accounts/accounts-dashboard.tsx");
+  const groups = source("src/components/groups/group-rule-table.tsx");
+  const rates = source("src/components/sources/source-rates-table.tsx");
+  const settings = source("src/components/settings-form.tsx");
+  const navigation = source("src/components/settings-navigation.tsx");
+
+  assert.match(styles, /\.page-header[\s\S]*lg:flex-row/);
+  assert.match(styles, /\.page-actions[\s\S]*lg:justify-end/);
+  assert.match(accounts, /lg:grid-cols-2 xl:hidden/);
+  assert.match(accounts, /xl:block[\s\S]*min-w-\[1180px\]/);
+  assert.match(groups, /min-w-\[960px\]/);
+  assert.match(styles, /\.data-table-sticky thead th[\s\S]*sticky top-0/);
+  assert.match(styles, /\.sticky-action-cell[\s\S]*sticky right-0/);
+  for (const table of [accounts, groups, rates]) assert.match(table, /data-table-sticky/);
+  assert.match(rates, /embedded-table-viewport/);
+  assert.match(settings, /max-w-6xl/);
+  assert.match(settings, /lg:grid-cols-\[240px_minmax\(0,1fr\)\]/);
+  assert.match(navigation, /lg:sticky lg:top-24/);
+});
+
+test("warm themes expose semantic tokens before hydration", () => {
   const styles = source("src/app/globals.css");
   const tailwind = source("tailwind.config.ts");
   const layout = source("src/app/layout.tsx");
@@ -126,10 +147,12 @@ test("warm stone themes expose semantic tokens before hydration", () => {
   assert.match(styles, /--background:\s*240 235 227/);
   assert.match(styles, /\.dark\s*\{[\s\S]*--background:\s*12 10 9/);
   assert.match(styles, /--primary:\s*249 156 0/);
+  assert.match(styles, /--primary-strong:\s*146 81 0/);
+  assert.match(tailwind, /"primary-strong":\s*"rgb\(var\(--primary-strong\) \/ <alpha-value>\)"/);
   assert.match(tailwind, /surface:\s*"rgb\(var\(--surface\) \/ <alpha-value>\)"/);
   assert.match(layout, /localStorage\.getItem\("s2a-rate-theme"\)/);
   assert.match(layout, /prefers-color-scheme:\s*dark/);
-  assert.match(styles, /page-description[\s\S]*text-foreground\/65/);
+  assert.match(styles, /page-description[\s\S]*text-muted/);
 });
 
 test("application shell exposes an accessible persisted theme toggle", () => {

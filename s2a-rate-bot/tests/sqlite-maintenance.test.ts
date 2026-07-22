@@ -10,6 +10,7 @@ import { createSqliteMaintenance } from "../src/storage/sqlite-maintenance.ts";
 
 const NOW = new Date("2026-07-14T12:00:00.000Z");
 const OLD_TIMESTAMP = "2026-06-01T00:00:00.000Z";
+const RECENT_TIMESTAMP = "2026-07-13T12:00:00.000Z";
 
 test("scheduled SQLite maintenance removes expired history and keeps recent records", async () => {
   const directory = await mkdtemp(join(tmpdir(), "s2a-maintenance-"));
@@ -18,11 +19,12 @@ test("scheduled SQLite maintenance removes expired history and keeps recent reco
   try {
     seedCollectionHistory(databaseUrl);
     seedWorkerHistory(databaseUrl);
+    seedAccountTestHistory(databasePath);
     ageFirstHistoryRecords(databasePath);
 
     const maintenance = createSqliteMaintenance(databaseUrl);
     const result = maintenance.runIfDue(NOW);
-    assert.deepEqual(result, { collectionRuns: 1, workerRuns: 1, cutoff: "2026-06-14T12:00:00.000Z" });
+    assert.deepEqual(result, { collectionRuns: 1, workerRuns: 1, accountTestResults: 1, cutoff: "2026-07-12T12:00:00.000Z" });
     assert.equal(maintenance.runIfDue(NOW), null);
     maintenance.close();
 
@@ -30,6 +32,9 @@ test("scheduled SQLite maintenance removes expired history and keeps recent reco
     assert.equal(count(database, "collection_runs"), 1);
     assert.equal(count(database, "collection_rate_changes"), 1);
     assert.equal(count(database, "worker_runs"), 1);
+    assert.equal(count(database, "target_account_test_results"), 1);
+    assert.equal(count(database, "collection_sites"), 1);
+    assert.equal(count(database, "collection_group_rates"), 1);
     database.close();
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -42,6 +47,17 @@ function seedCollectionHistory(databaseUrl: string) {
   store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 1), startedAt: OLD_TIMESTAMP });
   store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 2), startedAt: NOW.toISOString() });
   store.close();
+}
+
+function seedAccountTestHistory(databasePath: string) {
+  const database = new DatabaseSync(databasePath);
+  database.prepare(`INSERT INTO target_account_test_results
+    (account_id, status, message, latency_ms, model, tested_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(1, "available", "old", 10, "model", OLD_TIMESTAMP);
+  database.prepare(`INSERT INTO target_account_test_results
+    (account_id, status, message, latency_ms, model, tested_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(2, "available", "recent", 10, "model", RECENT_TIMESTAMP);
+  database.close();
 }
 
 function seedWorkerHistory(databaseUrl: string) {

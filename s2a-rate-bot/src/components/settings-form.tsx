@@ -56,21 +56,21 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
     void saveSettings({ form, setForm, setPending, onSaved });
   };
   if (loading) return <LoadingSettings presentation={presentation} />;
-  const fields = <div className="space-y-5"><SettingsNavigation active={section} onChange={setSection} /><div className="min-w-0">{sectionPanel({ section, form, update, pending, setPending })}</div></div>;
+  const panel = sectionPanel({ section, form, update, pending, setPending });
   if (presentation === "dialog") {
     return (
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
-        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6">{fields}</div>
+        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6"><SettingsNavigation active={section} onChange={setSection} /><div className="min-w-0">{panel}</div></div>
         <ActionBar compact pending={pending} onTest={() => { void testTarget({ setPending }); }} />
       </form>
     );
   }
   return (
     <section className="page-stack">
-      <header><h1 className="page-heading">Global Settings</h1><p className="page-description">全局配置</p></header>
-      <form className="space-y-5" onSubmit={submit}>
-        {fields}
-        <ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} />
+      <header className="page-header"><div><h1 className="page-heading">全局配置</h1><p className="page-description">目标站、代理、Worker 与 Telegram 通知设置</p></div></header>
+      <form className="grid w-full max-w-6xl items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]" onSubmit={submit}>
+        <SettingsNavigation sidebar active={section} onChange={setSection} />
+        <div className="min-w-0 space-y-5">{panel}<ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} /></div>
       </form>
     </section>
   );
@@ -96,7 +96,7 @@ function TargetFields({ form, update }: SettingsFieldsProps) {
 function ProxyFields({ form, update }: SettingsFieldsProps) {
   return (
     <SettingsCard title="全局代理" description="启用后，目标站和采集站请求统一使用此代理。">
-      <div className="flex min-h-12 items-center justify-between gap-4 rounded-xl border border-border bg-surface-muted/50 px-3">
+      <div className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-border bg-surface-muted/50 px-3">
         <span className="text-sm font-medium text-foreground">启用代理</span>
         <Switch.Root aria-label="启用全局代理" checked={form.proxyEnabled} onCheckedChange={(value) => update("proxyEnabled", value)} className="h-6 w-11 rounded-full bg-border-strong p-0.5 transition-colors data-[state=checked]:bg-primary">
           <Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" />
@@ -125,8 +125,8 @@ function WorkerFields({ form, update }: SettingsFieldsProps) {
 function SettingsCard({ title, description, children }: Readonly<{ title: string; description: string; children: React.ReactNode }>) {
   return (
     <section className="panel overflow-hidden">
-      <div className="border-b border-border bg-surface-muted/40 px-4 py-4 sm:px-5"><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm leading-6 text-muted">{description}</p></div>
-      <div className="space-y-4 p-4 sm:p-5">{children}</div>
+      <div className="border-b border-border bg-surface-muted/40 px-4 py-3.5 lg:px-5"><h2 className="panel-title">{title}</h2><p className="panel-description">{description}</p></div>
+      <div className="space-y-4 p-4 lg:p-5">{children}</div>
     </section>
   );
 }
@@ -146,7 +146,7 @@ function TextInput(input: Readonly<{ value: string; onChange: (value: string) =>
 function ActionBar({ pending, onTest, compact = false }: Readonly<{ pending: PendingAction; onTest: () => void; compact?: boolean }>) {
   const layout = compact
     ? "flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:justify-end sm:px-6"
-    : "sticky bottom-20 z-20 flex flex-col gap-2 rounded-2xl border border-border bg-surface/95 p-3 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end lg:bottom-4";
+    : "sticky bottom-20 z-20 flex flex-col gap-2 rounded-lg border border-border bg-surface/95 p-3 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end lg:bottom-4";
   return (
     <div className={layout}>
       <button type="button" onClick={onTest} disabled={pending !== null} className="secondary-button">

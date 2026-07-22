@@ -21,8 +21,8 @@ export function RateChangePanel({ changes }: Readonly<{ changes: readonly RateCh
     <section className="panel overflow-hidden" aria-labelledby="rate-change-title">
       <div className="panel-header">
         <div>
-          <h2 id="rate-change-title" className="font-semibold">Recent Rate Changes</h2>
-          <p className="mt-1 text-sm text-muted">仅展示最近 24 小时内发现的倍率变化、新增与删除分组。</p>
+          <h2 id="rate-change-title" className="panel-title">最近倍率变化</h2>
+          <p className="panel-description">仅展示最近 24 小时内发现的倍率变化、新增与删除分组。</p>
         </div>
         <Tag>{changes.length} 条变化</Tag>
       </div>
@@ -67,7 +67,7 @@ function RateTransition({ change }: Readonly<{ change: RateChange }>) {
     <div className="flex shrink-0 items-center gap-2 font-mono text-sm font-semibold tabular-nums" aria-label={rateChangeLabel(change)}>
       <span className="text-muted">{formatRate(change.oldRate)}</span>
       <ArrowRight className="size-4 text-muted" aria-hidden="true" />
-      <span className={change.changeType === "deleted" ? "text-red-600 dark:text-red-400" : "text-effective-rate"}>
+      <span className={change.changeType === "deleted" ? "text-danger" : "text-effective-rate"}>
         {change.changeType === "deleted" ? "已删除" : formatRate(change.newRate)}
       </span>
     </div>
@@ -75,12 +75,12 @@ function RateTransition({ change }: Readonly<{ change: RateChange }>) {
 }
 
 function changeState(change: RateChange) {
-  if (change.changeType === "added") return { label: "新增", tone: "success" as const, icon: <CirclePlus className="size-4" />, iconClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" };
-  if (change.changeType === "deleted") return { label: "已删除", tone: "danger" as const, icon: <Trash2 className="size-4" />, iconClass: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" };
+  if (change.changeType === "added") return { label: "新增", tone: "success" as const, icon: <CirclePlus className="size-4" />, iconClass: "bg-success/10 text-success" };
+  if (change.changeType === "deleted") return { label: "已删除", tone: "danger" as const, icon: <Trash2 className="size-4" />, iconClass: "bg-danger/10 text-danger" };
   const increased = (change.newRate ?? 0) > (change.oldRate ?? 0);
   return increased
-    ? { label: "上调", tone: "warning" as const, icon: <TrendingUp className="size-4" />, iconClass: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" }
-    : { label: "下调", tone: "primary" as const, icon: <TrendingDown className="size-4" />, iconClass: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" };
+    ? { label: "上调", tone: "warning" as const, icon: <TrendingUp className="size-4" />, iconClass: "bg-warning/10 text-warning" }
+    : { label: "下调", tone: "primary" as const, icon: <TrendingDown className="size-4" />, iconClass: "bg-info/10 text-info" };
 }
 
 function rateChangeLabel(change: RateChange) {

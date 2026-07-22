@@ -149,14 +149,16 @@ function assertAccountsHook() {
 
 function assertAccountsDashboard() {
   const dashboard = readFileSync(new URL("src/components/accounts/accounts-dashboard.tsx", ROOT), "utf8");
-  assert.match(dashboard, /Account Pool/);
-  assert.match(dashboard, /号池管理/);
+  assert.match(dashboard, /账号调度/);
+  assert.match(dashboard, /查看账号状态、倍率绑定与调度可用性/);
   assert.doesNotMatch(dashboard, /页面读取本地账号快照/);
   assert.match(dashboard, /GroupTag/);
   assert.match(dashboard, /rate_multiplier/);
   assert.doesNotMatch(dashboard, /共 \{accounts\.length\} 个账号/);
-  assert.match(dashboard, /<th>ID<\/th><th>账号<\/th>/);
-  assert.match(dashboard, /<td className="font-mono text-sm tabular-nums text-muted">#\{account\.id\}<\/td>/);
+  assert.match(dashboard, /<th className="text-right">ID<\/th><th>账号<\/th>/);
+  assert.match(dashboard, /<td className="text-right font-mono text-sm tabular-nums text-muted">#\{account\.id\}<\/td>/);
+  assert.match(dashboard, /sticky-action-header/);
+  assert.match(dashboard, /sticky-action-cell/);
   assert.match(dashboard, /刷新账号/);
   assert.match(dashboard, /secondary-button shrink-0/);
   assert.match(dashboard, /CirclePlay/);

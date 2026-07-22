@@ -20,7 +20,7 @@ export function PreviewRate({ draft, rates, currentRate, preview, setPreview }: 
       toast.error(error instanceof Error ? error.message : String(error));
     }
   };
-  return <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-muted/40 p-3">
+  return <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-muted/40 p-3">
     <div><p className="text-sm font-medium">预览倍率</p><p className="mt-1 text-xs text-muted">
       {preview.rate === null ? "使用当前草稿计算，不会保存或应用。" : <>计算结果：<strong className="font-mono text-rate">×{preview.rate}</strong></>}
     </p></div>

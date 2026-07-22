@@ -18,3 +18,13 @@ export function parseJsonLogTail(
     }
   });
 }
+
+export function filterRecentLogEntries(entries: readonly Record<string, unknown>[], cutoff: number) {
+  return entries.filter((entry) => logTimestamp(entry) >= cutoff);
+}
+
+function logTimestamp(entry: Record<string, unknown>) {
+  const timestamp = typeof entry.timestamp === "string" ? new Date(entry.timestamp).getTime() : Number.NaN;
+  if (!Number.isFinite(timestamp)) throw new Error("日志时间戳无效");
+  return timestamp;
+}

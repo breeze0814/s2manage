@@ -3,8 +3,8 @@ import { initializeSqliteSchema } from "./sqlite-schema.ts";
 import { ensureDatabaseDirectory, sqlitePath, transaction } from "./sqlite-utils.ts";
 
 const CLEANUP_META_KEY = "database_cleanup_at";
-const DEFAULT_INTERVAL_HOURS = 24;
-const DEFAULT_RETENTION_DAYS = 30;
+const DEFAULT_INTERVAL_HOURS = 1;
+const DEFAULT_RETENTION_DAYS = 2;
 const HOURS_TO_MS = 60 * 60 * 1_000;
 const DAYS_TO_MS = 24 * HOURS_TO_MS;
 
@@ -16,6 +16,7 @@ export type SqliteMaintenance = {
 export type DatabaseCleanupResult = {
   readonly collectionRuns: number;
   readonly workerRuns: number;
+  readonly accountTestResults: number;
   readonly cutoff: string;
 };
 
@@ -40,7 +41,7 @@ function runIfDue(database: DatabaseSync, input: Readonly<{ now: Date; intervalH
   if (!cleanupDue(database, input.now, input.intervalHours)) return null;
   const cutoff = new Date(input.now.getTime() - input.retentionDays * DAYS_TO_MS).toISOString();
   const result = deleteExpiredHistory(database, cutoff, input.now.toISOString());
-  if (result.collectionRuns + result.workerRuns > 0) compactDatabase(database);
+  if (result.collectionRuns + result.workerRuns + result.accountTestResults > 0) compactDatabase(database);
   return { ...result, cutoff };
 }
 
@@ -55,13 +56,15 @@ function cleanupDue(database: DatabaseSync, now: Date, intervalHours: number) {
 function deleteExpiredHistory(database: DatabaseSync, cutoff: string, cleanedAt: string) {
   let collectionRuns = 0;
   let workerRuns = 0;
+  let accountTestResults = 0;
   transaction(database, () => {
     collectionRuns = Number(database.prepare("DELETE FROM collection_runs WHERE finished_at < ?").run(cutoff).changes);
     workerRuns = Number(database.prepare("DELETE FROM worker_runs WHERE COALESCE(finished_at, started_at) < ?").run(cutoff).changes);
+    accountTestResults = Number(database.prepare("DELETE FROM target_account_test_results WHERE tested_at < ?").run(cutoff).changes);
     database.prepare(`INSERT INTO schema_meta (key, value) VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(CLEANUP_META_KEY, cleanedAt);
   });
-  return { collectionRuns, workerRuns };
+  return { collectionRuns, workerRuns, accountTestResults };
 }
 
 function compactDatabase(database: DatabaseSync) {

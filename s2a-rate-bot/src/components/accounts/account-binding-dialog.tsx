@@ -46,8 +46,8 @@ export function AccountBindingDialog(input: BindingDialogProps) {
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(94vw,560px)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(94vw,560px)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl">
           <BindingHeader accountName={input.account.name} pending={input.pending} />
           <BindingForm input={input} draft={draft} selectedRates={selectedRates} binding={binding}
             onDraftChange={setDraft} onSubmit={(event) => void save(event)} onClear={() => void clear()} />
@@ -75,7 +75,7 @@ function BindingHeader({ accountName, pending }: Readonly<{ accountName: string;
     <Dialog.Title className="text-lg font-semibold">绑定倍率采集分组</Dialog.Title>
     <Dialog.Description className="mt-1 truncate text-sm text-muted" title={accountName}>账号 {accountName} · 配置倍率采集来源</Dialog.Description>
     <Dialog.Close disabled={pending} aria-label="关闭倍率采集绑定弹窗"
-      className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-xl text-muted hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50">
+      className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50">
       <X className="size-4" />
     </Dialog.Close>
   </div>;
@@ -112,7 +112,7 @@ function BindingForm({ input, draft, selectedRates, binding, onDraftChange, onSu
 
 function BindingAutomationField({ accountId, enabled, onChange }: Readonly<{ accountId: number; enabled: boolean; onChange: (value: boolean) => void }>) {
   const controlId = `account-test-scheduling-${accountId}`;
-  return <label htmlFor={controlId} className="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-surface-muted/40 px-3">
+  return <label htmlFor={controlId} className="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-border bg-surface-muted/40 px-3">
     <div>
       <p className="text-sm font-medium">测试失败禁用，成功启用</p>
       <p className="mt-0.5 text-xs font-normal text-muted">请求错误按失败处理</p>
@@ -138,7 +138,7 @@ function BindingActions({ bound, pending, saveDisabled, onClear }: Readonly<{
   onClear: () => void;
 }>) {
   return <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
-    {bound ? <button type="button" disabled={pending} onClick={onClear} className="secondary-button border-red-200 text-red-700 dark:border-red-900 dark:text-red-300">
+    {bound ? <button type="button" disabled={pending} onClick={onClear} className="secondary-button border-danger/30 text-danger hover:bg-danger/10">
       <Unlink className="size-4" />解除绑定
     </button> : <span />}
     <div className="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">

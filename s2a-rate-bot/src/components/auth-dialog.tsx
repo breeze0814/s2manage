@@ -34,12 +34,12 @@ function BlockingDialog({ mode, onAuthenticated }: Readonly<{
   return (
     <Dialog.Root open>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <Dialog.Content
           aria-describedby="auth-description"
           onEscapeKeyDown={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => event.preventDefault()}
-          className="dialog-content-motion fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] rounded-2xl border border-border bg-surface p-5 shadow-2xl sm:p-7"
+          className="dialog-content-motion fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] rounded-lg border border-border bg-surface p-5 shadow-2xl sm:p-7"
         >
           <AuthHeader mode={mode} />
           <AuthBody mode={mode} onAuthenticated={onAuthenticated} />
@@ -54,10 +54,10 @@ function AuthHeader({ mode }: Readonly<{ mode: AuthMode }>) {
   const error = mode === "error";
   return (
     <div className="mb-6 text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
         <LockKeyhole className="size-5" aria-hidden="true" />
       </div>
-      <Dialog.Title className="text-xl font-semibold tracking-tight">{error ? "认证服务不可用" : setup ? "初始化管理员" : "登录 S2A Rate Bot"}</Dialog.Title>
+      <Dialog.Title className="text-xl font-semibold">{error ? "认证服务不可用" : setup ? "初始化管理员" : "登录 S2A Rate Bot"}</Dialog.Title>
       <Dialog.Description id="auth-description" className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted">
         {error ? "后台无法确认当前登录状态。" : setup ? "首次使用需要创建本地管理员账号。" : "登录后管理倍率采集与账号调度。"}
       </Dialog.Description>
@@ -66,7 +66,7 @@ function AuthHeader({ mode }: Readonly<{ mode: AuthMode }>) {
 }
 
 function LoadingAuth() {
-  return <div className="flex min-h-24 items-center justify-center gap-2 rounded-xl bg-surface-muted text-sm text-muted"><Loader2 className="size-4 animate-spin" />正在检查登录状态...</div>;
+  return <div className="flex min-h-24 items-center justify-center gap-2 rounded-lg bg-surface-muted text-sm text-muted"><Loader2 className="size-4 animate-spin" />正在检查登录状态...</div>;
 }
 
 function AuthBody({ mode, onAuthenticated }: Readonly<{
@@ -80,9 +80,9 @@ function AuthBody({ mode, onAuthenticated }: Readonly<{
 
 function AuthFailure() {
   return (
-    <div role="alert" className="space-y-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+    <div role="alert" className="space-y-4 rounded-lg border border-danger/25 bg-danger/10 p-4 text-sm text-danger">
       <p className="leading-6">无法读取登录状态，请检查 APP_SECRET 和数据库配置。</p>
-      <button type="button" onClick={() => window.location.reload()} className="secondary-button w-full border-red-200 bg-transparent">
+      <button type="button" onClick={() => window.location.reload()} className="secondary-button w-full border-danger/30 bg-transparent text-danger hover:bg-danger/10">
         重新加载
       </button>
     </div>

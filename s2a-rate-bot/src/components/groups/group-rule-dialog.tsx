@@ -45,8 +45,8 @@ export function GroupRuleDialog({ group, sites, rates, pending, onSave }: Dialog
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(94vw,920px)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(94vw,920px)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl">
           <DialogHeader name={group.name} />
           <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
             <RuleEditor
@@ -86,12 +86,12 @@ function RuleEditor(input: Readonly<{
     <section>
       <StepHeading step="2" title="配置与预览" description="设置计算规则并确认预览结果。" />
       <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.7fr)]">
-        <div className="rounded-xl border border-border p-4"><RuleFields draft={input.draft} update={input.update} /></div>
+        <div className="rounded-lg border border-border p-4"><RuleFields draft={input.draft} update={input.update} /></div>
         <aside className="space-y-3">
           <EnabledField name={input.group.name} enabled={input.draft.enabled} onChange={(value) => input.update("enabled", value)} />
           <PreviewRate draft={input.draft} rates={input.rates} currentRate={input.group.rate_multiplier}
             preview={input.preview} setPreview={input.setPreview} />
-          {input.group.rule.lastError ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{input.group.rule.lastError}</p> : null}
+          {input.group.rule.lastError ? <p role="alert" className="rounded-lg border border-danger/25 bg-danger/10 px-4 py-3 text-sm text-danger">{input.group.rule.lastError}</p> : null}
         </aside>
       </div>
     </section>
@@ -102,7 +102,7 @@ function DialogHeader({ name }: Readonly<{ name: string }>) {
   return <div className="shrink-0 border-b border-border px-5 py-4 pr-16 sm:px-6">
     <Dialog.Title className="text-lg font-semibold">编辑 {name}</Dialog.Title>
     <Dialog.Description className="mt-1 text-sm text-muted">配置计算规则和参与计算的采集分组。</Dialog.Description>
-    <Dialog.Close aria-label="关闭编辑规则弹窗" className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-xl text-muted hover:bg-surface-muted hover:text-foreground"><X className="size-4" /></Dialog.Close>
+    <Dialog.Close aria-label="关闭编辑规则弹窗" className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-muted hover:text-foreground"><X className="size-4" /></Dialog.Close>
   </div>;
 }
 

@@ -51,8 +51,8 @@ export function SourceSiteDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(96vw,920px)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(96vw,920px)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl">
           <DialogHeader editing={Boolean(site)} />
           <SiteForm form={form} update={update} pending={pending} onSubmit={() => onSave(form)} />
           <Dialog.Close aria-label="关闭" className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-muted hover:text-foreground">
@@ -67,8 +67,8 @@ export function SourceSiteDialog({
 function DialogHeader({ editing }: Readonly<{ editing: boolean }>) {
   return (
     <div className="shrink-0 border-b border-border bg-surface-muted/30 px-5 py-4 pr-16 sm:px-6 sm:py-5">
-      <Dialog.Title className="text-lg font-semibold tracking-tight">{editing ? "Edit Source" : "Add Source"}</Dialog.Title>
-      <Dialog.Description className="mt-1 text-sm leading-6 text-muted">{editing ? "编辑采集站配置" : "添加采集站"} · 配置认证方式与采集策略</Dialog.Description>
+      <Dialog.Title className="text-lg font-semibold">{editing ? "编辑采集站" : "添加采集站"}</Dialog.Title>
+      <Dialog.Description className="mt-1 text-sm leading-6 text-muted">配置访问地址、认证方式与采集策略</Dialog.Description>
     </div>
   );
 }
@@ -108,7 +108,7 @@ function SiteForm({
 }
 
 function SiteMainFields({ form, update }: Readonly<{ form: SourceSiteForm; update: UpdateForm }>) {
-  return <fieldset className="space-y-4 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5">
+  return <fieldset className="space-y-4 rounded-lg border border-border bg-surface p-4">
     <SectionLegend icon={<Database />} title="基本信息" description="采集站名称、类型和访问地址" />
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="站点名称"><Input value={form.name} onChange={(value) => update("name", value)} /></Field>
@@ -123,7 +123,7 @@ function SiteMainFields({ form, update }: Readonly<{ form: SourceSiteForm; updat
       <Input value={form.newApiUserId} onChange={(value) => update("newApiUserId", value)} placeholder="4465" />
     </Field> : null}
     <div className="border-t border-border pt-4">
-      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted">采集策略</p>
+      <p className="mb-3 text-xs font-medium text-muted">采集策略</p>
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)] md:items-end">
         <Field label="充值倍率"><CompactNumberInput required min="0.0001" step="any" suffix="倍" tone="rate" value={form.rechargeRatio} onChange={(value) => update("rechargeRatio", value)} /></Field>
         <Field label="采集间隔"><CompactNumberInput required min="1" step="1" suffix="秒" width="medium" value={form.intervalSeconds} onChange={(value) => update("intervalSeconds", value)} /></Field>
@@ -136,9 +136,9 @@ function SiteMainFields({ form, update }: Readonly<{ form: SourceSiteForm; updat
 
 function AuthMode({ form, update }: Readonly<{ form: SourceSiteForm; update: UpdateForm }>) {
   return (
-    <fieldset className="space-y-4 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5">
+    <fieldset className="space-y-4 rounded-lg border border-border bg-surface p-4">
       <SectionLegend icon={<KeyRound />} title="认证信息" description="选择目标站支持的登录方式" />
-      <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface-muted p-1 text-sm">
+      <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-surface-muted p-1 text-sm">
         <Radio label="账号密码" checked={form.authMode === "password"} onChange={() => update("authMode", "password")} />
         <Radio label="Token" checked={form.authMode === "manual_token"} onChange={() => update("authMode", "manual_token")} />
       </div>
@@ -173,7 +173,7 @@ function Field({ label, hint, children }: Readonly<{ label: string; hint?: strin
   );
 }
 function SectionLegend({ icon, title, description }: Readonly<{ icon: React.ReactNode; title: string; description: string }>) {
-  return <legend className="mb-1 px-2"><span className="flex items-center gap-2 text-sm font-semibold [&>svg]:size-3.5 [&>svg]:text-primary">{icon}{title}</span><span className="mt-0.5 block text-xs font-normal text-muted">{description}</span></legend>;
+  return <legend className="mb-1 px-2"><span className="flex items-center gap-2 text-sm font-semibold [&>svg]:size-3.5 [&>svg]:text-primary-strong">{icon}{title}</span><span className="mt-0.5 block text-xs font-normal text-muted">{description}</span></legend>;
 }
 function Input({
   value,
@@ -206,7 +206,7 @@ function Toggle({
   onChange: (value: boolean) => void;
 }>) {
   return (
-    <div className="flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface px-3">
+    <div className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface px-3">
       <span className="text-sm font-medium">{label}</span>
       <Switch.Root aria-label={label} checked={checked} onCheckedChange={onChange} className="h-6 w-11 rounded-full bg-border-strong p-0.5 transition-colors data-[state=checked]:bg-primary">
         <Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" />

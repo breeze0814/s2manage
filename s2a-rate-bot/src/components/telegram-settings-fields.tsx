@@ -31,7 +31,7 @@ export function TelegramSettingsFields(input: Readonly<{
         <input value={input.value.chatId} onChange={(event) => update("chatId", event.target.value)}
           placeholder="-1001234567890" className="form-control" />
       </TelegramField>
-      <div className="divide-y divide-border rounded-xl border border-border bg-surface-muted/50 px-3">
+      <div className="divide-y divide-border rounded-lg border border-border bg-surface-muted/50 px-3">
         <TelegramSwitch label="每小时推送账户余额" checked={input.value.hourlyBalanceEnabled}
           onChange={(checked) => update("hourlyBalanceEnabled", checked)} />
         <TelegramSwitch label="分组倍率变动推送" checked={input.value.rateChangeEnabled}

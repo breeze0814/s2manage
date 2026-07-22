@@ -27,7 +27,7 @@ test("home dashboard aggregates existing system APIs", () => {
   assert.match(dashboard, /Worker 最近运行/);
   const changes = source("src/components/home/rate-change-panel.tsx");
   const route = source("src/app/api/sources/changes/route.ts");
-  assert.match(changes, /Recent Rate Changes/);
+  assert.match(changes, /最近倍率变化/);
   assert.match(changes, /最近 24 小时/);
   assert.match(route, /CHANGE_WINDOW_MS = 24 \* 60 \* 60 \* 1_000/);
   assert.match(route, /changes\(\{ limit: CHANGE_LIMIT, since \}\)/);
@@ -49,6 +49,12 @@ test("system logs page exposes external API and Worker business logs", () => {
   const worker = source("src/server/worker/runtime.ts");
   assert.match(dashboard, /外部 API/);
   assert.match(dashboard, /Worker 执行记录/);
+  assert.match(dashboard, /LogOverview/);
+  assert.match(dashboard, /SummaryBar/);
+  assert.match(dashboard, /log-list-viewport/);
+  assert.match(dashboard, /时间/);
+  assert.match(dashboard, /耗时/);
+  assert.match(dashboard, /aria-pressed={active}/);
   assert.match(route, /BUSINESS_LOG_FILES/);
   assert.match(route, /MAX_LOG_BYTES = 500_000/);
   assert.match(route, /MAX_ENTRIES = 500/);

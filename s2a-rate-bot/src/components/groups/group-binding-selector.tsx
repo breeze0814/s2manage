@@ -16,7 +16,7 @@ export function BindingSelector({ rates, names, selected, platform, onChange }: 
       绑定采集分组 <Tag><PlatformLabel platform={platform} fallback="未知平台" /></Tag>
       <Tag tone="primary">已选 {selected.length}</Tag>
     </legend>
-    <div className="mt-3 max-h-[25rem] overflow-y-auto rounded-xl border border-border bg-surface">
+    <div className="mt-3 max-h-[25rem] overflow-y-auto rounded-lg border border-border bg-surface">
       {rates.length === 0 ? <p className="p-3 text-sm text-muted">没有相同平台的采集倍率。</p>
         : rates.map((rate) => <BindingRow key={rateKey(rate)} rate={rate} siteName={names.get(rate.sourceSiteId)}
           checked={keys.has(rateKey(rate))} onChange={() => onChange(toggleBinding(selected, toBinding(rate), keys.has(rateKey(rate))))} />)}

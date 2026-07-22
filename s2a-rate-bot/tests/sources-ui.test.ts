@@ -61,13 +61,17 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(table, /充值 ×/);
   assert.doesNotMatch(table, /账号认证/);
   assert.doesNotMatch(table, /intervalSeconds/);
-  assert.match(table, /size-8/);
+  assert.match(table, /size-11[\s\S]*xl:size-9/);
+  assert.match(table, /grid gap-2\.5 border-t border-border pt-3/);
+  assert.match(table, /w-full shrink-0 justify-end gap-1\.5/);
   assert.match(table, /role="listbox"/);
   assert.match(table, /role="option"/);
   assert.match(table, /aria-selected=\{props\.selected\}/);
-  assert.match(table, /border-primary bg-primary\/5/);
+  assert.match(table, /border-l-primary bg-primary\/5/);
+  assert.match(table, /border-l-2 border-l-border-strong/);
+  assert.doesNotMatch(table, /border-l-transparent/);
   assert.match(table, /余额/);
-  assert.match(dialog, /bg-stone-950\/60/);
+  assert.match(dialog, /bg-black\/60/);
   assert.match(dialog, /bg-primary/);
   assert.match(dialog, /CompactNumberInput/);
   assert.match(dialog, /suffix="秒"/);
@@ -83,10 +87,14 @@ test("aggregated source rate table combines group and site in one column", () =>
 
   assert.match(dashboard, /data-source-split-layout/);
   assert.match(dashboard, /selectedSiteId/);
+  assert.match(dashboard, /const activeSiteId = selectedSite\?\.id \?\? null/);
   assert.match(dashboard, /onSelect=\{setSelectedSiteId\}/);
+  assert.match(dashboard, /onShowAll=\{\(\) => setSelectedSiteId\(null\)\}/);
+  assert.doesNotMatch(dashboard, /view\.sites\[0\]\?\.id/);
   assert.match(table, /展示全部/);
   assert.match(table, /matchesSite/);
-  assert.match(dashboard, /lg:grid-cols-\[minmax\(320px,0\.75fr\)_minmax\(0,1\.65fr\)\]/);
+  assert.match(dashboard, /xl:grid-cols-\[minmax\(360px,0\.8fr\)_minmax\(0,1\.7fr\)\]/);
+  assert.doesNotMatch(dashboard, /lg:grid-cols-/);
   assert.match(table, /采集站/);
   assert.match(table, /分组/);
   assert.match(table, /ID \/ 采集站/);
@@ -109,7 +117,10 @@ test("aggregated source rate table combines group and site in one column", () =>
   assert.match(table, /最后采集/);
   assert.match(table, /PlatformLabel/);
   assert.match(table, /PlatformAction/);
-  assert.match(table, /<th className="text-right">操作<\/th>/);
+  assert.match(table, /RateToolbar/);
+  assert.match(table, /aria-label="倍率筛选与排序"/);
+  assert.match(table, /<th className="sticky-action-header">操作<\/th>/);
+  assert.match(table, /<td className="sticky-action-cell">/);
   assert.match(table, /PLATFORM_OPTIONS/);
   assert.match(table, /自动识别/);
   assert.match(table, /onPlatformChange/);
