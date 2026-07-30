@@ -9,6 +9,7 @@ const config: Config = {
         background: "rgb(var(--background) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
         "surface-muted": "rgb(var(--surface-muted) / <alpha-value>)",
+        "surface-elevated": "rgb(var(--surface-elevated) / <alpha-value>)",
         foreground: "rgb(var(--foreground) / <alpha-value>)",
         muted: "rgb(var(--foreground-muted) / <alpha-value>)",
         border: "rgb(var(--border) / <alpha-value>)",
@@ -25,7 +26,9 @@ const config: Config = {
         "balance-value": "rgb(var(--balance) / <alpha-value>)",
       },
       boxShadow: {
-        panel: "0 8px 28px rgb(var(--shadow) / 0.12)",
+        panel: "0 1px 2px rgb(var(--shadow) / 0.04), 0 8px 24px rgb(var(--shadow) / 0.08)",
+        elevated: "0 8px 30px rgb(var(--shadow) / 0.16), 0 2px 8px rgb(var(--shadow) / 0.08)",
+        md: "0 4px 14px rgb(var(--shadow) / 0.1)",
       },
     },
   },

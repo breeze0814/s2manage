@@ -1,6 +1,7 @@
 "use client";
 
 import { Bot, Globe2, RadioTower, ShieldCheck } from "lucide-react";
+import { Button } from "./ui/button";
 
 export type SettingsSection = "target" | "proxy" | "worker" | "telegram";
 
@@ -11,9 +12,22 @@ const ITEMS: readonly { readonly id: SettingsSection; readonly label: string; re
   { id: "telegram", label: "Telegram", description: "推送通知", icon: Bot },
 ];
 
-export function SettingsNavigation(input: Readonly<{ active: SettingsSection; onChange: (section: SettingsSection) => void; sidebar?: boolean }>) {
-  const navigationClass = input.sidebar ? "min-w-0 lg:sticky lg:top-24 lg:border-r lg:border-border lg:pr-5" : "min-w-0";
-  const layout = input.sidebar ? "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-1" : "grid grid-cols-2 gap-2 sm:grid-cols-4";
+export function SettingsNavigation(input: Readonly<{
+  active: SettingsSection;
+  onChange: (section: SettingsSection) => void;
+  sidebar?: boolean;
+  dialogWide?: boolean;
+}>) {
+  const navigationClass = input.sidebar
+    ? "min-w-0 lg:sticky sticky-below-header lg:border-r lg:border-border lg:pr-5"
+    : input.dialogWide
+      ? "min-w-0 2xl:border-r 2xl:border-border 2xl:pr-5"
+      : "min-w-0";
+  const layout = input.sidebar
+    ? "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-1"
+    : input.dialogWide
+      ? "grid grid-cols-2 gap-2 sm:grid-cols-4 2xl:grid-cols-1"
+      : "grid grid-cols-2 gap-2 sm:grid-cols-4";
   return (
     <nav aria-label="全局配置分类" className={navigationClass}>
       <div className={layout}>
@@ -21,12 +35,12 @@ export function SettingsNavigation(input: Readonly<{ active: SettingsSection; on
           const Icon = item.icon;
           const active = item.id === input.active;
           return (
-            <button key={item.id} type="button" aria-current={active ? "page" : undefined} aria-pressed={active}
+            <Button key={item.id} type="button" variant="ghost" aria-current={active ? "page" : undefined} aria-pressed={active}
               onClick={() => input.onChange(item.id)} title={item.description}
-              className={`flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${active ? "bg-primary/15 text-primary-strong" : "text-muted hover:bg-surface-muted hover:text-foreground"}`}>
+              className={`min-h-11 min-w-0 justify-start gap-3 px-3 py-2 text-left ${active ? "border-primary/25 bg-primary/15 text-primary-strong shadow-sm" : "text-muted"}`}>
               <Icon className="size-4 shrink-0" aria-hidden="true" />
               <span className="min-w-0"><span className="block text-sm font-semibold">{item.label}</span><span className="block truncate text-xs opacity-75">{item.description}</span></span>
-            </button>
+            </Button>
           );
         })}
       </div>

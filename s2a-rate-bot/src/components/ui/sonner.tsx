@@ -17,5 +17,23 @@ export function Toaster() {
     return () => observer.disconnect();
   }, []);
 
-  return <Sonner theme={theme} position="top-center" richColors closeButton visibleToasts={4} />;
+  return (
+    <Sonner
+      theme={theme}
+      position="top-center"
+      richColors
+      closeButton
+      visibleToasts={4}
+      toastOptions={{
+        classNames: {
+          toast: "border border-border bg-surface-elevated text-foreground shadow-elevated",
+          title: "text-foreground",
+          description: "text-muted",
+          actionButton: "bg-primary text-primary-foreground",
+          cancelButton: "bg-surface-muted text-muted",
+          closeButton: "border-border bg-surface text-muted",
+        },
+      }}
+    />
+  );
 }

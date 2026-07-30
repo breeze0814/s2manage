@@ -2,6 +2,7 @@
 
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "./ui/button";
 
 const THEME_KEY = "s2a-rate-theme";
 
@@ -21,14 +22,16 @@ export function ThemeToggle() {
   };
 
   return (
-    <button
+    <Button
       type="button"
       aria-label="切换明暗主题"
       aria-pressed={dark}
+      title={dark ? "切换到浅色主题" : "切换到暗色主题"}
       onClick={toggle}
-      className="icon-button bg-surface-muted text-foreground"
+      variant="secondary"
+      size="icon"
     >
       {dark ? <Sun className="size-4" aria-hidden="true" /> : <Moon className="size-4" aria-hidden="true" />}
-    </button>
+    </Button>
   );
 }

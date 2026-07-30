@@ -1,11 +1,13 @@
 import { normalizeRateMultiplier, ratesEqual, toFiniteRate } from "./rates.ts";
 
 export type RateRuleMode = "first" | "average" | "min" | "max" | "avg_formula";
+export type RateAdjustmentMode = "fixed" | "percentage";
 
 export type RateRule = {
   readonly enabled: boolean;
   readonly mode: RateRuleMode;
-  readonly offset: number;
+  readonly adjustmentMode: RateAdjustmentMode;
+  readonly adjustmentValue: number;
   readonly minimum?: number;
   readonly formula?: string;
 };
@@ -70,10 +72,16 @@ export function evaluateRateRule(input: {
   const rates = validSourceRates(input.sourceRates);
   if (rates.length === 0) throw new Error("没有可用于计算的采集源倍率");
   const base = baseRuleRate(input.rule, rates);
-  const adjusted = base + input.rule.offset;
+  const adjusted = adjustRate(base, input.rule);
   const nextRate = normalizeRateMultiplier(Math.max(adjusted, ruleMinimum(input.rule)));
   assertAllowedRate(nextRate);
   return nextRate;
+}
+
+function adjustRate(base: number, rule: RateRule) {
+  const value = rule.adjustmentValue;
+  if (!Number.isFinite(value)) throw new Error("倍率调整值必须是有效数字");
+  return rule.adjustmentMode === "percentage" ? base * (1 + value / 100) : base + value;
 }
 
 function baseRuleRate(rule: RateRule, rates: readonly number[]) {

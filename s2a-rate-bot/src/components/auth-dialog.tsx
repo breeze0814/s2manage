@@ -1,9 +1,12 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 type AuthMode = "loading" | "setup" | "login" | "error" | "ready";
 type AuthStatus = { initialized: boolean; authenticated: boolean };
@@ -32,20 +35,17 @@ function BlockingDialog({ mode, onAuthenticated }: Readonly<{
   onAuthenticated: () => void;
 }>) {
   return (
-    <Dialog.Root open>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
-        <Dialog.Content
+    <Dialog open>
+        <DialogContent
           aria-describedby="auth-description"
           onEscapeKeyDown={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => event.preventDefault()}
-          className="dialog-content-motion fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] rounded-lg border border-border bg-surface p-5 shadow-2xl sm:p-7"
+          className="w-[min(92vw,440px)] p-5 sm:p-7"
         >
           <AuthHeader mode={mode} />
           <AuthBody mode={mode} onAuthenticated={onAuthenticated} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </DialogContent>
+    </Dialog>
   );
 }
 
@@ -54,13 +54,13 @@ function AuthHeader({ mode }: Readonly<{ mode: AuthMode }>) {
   const error = mode === "error";
   return (
     <div className="mb-6 text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-lg border border-primary-strong/15 bg-primary text-primary-foreground shadow-sm">
         <LockKeyhole className="size-5" aria-hidden="true" />
       </div>
-      <Dialog.Title className="text-xl font-semibold">{error ? "认证服务不可用" : setup ? "初始化管理员" : "登录 S2A Rate Bot"}</Dialog.Title>
-      <Dialog.Description id="auth-description" className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted">
+      <DialogTitle className="text-xl font-semibold">{error ? "认证服务不可用" : setup ? "初始化管理员" : "登录 S2A Rate Bot"}</DialogTitle>
+      <DialogDescription id="auth-description" className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted">
         {error ? "后台无法确认当前登录状态。" : setup ? "首次使用需要创建本地管理员账号。" : "登录后管理倍率采集与账号调度。"}
-      </Dialog.Description>
+      </DialogDescription>
     </div>
   );
 }
@@ -82,9 +82,9 @@ function AuthFailure() {
   return (
     <div role="alert" className="space-y-4 rounded-lg border border-danger/25 bg-danger/10 p-4 text-sm text-danger">
       <p className="leading-6">无法读取登录状态，请检查 APP_SECRET 和数据库配置。</p>
-      <button type="button" onClick={() => window.location.reload()} className="secondary-button w-full border-danger/30 bg-transparent text-danger hover:bg-danger/10">
+      <Button type="button" variant="outline" onClick={() => window.location.reload()} className="w-full border-danger/30 text-danger hover:bg-danger/10 hover:text-danger">
         重新加载
-      </button>
+      </Button>
     </div>
   );
 }
@@ -123,10 +123,10 @@ function CredentialsForm({ mode, onAuthenticated }: Readonly<{
     <form className="space-y-4" onSubmit={(event) => { void submit(event); }}>
       <AuthField name="email" label="管理员邮箱" type="email" autoComplete="email" />
       <AuthField name="password" label="密码" type="password" autoComplete={mode === "setup" ? "new-password" : "current-password"} />
-      <button type="submit" disabled={pending} className="primary-button w-full">
+      <Button type="submit" disabled={pending} className="w-full">
         {pending ? <Loader2 className="size-4 animate-spin" /> : null}
         {pending ? "处理中..." : mode === "setup" ? "创建管理员" : "登录"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -139,9 +139,9 @@ function AuthField(input: Readonly<{
 }>) {
   const { label, ...field } = input;
   return (
-    <label className="block space-y-2 text-sm font-medium text-foreground">
+    <Label className="block space-y-2 text-foreground">
       <span>{label}</span>
-      <input required minLength={field.type === "password" ? 6 : undefined} {...field} className="form-control" />
-    </label>
+      <Input required minLength={field.type === "password" ? 6 : undefined} {...field} />
+    </Label>
   );
 }

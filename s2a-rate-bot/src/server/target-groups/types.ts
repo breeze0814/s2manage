@@ -9,8 +9,10 @@ export type TargetGroup = {
 import { TARGET_RULE_VERSION } from "../../core/rule-version.ts";
 
 export type RuleType = "first" | "average" | "min" | "max" | "avg_formula";
+export type AdjustmentMode = "fixed" | "percentage";
 export type RuleParameters = {
-  readonly offset: number;
+  readonly adjustmentMode: AdjustmentMode;
+  readonly adjustmentValue: number;
   readonly minimum: number;
   readonly formula: string;
 };
@@ -28,6 +30,8 @@ export type TargetRule = {
   readonly ruleType: RuleType;
   readonly parameters: RuleParameters;
   readonly currentRate: number | null;
+  readonly lastAppliedFromRate: number | null;
+  readonly lastAppliedToRate: number | null;
   readonly lastAppliedAt: string | null;
   readonly lastError: string | null;
 };

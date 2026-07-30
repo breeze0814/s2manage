@@ -4,21 +4,15 @@ import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
 import { resolveRateUpdate } from "../../core/rate-rule.ts";
 import type { TargetGroupStore } from "./store.ts";
 import type { RuleParameters, SourceBinding, TargetGroup, TargetGroupClient, TargetRule } from "./types.ts";
+import { ruleParametersSchema } from "./rule-parameters.ts";
 
-const parametersSchema = z.object({
-  offset: z.number().finite("偏移必须是有效数字"),
-  minimum: z.number({ invalid_type_error: "计算最小值必须是有效数字" })
-    .finite("计算最小值必须是有效数字")
-    .nonnegative("计算最小值必须大于或等于 0"),
-  formula: z.string().trim().min(1),
-});
 const STALE_SOURCE_BINDING_ERROR = "已删除的采集源分组已自动取消绑定";
 const bindingSchema = z.object({ sourceSiteId: z.number().int().positive(), sourceGroupId: z.string().trim().min(1) });
 export const targetRuleSchema = z.object({
   enabled: z.boolean(),
   ruleVersion: z.number().int().refine((value) => value === TARGET_RULE_VERSION, "不支持的倍率规则版本"),
   ruleType: z.enum(["first", "average", "min", "max", "avg_formula"]),
-  parameters: parametersSchema,
+  parameters: ruleParametersSchema,
   bindings: z.array(bindingSchema),
 }).superRefine((value, context) => {
   if (value.enabled && value.bindings.length === 0) context.addIssue({ code: "custom", message: "启用规则时至少绑定一个采集源分组" });
@@ -76,11 +70,15 @@ async function saveRule(input: TargetDependencies, groupId: number, raw: unknown
   const parsed = targetRuleSchema.parse(raw);
   const group = localGroup(input.store, groupId);
   const reconciliation = reconcileBindings(parsed.bindings, await input.sourceRates());
+  const previousRule = input.store.getRule(groupId);
   const rule: TargetRule = {
     targetGroupId: group.id, targetGroupName: group.name,
     enabled: parsed.enabled && reconciliation.bindings.length > 0,
     ruleVersion: parsed.ruleVersion, ruleType: parsed.ruleType, parameters: parsed.parameters,
-    currentRate: group.rate_multiplier ?? null, lastAppliedAt: input.store.getRule(groupId)?.lastAppliedAt ?? null,
+    currentRate: group.rate_multiplier ?? null,
+    lastAppliedFromRate: previousRule?.lastAppliedFromRate ?? null,
+    lastAppliedToRate: previousRule?.lastAppliedToRate ?? null,
+    lastAppliedAt: previousRule?.lastAppliedAt ?? null,
     lastError: reconciliation.removed ? STALE_SOURCE_BINDING_ERROR : null,
   };
   input.store.saveRule(rule, reconciliation.bindings);
@@ -105,7 +103,7 @@ async function applyRule(input: TargetDependencies, groupId: number) {
     if (decision.action === "skip") return decision;
     const updated = await input.client.updateGroupRate(groupId, decision.nextRate);
     input.store.saveGroup(updated);
-    input.store.recordApplied(groupId, updated.rate_multiplier ?? decision.nextRate);
+    input.store.recordApplied(groupId, decision.currentRate, updated.rate_multiplier ?? decision.nextRate);
     return decision;
   } catch (error) {
     input.store.recordError(groupId, error instanceof Error ? error.message : String(error));
@@ -141,10 +139,17 @@ function groupView(store: TargetGroupStore, group: TargetGroup): TargetGroupView
 }
 
 function defaultRule(group: TargetGroup): TargetRule {
-  return { targetGroupId: group.id, targetGroupName: group.name, enabled: false, ruleVersion: TARGET_RULE_VERSION, ruleType: "first", parameters: defaultParameters(), currentRate: group.rate_multiplier ?? null, lastAppliedAt: null, lastError: null };
+  return {
+    targetGroupId: group.id, targetGroupName: group.name, enabled: false,
+    ruleVersion: TARGET_RULE_VERSION, ruleType: "first", parameters: defaultParameters(),
+    currentRate: group.rate_multiplier ?? null, lastAppliedFromRate: null,
+    lastAppliedToRate: null, lastAppliedAt: null, lastError: null,
+  };
 }
 
-function defaultParameters(): RuleParameters { return { offset: 0, minimum: 0, formula: "avg" }; }
+function defaultParameters(): RuleParameters {
+  return { adjustmentMode: "fixed", adjustmentValue: 0, minimum: 0, formula: "avg" };
+}
 function reconcileBindings(bindings: readonly SourceBinding[], rates: readonly SourceRateSnapshot[]) {
   const normalized = dedupeBindings(bindings);
   const available = new Set(rates.map((rate) => `${rate.sourceSiteId}:${rate.groupId}`));

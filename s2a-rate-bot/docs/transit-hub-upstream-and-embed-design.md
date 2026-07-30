@@ -48,14 +48,12 @@ Transit Hub 没有在自身页面里创建 iframe，也没有 SDK 或 `postMessa
 - 附件下载同样先校验 session 和 ticket 归属；图片通常要通过带 Bearer 的 `fetch` 获取 Blob，不能直接用无法附加鉴权头的公开 URL。
 - New API 的 Channel key 和 Sub2API 的账号导出凭据只能在服务端内存中短暂使用，不落库、不返回管理页面、不写错误文本。
 
-## 在本仓库继续实现工单前的依赖
+## 当前实现
 
-当前应用只有 SQLite 和自身管理员 JWT，还没有 Transit Hub 工单所需的工单表、附件存储和短期 embed session store。正式接入至少需要：
+本仓库现已完成工单、排行榜和抽奖三类嵌入功能：
 
-- 工单、消息、附件、embed config 的持久化 schema；
-- 带 TTL 的服务端 session store（Redis 最直接，也可实现可清理的 SQLite session 表）；
-- `/embed/tickets` 页面及公开的 session exchange Route Handler；
-- 对 `src_host` 的完整 SSRF 防护；
-- 所有工单查询的复合归属约束和附件授权测试。
-
-因此当前阶段只移植协议层与身份获取，不把半成品公开嵌入路由暴露到生产应用。
+- SQLite 保存 embed config、工单/消息/附件、抽奖活动/报名/结果；短期会话使用 30 分钟 JWT，不保存原始 Sub2API token。
+- `/embed/tickets`、`/embed/leaderboard`、`/embed/lottery` 在 iframe 中独立渲染，不加载管理端登录壳层。
+- `/api/embed/*/session` 通过目标站 `/api/v1/auth/me` 验证用户，并把 `src_host` 强制绑定到管理员当前配置的目标站 origin，浏览器提供的任意地址不会成为服务端请求目标。
+- 工单、附件和抽奖用户态查询均使用来源站与 Sub2API 用户 ID 约束；附件只通过带管理会话或 embed Bearer 的受权接口读取。
+- Worker 每轮处理到期定时抽奖：先锁定开奖活动并保存中奖计划，再生成兑换码；错误保存在活动状态中并由后续周期继续处理。即时开奖使用奖品独立中奖率，剩余概率表示未中奖。

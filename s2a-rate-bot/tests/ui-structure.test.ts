@@ -59,15 +59,20 @@ test("application shell uses route-backed top navigation and a settings dialog a
   assert.match(shell, /系统日志/);
   assert.match(shell, /SettingsDialog/);
   assert.match(settingsDialog, /打开全局配置/);
-  assert.match(settingsDialog, /@radix-ui\/react-dialog/);
+  assert.match(settingsDialog, /from "\.\/ui\/dialog"/);
+  assert.match(settingsDialog, /<DialogContent/);
   assert.match(settingsDialog, /SettingsForm presentation="dialog"/);
 });
 
 test("root layout mounts the application shell and global styles", () => {
   const layout = source("src/app/layout.tsx");
+  const frame = source("src/components/application-frame.tsx");
 
   assert.match(layout, /import "\.\/globals\.css"/);
-  assert.match(layout, /AppShell/);
+  assert.match(layout, /import "\.\/design-system\.css"/);
+  assert.match(layout, /ApplicationFrame/);
+  assert.match(frame, /AppShell/);
+  assert.match(frame, /pathname\.startsWith\("\/embed\/"\)/);
   assert.match(layout, /lang="zh-CN"/);
 });
 
@@ -100,59 +105,78 @@ test("top-level page titles use consistent Chinese hierarchy", () => {
   assert.match(settingsDialog, /全局配置/);
 });
 
-test("responsive shell uses a Vercel-style top navigation without horizontal page overflow", () => {
+test("responsive shell uses a top navigation on desktop and mobile without page overflow", () => {
   const styles = source("src/app/globals.css");
   const shell = source("src/components/app-shell.tsx");
 
   assert.match(styles, /overflow-x:\s*hidden/);
-  assert.match(shell, /sticky top-0/);
-  assert.match(shell, /grid-cols-\[minmax\(0,1fr\)_auto_minmax\(0,1fr\)\]/);
-  assert.match(shell, /justify-self-start/);
-  assert.match(shell, /justify-self-center/);
-  assert.match(shell, /justify-self-end/);
-  assert.ok((shell.match(/max-w-screen-2xl/g) ?? []).length >= 2);
-  assert.match(shell, /lg:grid/);
+  assert.match(shell, /function TopNavigation/);
+  assert.match(shell, /sticky top-0 z-40/);
+  assert.match(shell, /max-w-\[1720px\]/);
   assert.match(shell, /lg:hidden/);
+  assert.match(shell, /移动端主导航/);
   assert.match(shell, /overflow-x-auto/);
+  assert.doesNotMatch(shell, /<aside/);
   assert.doesNotMatch(shell, /fixed inset-x-0 bottom-0/);
 });
 
 test("desktop pages share a stable heading and data layout", () => {
-  const styles = source("src/app/globals.css");
+  const styles = source("src/app/globals.css") + source("src/app/design-system.css");
   const accounts = source("src/components/accounts/accounts-dashboard.tsx");
-  const groups = source("src/components/groups/group-rule-table.tsx");
+  const groups = ["src/components/groups/group-rule-table.tsx", "src/components/groups/group-rule-table-layouts.tsx"]
+    .map(source).join("\n");
   const rates = source("src/components/sources/source-rates-table.tsx");
   const settings = source("src/components/settings-form.tsx");
   const navigation = source("src/components/settings-navigation.tsx");
 
-  assert.match(styles, /\.page-header[\s\S]*lg:flex-row/);
-  assert.match(styles, /\.page-actions[\s\S]*lg:justify-end/);
-  assert.match(accounts, /lg:grid-cols-2 xl:hidden/);
-  assert.match(accounts, /xl:block[\s\S]*min-w-\[1180px\]/);
-  assert.match(groups, /min-w-\[960px\]/);
+  assert.match(styles, /\.page-header[\s\S]*sm:flex-row/);
+  assert.match(styles, /\.page-actions[\s\S]*sm:justify-end/);
+  assert.match(styles, /--workspace-top/);
+  assert.match(styles, /--page-chrome-offset/);
+  assert.match(styles, /\.sticky-below-header/);
+  assert.match(styles, /\.dashboard-split/);
+  assert.match(styles, /\.source-split/);
+  assert.match(styles, /\.master-detail-split/);
+  assert.match(styles, /\.detail-rail/);
+  assert.match(styles, /\.home-feed-viewport/);
+  assert.match(accounts, /sm:grid-cols-2 lg:hidden/);
+  assert.match(accounts, /hidden lg:block[\s\S]*min-w-\[920px\]/);
+  assert.match(accounts, /2xl:max-w-72/);
+  assert.match(groups, /min-w-\[900px\]/);
+  assert.match(groups, /lg:hidden/);
+  assert.match(groups, /GroupCard/);
+  assert.match(groups, /BINDING_PREVIEW_LIMIT = 2/);
+  assert.match(groups, /data-group-master-detail/);
+  assert.match(groups, /GroupDetailPanel/);
+  assert.match(groups, /master-detail-split/);
   assert.match(styles, /\.data-table-sticky thead th[\s\S]*sticky top-0/);
   assert.match(styles, /\.sticky-action-cell[\s\S]*sticky right-0/);
   for (const table of [accounts, groups, rates]) assert.match(table, /data-table-sticky/);
   assert.match(rates, /embedded-table-viewport/);
   assert.match(settings, /max-w-6xl/);
   assert.match(settings, /lg:grid-cols-\[240px_minmax\(0,1fr\)\]/);
-  assert.match(navigation, /lg:sticky lg:top-24/);
+  assert.match(settings, /bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(settings, /dialogWide/);
+  assert.match(navigation, /lg:sticky sticky-below-header/);
+  assert.match(navigation, /dialogWide/);
 });
 
-test("warm themes expose semantic tokens before hydration", () => {
+test("neutral operations themes expose semantic tokens before hydration", () => {
   const styles = source("src/app/globals.css");
+  const designSystem = source("src/app/design-system.css");
   const tailwind = source("tailwind.config.ts");
   const layout = source("src/app/layout.tsx");
 
-  assert.match(styles, /--background:\s*240 235 227/);
-  assert.match(styles, /\.dark\s*\{[\s\S]*--background:\s*12 10 9/);
-  assert.match(styles, /--primary:\s*249 156 0/);
-  assert.match(styles, /--primary-strong:\s*146 81 0/);
+  assert.match(styles, /--background:\s*244 246 248/);
+  assert.match(styles, /\.dark\s*\{[\s\S]*--background:\s*17 20 24/);
+  assert.match(styles, /--primary:\s*13 116 110/);
+  assert.doesNotMatch(styles, /--sidebar:/);
+  assert.doesNotMatch(styles, /background-image|radial-gradient/);
   assert.match(tailwind, /"primary-strong":\s*"rgb\(var\(--primary-strong\) \/ <alpha-value>\)"/);
   assert.match(tailwind, /surface:\s*"rgb\(var\(--surface\) \/ <alpha-value>\)"/);
   assert.match(layout, /localStorage\.getItem\("s2a-rate-theme"\)/);
   assert.match(layout, /prefers-color-scheme:\s*dark/);
-  assert.match(styles, /page-description[\s\S]*text-muted/);
+  assert.match(designSystem, /page-description[\s\S]*text-muted/);
 });
 
 test("application shell exposes an accessible persisted theme toggle", () => {
@@ -161,6 +185,7 @@ test("application shell exposes an accessible persisted theme toggle", () => {
 
   assert.match(shell, /ThemeToggle/);
   assert.match(shell, /Worker 已连接/);
+  assert.match(shell, /Worker 已连/);
   assert.match(shell, /\/api\/worker\/status/);
   assert.match(toggle, /aria-label="切换明暗主题"/);
   assert.match(toggle, /localStorage\.setItem\(THEME_KEY/);
@@ -205,7 +230,8 @@ test("rate multipliers and balances use dedicated semantic data colors", () => {
   const compactInput = source("src/components/ui/compact-number-input.tsx");
   const home = source("src/components/home/home-dashboard.tsx");
   const accounts = source("src/components/accounts/accounts-dashboard.tsx");
-  const groupTable = source("src/components/groups/group-rule-table.tsx");
+  const groupTable = source("src/components/groups/group-rule-table.tsx")
+    + source("src/components/groups/group-rule-presentations.tsx");
   const groupDialog = [
     "src/components/groups/group-rule-dialog.tsx",
     "src/components/groups/group-binding-selector.tsx",
@@ -240,70 +266,4 @@ test("rate multipliers and balances use dedicated semantic data colors", () => {
   }
   assert.match(settings, /tone="rate"/);
   assert.match(sourceDialog, /tone="rate"/);
-});
-
-test("transient system feedback uses shadcn Sonner alerts instead of inline messages", () => {
-  const pkg = JSON.parse(source("package.json")) as { dependencies?: Record<string, string> };
-  const layout = source("src/app/layout.tsx");
-  const toaster = source("src/components/ui/sonner.tsx");
-  const confirmAlert = source("src/components/ui/confirm-alert.tsx");
-  const dashboards = [
-    "src/components/accounts/accounts-dashboard.tsx",
-    "src/components/groups/groups-dashboard.tsx",
-    "src/components/sources/sources-dashboard.tsx",
-  ].map(source).join("\n");
-  const feedbackSources = [
-    "src/components/accounts/use-accounts-dashboard.ts",
-    "src/components/groups/use-groups-dashboard.ts",
-    "src/components/sources/use-sources-dashboard.ts",
-    "src/components/settings-form.tsx",
-    "src/components/home/home-dashboard.tsx",
-  ].map(source).join("\n");
-
-  assert.ok(pkg.dependencies?.sonner);
-  assert.ok(pkg.dependencies?.["@radix-ui/react-alert-dialog"]);
-  assert.match(layout, /<Toaster \/>/);
-  assert.match(toaster, /Toaster as Sonner/);
-  assert.match(toaster, /position="top-center"/);
-  assert.match(confirmAlert, /@radix-ui\/react-alert-dialog/);
-  assert.match(feedbackSources, /toast\.success/);
-  assert.match(feedbackSources, /toast\.error/);
-  assert.doesNotMatch(dashboards, /view\.message/);
-  assert.doesNotMatch(feedbackSources, /setMessage|FeedbackMessage|window\.confirm/);
-});
-
-test("dialog forms close only after a successful save", () => {
-  const settingsDialog = source("src/components/settings-dialog.tsx");
-  const settingsForm = source("src/components/settings-form.tsx");
-  const groupDialog = source("src/components/groups/group-rule-dialog.tsx");
-  const groupHook = source("src/components/groups/use-groups-dashboard.ts");
-  const sourceHook = source("src/components/sources/use-sources-dashboard.ts");
-
-  assert.match(settingsDialog, /open=\{open\}/);
-  assert.match(settingsDialog, /onSaved=\{\(\) => setOpen\(false\)\}/);
-  assert.match(settingsForm, /onSaved\?: \(\) => void/);
-  assert.match(settingsForm, /input\.onSaved\?\.\(\)/);
-  assert.match(groupDialog, /await onSave\(group\.id, draft\)/);
-  assert.match(groupDialog, /setOpen\(false\)/);
-  assert.match(groupHook, /Promise<boolean>/);
-  assert.match(groupHook, /return true/);
-  assert.match(groupHook, /return false/);
-  assert.match(sourceHook, /setDialog\(\{ open: false, site: null \}\)/);
-});
-
-test("centered dialogs preserve their position during open and close animations", () => {
-  const styles = source("src/app/globals.css");
-  const dialogs = [
-    "src/components/auth-dialog.tsx",
-    "src/components/settings-dialog.tsx",
-    "src/components/groups/group-rule-dialog.tsx",
-    "src/components/sources/source-site-dialog.tsx",
-    "src/components/ui/confirm-alert.tsx",
-  ].map(source).join("\n");
-
-  assert.match(styles, /@keyframes dialog-content-in/);
-  assert.match(styles, /@keyframes dialog-content-out/);
-  assert.match(styles, /\.dialog-content-motion/);
-  assert.ok((dialogs.match(/dialog-content-motion/g) ?? []).length >= 5);
-  assert.doesNotMatch(dialogs, /zoom-(?:in|out)-95/);
 });

@@ -3,9 +3,13 @@
 import { ArrowDownNarrowWide, ArrowUpNarrowWide, ChevronLeft, ChevronRight, List, Search, Settings2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PlatformLabel } from "../platform-icon";
+import { Button } from "../ui/button";
 import { EffectiveRateValue } from "../ui/effective-rate-value";
-import { Tag } from "../ui/tag";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { Select } from "../ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Tag } from "../ui/tag";
 import type { SourceRateView, SourceSiteView } from "./types";
 
 const PLATFORM_OPTIONS = [
@@ -26,9 +30,10 @@ export function SourceRatesTable({ rates, sites, selectedSiteId, platformPending
   onPlatformChange: (rate: SourceRateView, platform: string | null) => void;
   onShowAll: () => void;
 }>) {
-  const [rateOrder, setRateOrder] = useState<RateOrder>("none");
+  const [rateOrder, setRateOrder] = useState<RateOrder>("desc");
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [page, setPage] = useState(1);
+  const [pageSizeReady, setPageSizeReady] = useState(false);
   const names = new Map(sites.map((site) => [site.id, site.name]));
   const query = search.trim().toLowerCase();
   const selectedSiteName = selectedSiteId === null ? null : names.get(selectedSiteId) ?? `#${selectedSiteId}`;
@@ -37,6 +42,13 @@ export function SourceRatesTable({ rates, sites, selectedSiteId, platformPending
   const currentPage = Math.min(page, pageCount);
   const visibleRates = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   useEffect(() => setPage(1), [rateOrder, search, selectedSiteId]);
+  useEffect(() => {
+    if (pageSizeReady || typeof window === "undefined") return;
+    const wide = window.matchMedia("(min-width: 1280px)").matches;
+    const ultra = window.matchMedia("(min-width: 1536px)").matches;
+    setPageSize(ultra ? 20 : wide ? 15 : DEFAULT_PAGE_SIZE);
+    setPageSizeReady(true);
+  }, [pageSizeReady]);
   return (
     <section className="panel min-w-0 overflow-hidden" aria-labelledby="source-rates-title">
       <div className="panel-header"><div><h2 id="source-rates-title" className="panel-title">采集分组倍率</h2><p className="panel-description">{selectedSiteName ? `当前仅展示「${selectedSiteName}」` : "汇总所有采集站最近一次成功快照。"}</p></div><Tag>{filtered.length} 条</Tag></div>
@@ -47,20 +59,20 @@ export function SourceRatesTable({ rates, sites, selectedSiteId, platformPending
 }
 
 function RateToolbar(input: Readonly<{ rateOrder: RateOrder; selected: boolean; search: string; onOrderChange: () => void; onSearch: (value: string) => void; onShowAll: () => void }>) {
-  return <div role="group" aria-label="倍率筛选与排序" className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-muted/35 px-4 py-3 lg:px-5"><label className="relative block min-w-64 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" /><span className="sr-only">搜索采集倍率</span><input aria-label="搜索采集倍率" value={input.search} onChange={(event) => input.onSearch(event.target.value)} placeholder="搜索站点、分组或平台" className="form-control pl-9" /></label><button type="button" onClick={input.onOrderChange} className="secondary-button shrink-0 px-3">{input.rateOrder === "desc" ? <ArrowDownNarrowWide className="size-3.5" /> : <ArrowUpNarrowWide className="size-3.5" />}{rateOrderLabel(input.rateOrder)}</button><button type="button" disabled={!input.selected} onClick={input.onShowAll} className="secondary-button shrink-0 px-3"><List className="size-3.5" />展示全部</button></div>;
+  return <div role="group" aria-label="倍率筛选与排序" className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-muted/35 px-4 py-3 lg:px-5"><Label className="relative block min-w-64 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" /><span className="sr-only">搜索采集倍率</span><Input aria-label="搜索采集倍率" value={input.search} onChange={(event) => input.onSearch(event.target.value)} placeholder="搜索站点、分组或平台" className="pl-9" /></Label><Button type="button" variant="secondary" onClick={input.onOrderChange} className="shrink-0 px-3">{input.rateOrder === "desc" ? <ArrowDownNarrowWide className="size-3.5" /> : <ArrowUpNarrowWide className="size-3.5" />}{rateOrderLabel(input.rateOrder)}</Button><Button type="button" variant="secondary" disabled={!input.selected} onClick={input.onShowAll} className="shrink-0 px-3"><List className="size-3.5" />展示全部</Button></div>;
 }
 
 function RateRecords({ rates, names, platformPending, onPlatformChange }: Readonly<{ rates: readonly SourceRateView[]; names: ReadonlyMap<number, string>; platformPending: string; onPlatformChange: (rate: SourceRateView, platform: string | null) => void }>) {
   return (
     <>
       <div className="divide-y divide-border md:hidden">{rates.map((rate) => <RateCard key={rateKey(rate)} rate={rate} siteName={names.get(rate.sourceSiteId) ?? `#${rate.sourceSiteId}`} pending={platformPending === rateKey(rate)} onPlatformChange={onPlatformChange} />)}</div>
-      <div className="table-shell embedded-table-viewport hidden md:block"><table aria-label="采集分组倍率" className="data-table data-table-sticky min-w-[860px]"><thead><tr><th>分组</th><th>ID / 采集站</th><th>平台</th><th className="text-right">原始倍率</th><th className="text-right">有效倍率</th><th>最后采集</th><th className="sticky-action-header">操作</th></tr></thead><tbody>{rates.map((rate) => <RateRow key={rateKey(rate)} rate={rate} siteName={names.get(rate.sourceSiteId) ?? `#${rate.sourceSiteId}`} pending={platformPending === rateKey(rate)} onPlatformChange={onPlatformChange} />)}</tbody></table></div>
+      <div className="table-shell embedded-table-viewport hidden md:block"><Table aria-label="采集分组倍率" className="data-table data-table-sticky min-w-[860px]"><TableHeader><TableRow><TableHead>分组</TableHead><TableHead>ID / 采集站</TableHead><TableHead>平台</TableHead><TableHead className="text-right">原始倍率</TableHead><TableHead className="text-right">有效倍率</TableHead><TableHead>最后采集</TableHead><TableHead className="sticky-action-header">操作</TableHead></TableRow></TableHeader><TableBody>{rates.map((rate) => <RateRow key={rateKey(rate)} rate={rate} siteName={names.get(rate.sourceSiteId) ?? `#${rate.sourceSiteId}`} pending={platformPending === rateKey(rate)} onPlatformChange={onPlatformChange} />)}</TableBody></Table></div>
     </>
   );
 }
 
 function RateRow({ rate, siteName, pending, onPlatformChange }: Readonly<{ rate: SourceRateView; siteName: string; pending: boolean; onPlatformChange: (rate: SourceRateView, platform: string | null) => void }>) {
-  return <tr><td><span className="font-medium">{rate.groupName}</span></td><td><div className="flex items-center gap-2"><span className="font-mono text-xs tabular-nums text-muted">#{rate.groupId}</span><SiteTag name={siteName} /></div></td><td><Tag><PlatformLabel platform={rate.platform} fallback="未知平台" /></Tag></td><td className="text-right font-mono tabular-nums text-rate">{formatRate(rate.rawRate)}</td><td className="text-right"><EffectiveRateValue>×{formatRate(rate.effectiveRate)}</EffectiveRateValue></td><td className="whitespace-nowrap text-xs text-muted">{formatTime(rate.collectedAt)}</td><td className="sticky-action-cell"><div className="flex justify-end"><PlatformAction rate={rate} pending={pending} onChange={onPlatformChange} /></div></td></tr>;
+  return <TableRow><TableCell><span className="font-medium">{rate.groupName}</span></TableCell><TableCell><div className="flex items-center gap-2"><span className="font-mono text-xs tabular-nums text-muted">#{rate.groupId}</span><SiteTag name={siteName} /></div></TableCell><TableCell><Tag><PlatformLabel platform={rate.platform} fallback="未知平台" /></Tag></TableCell><TableCell className="text-right font-mono tabular-nums text-rate">{formatRate(rate.rawRate)}</TableCell><TableCell className="text-right"><EffectiveRateValue>×{formatRate(rate.effectiveRate)}</EffectiveRateValue></TableCell><TableCell className="whitespace-nowrap text-xs text-muted">{formatTime(rate.collectedAt)}</TableCell><TableCell className="sticky-action-cell"><div className="flex justify-end"><PlatformAction rate={rate} pending={pending} onChange={onPlatformChange} /></div></TableCell></TableRow>;
 }
 
 function RateCard({ rate, siteName, pending, onPlatformChange }: Readonly<{ rate: SourceRateView; siteName: string; pending: boolean; onPlatformChange: (rate: SourceRateView, platform: string | null) => void }>) {
@@ -72,11 +84,11 @@ function PlatformAction({ rate, pending, onChange }: Readonly<{ rate: SourceRate
 }
 
 function SiteTag({ name }: Readonly<{ name: string }>) {
-  return <Tag title={name} tone="info"><span className="max-w-36 truncate">{name}</span></Tag>;
+  return <Tag title={name} tone="info"><span className="max-w-36 truncate 2xl:max-w-48">{name}</span></Tag>;
 }
 
 function Pagination({ total, page, pageCount, pageSize, onPageChange, onPageSizeChange }: Readonly<{ total: number; page: number; pageCount: number; pageSize: number; onPageChange: (value: number) => void; onPageSizeChange: (value: number) => void }>) {
-  return <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm text-muted"><span>共 {total} 条</span><span>每页</span><div className="w-20"><Select ariaLabel="每页展示条数" value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onValueChange={(value) => onPageSizeChange(Number(value))} /></div></div><div className="flex items-center justify-between gap-2 sm:justify-end"><span className="mr-1 text-sm tabular-nums text-muted">第 {page} / {pageCount} 页</span><button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => onPageChange(page - 1)} className="compact-icon-button"><ChevronLeft className="size-3.5" /></button><button type="button" aria-label="下一页" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)} className="compact-icon-button"><ChevronRight className="size-3.5" /></button></div></div>;
+  return <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm text-muted"><span>共 {total} 条</span><span>每页</span><div className="w-20"><Select ariaLabel="每页展示条数" value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onValueChange={(value) => onPageSizeChange(Number(value))} /></div></div><div className="flex items-center justify-between gap-2 sm:justify-end"><span className="mr-1 text-sm tabular-nums text-muted">第 {page} / {pageCount} 页</span><Button type="button" variant="ghost" size="icon-sm" aria-label="上一页" disabled={page <= 1} onClick={() => onPageChange(page - 1)} className="compact-icon-button"><ChevronLeft className="size-3.5" /></Button><Button type="button" variant="ghost" size="icon-sm" aria-label="下一页" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)} className="compact-icon-button"><ChevronRight className="size-3.5" /></Button></div></div>;
 }
 
 function matchesSite(rate: SourceRateView, selectedSiteId: number | null) { return selectedSiteId === null || rate.sourceSiteId === selectedSiteId; }
@@ -87,8 +99,8 @@ function formatRate(value: number | null) { return value === null ? "-" : Number
 function formatTime(value: string) { return new Date(value).toLocaleString("zh-CN"); }
 function nextRateOrder(order: RateOrder): RateOrder { return order === "asc" ? "desc" : "asc"; }
 function rateOrderLabel(order: RateOrder) { return order === "desc" ? "有效倍率：高到低" : "有效倍率：低到高"; }
-function sortRates(rates: readonly SourceRateView[], order: RateOrder) { if (order === "none") return rates; return [...rates].sort((left, right) => compareRates(left.effectiveRate, right.effectiveRate, order)); }
+function sortRates(rates: readonly SourceRateView[], order: RateOrder) { return [...rates].sort((left, right) => compareRates(left.effectiveRate, right.effectiveRate, order)); }
 function compareRates(left: number | null, right: number | null, order: RateOrder) { if (left === null) return right === null ? 0 : 1; if (right === null) return -1; return (order === "asc" ? 1 : -1) * (left - right); }
-type RateOrder = "none" | "asc" | "desc";
+type RateOrder = "asc" | "desc";
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [{ value: "10", label: "10" }, { value: "15", label: "15" }, { value: "20", label: "20" }] as const;

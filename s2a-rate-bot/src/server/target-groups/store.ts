@@ -3,6 +3,7 @@ import { TARGET_RULE_VERSION } from "../../core/rule-version.ts";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, flag, nowIso, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
 import type { SourceBinding, TargetGroup, TargetRule } from "./types.ts";
+import { ruleParametersSchema } from "./rule-parameters.ts";
 
 export type TargetGroupStore = {
   readonly getGroup: (groupId: number) => TargetGroup | null;
@@ -14,7 +15,7 @@ export type TargetGroupStore = {
   readonly listRules: () => TargetRule[];
   readonly bindings: (groupId: number) => SourceBinding[];
   readonly saveRule: (rule: TargetRule, bindings: readonly SourceBinding[]) => void;
-  readonly recordApplied: (groupId: number, currentRate: number) => void;
+  readonly recordApplied: (groupId: number, fromRate: number | null, toRate: number) => void;
   readonly recordError: (groupId: number, error: string) => void;
   readonly close: () => void;
 };
@@ -38,7 +39,7 @@ function targetGroupStore(database: DatabaseSync): TargetGroupStore {
     listRules: () => listRules(database),
     bindings: (groupId) => readBindings(database, groupId),
     saveRule: (rule, bindings) => saveRule(database, rule, bindings),
-    recordApplied: (groupId, currentRate) => recordApplied(database, groupId, currentRate),
+    recordApplied: (groupId, fromRate, toRate) => recordApplied(database, { groupId, fromRate, toRate }),
     recordError: (groupId, error) => recordError(database, groupId, error),
     close: () => database.close(),
   };
@@ -103,9 +104,11 @@ function readBindings(database: DatabaseSync, groupId: number): SourceBinding[] 
 
 function saveRule(database: DatabaseSync, rule: TargetRule, bindings: readonly SourceBinding[]) {
   transaction(database, () => {
-    database.prepare(`INSERT INTO target_group_rules VALUES (
-      :groupId, :groupName, :enabled, :ruleVersion, :ruleType, :parameters, :currentRate,
-      :lastAppliedAt, :lastError, :updatedAt)
+    database.prepare(`INSERT INTO target_group_rules (
+      group_id, group_name, enabled, rule_version, rule_type, parameters_json, current_rate,
+      last_applied_from_rate, last_applied_to_rate, last_applied_at, last_error, updated_at)
+      VALUES (:groupId, :groupName, :enabled, :ruleVersion, :ruleType, :parameters, :currentRate,
+      :lastAppliedFromRate, :lastAppliedToRate, :lastAppliedAt, :lastError, :updatedAt)
       ON CONFLICT(group_id) DO UPDATE SET group_name=excluded.group_name, enabled=excluded.enabled,
       rule_version=excluded.rule_version, rule_type=excluded.rule_type, parameters_json=excluded.parameters_json,
       current_rate=excluded.current_rate, last_error=excluded.last_error, updated_at=excluded.updated_at`).run(ruleBindings(rule));
@@ -116,14 +119,26 @@ function saveRule(database: DatabaseSync, rule: TargetRule, bindings: readonly S
 }
 
 function ruleBindings(rule: TargetRule) {
-  return { groupId: rule.targetGroupId, groupName: rule.targetGroupName, enabled: flag(rule.enabled), ruleVersion: rule.ruleVersion, ruleType: rule.ruleType, parameters: JSON.stringify(rule.parameters), currentRate: rule.currentRate, lastAppliedAt: rule.lastAppliedAt, lastError: rule.lastError, updatedAt: nowIso() };
+  return {
+    groupId: rule.targetGroupId, groupName: rule.targetGroupName, enabled: flag(rule.enabled),
+    ruleVersion: rule.ruleVersion, ruleType: rule.ruleType, parameters: JSON.stringify(rule.parameters),
+    currentRate: rule.currentRate, lastAppliedFromRate: rule.lastAppliedFromRate,
+    lastAppliedToRate: rule.lastAppliedToRate, lastAppliedAt: rule.lastAppliedAt,
+    lastError: rule.lastError, updatedAt: nowIso(),
+  };
 }
 
-function recordApplied(database: DatabaseSync, groupId: number, currentRate: number) {
+function recordApplied(database: DatabaseSync, change: Readonly<{
+  groupId: number;
+  fromRate: number | null;
+  toRate: number;
+}>) {
   const timestamp = nowIso();
   transaction(database, () => {
-    database.prepare("UPDATE target_group_rules SET current_rate=?, last_applied_at=?, last_error=NULL, updated_at=? WHERE group_id=?").run(currentRate, timestamp, timestamp, groupId);
-    database.prepare("UPDATE target_group_snapshots SET rate_multiplier=?, updated_at=? WHERE group_id=?").run(currentRate, timestamp, groupId);
+    database.prepare(`UPDATE target_group_rules SET current_rate=?, last_applied_from_rate=?,
+      last_applied_to_rate=?, last_applied_at=?, last_error=NULL, updated_at=? WHERE group_id=?`)
+      .run(change.toRate, change.fromRate, change.toRate, timestamp, timestamp, change.groupId);
+    database.prepare("UPDATE target_group_snapshots SET rate_multiplier=?, updated_at=? WHERE group_id=?").run(change.toRate, timestamp, change.groupId);
   });
 }
 
@@ -137,8 +152,10 @@ function mapRule(row: Record<string, unknown>): TargetRule {
   return {
     targetGroupId: Number(row.group_id), targetGroupName: String(row.group_name), enabled: Number(row.enabled) === 1,
     ruleVersion, ruleType: String(row.rule_type) as TargetRule["ruleType"],
-    parameters: JSON.parse(String(row.parameters_json)) as TargetRule["parameters"],
+    parameters: ruleParametersSchema.parse(JSON.parse(String(row.parameters_json))),
     currentRate: row.current_rate === null ? null : Number(row.current_rate),
+    lastAppliedFromRate: nullableNumber(row.last_applied_from_rate),
+    lastAppliedToRate: nullableNumber(row.last_applied_to_rate),
     lastAppliedAt: nullableText(row.last_applied_at), lastError: nullableText(row.last_error),
   };
 }
@@ -151,3 +168,4 @@ function mapGroup(row: Record<string, unknown>): TargetGroup {
 }
 
 function nullableText(value: unknown) { return value === null || value === undefined ? null : String(value); }
+function nullableNumber(value: unknown) { return value === null || value === undefined ? null : Number(value); }

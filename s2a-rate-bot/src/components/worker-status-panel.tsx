@@ -3,6 +3,7 @@
 import { Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "./ui/button";
 import { Tag, type TagTone } from "./ui/tag";
 
 type WorkerRun = {
@@ -31,9 +32,9 @@ export function WorkerStatusPanel() {
     <section className="space-y-4 border-t border-border pt-4" aria-labelledby="worker-status-title">
       <div className="flex items-center justify-between gap-3">
         <div><h3 id="worker-status-title" className="text-sm font-semibold text-foreground">最近运行</h3><p className="text-xs text-muted">来自 Worker 持久化运行摘要。</p></div>
-        <button type="button" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setFailed })} disabled={loading} className="icon-button">
+        <Button type="button" variant="secondary" size="icon" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setFailed })} disabled={loading}>
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-        </button>
+        </Button>
       </div>
       {failed ? null : loading ? <p className="text-sm text-muted">正在读取 Worker 状态...</p> : run ? <RunSummary run={run} /> : <p className="text-sm text-muted">尚无 Worker 运行记录。</p>}
     </section>
@@ -61,7 +62,7 @@ function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
 }
 
 function Metric({ label, value }: Readonly<{ label: string; value: number }>) {
-  return <div className="rounded-lg border border-border bg-surface px-3 py-2.5"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value}</dd></div>;
+  return <div className="rounded-lg border border-border bg-surface-muted/50 px-3 py-2.5"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">{value}</dd></div>;
 }
 
 function StatusBadge({ status }: Readonly<{ status: WorkerRun["status"] }>) {

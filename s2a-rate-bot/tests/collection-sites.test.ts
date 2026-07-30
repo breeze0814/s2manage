@@ -178,9 +178,10 @@ test("successful refresh removes bindings for deleted source groups", async () =
     await service.refresh(site.id);
     const targetStore = (await import("../src/server/target-groups/store.ts")).createSqliteTargetGroupStore(`file:${databasePath}`);
     try {
-      targetStore.saveRule({ targetGroupId: 7, targetGroupName: "Target", enabled: true, ruleVersion: 1,
-        ruleType: "average", parameters: { offset: 0, minimum: 0, formula: "avg" },
-        currentRate: null, lastAppliedAt: null, lastError: null }, [
+      targetStore.saveRule({ targetGroupId: 7, targetGroupName: "Target", enabled: true, ruleVersion: 2,
+        ruleType: "average", parameters: { adjustmentMode: "fixed", adjustmentValue: 0, minimum: 0, formula: "avg" },
+        currentRate: null, lastAppliedFromRate: null, lastAppliedToRate: null,
+        lastAppliedAt: null, lastError: null }, [
         { sourceSiteId: site.id, sourceGroupId: "vip" },
         { sourceSiteId: site.id, sourceGroupId: "legacy" },
       ]);

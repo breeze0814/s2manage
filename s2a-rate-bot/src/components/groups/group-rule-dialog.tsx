@@ -1,9 +1,10 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
 import { Loader2, Pencil, Save, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { TARGET_RULE_VERSION } from "../../core/rule-version";
+import { Button } from "../ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { BindingSelector } from "./group-binding-selector";
 import { EnabledField, RuleFields, StepHeading } from "./group-rule-fields";
 import { PreviewRate, type PreviewState } from "./group-rule-preview";
@@ -37,32 +38,29 @@ export function GroupRuleDialog({ group, sites, rates, pending, onSave }: Dialog
     if (await onSave(group.id, draft)) setOpen(false);
   };
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>
-        <button type="button" aria-label={`编辑 ${group.name} 规则`} title="编辑规则" className="compact-icon-button">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`编辑 ${group.name} 规则`} title="编辑规则" className="compact-icon-button">
           <Pencil className="size-3" />
           <span className="sr-only">编辑规则</span>
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(94vw,920px)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl">
-          <DialogHeader name={group.name} />
-          <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
-            <RuleEditor
-              group={group}
-              names={names}
-              rates={platformRates}
-              draft={draft}
-              preview={preview}
-              update={update}
-              setPreview={setPreview}
-            />
-          </div>
-          <DialogActions saving={pending === `save:${group.id}`} onSave={() => void save()} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="flex max-h-[92dvh] w-[min(94vw,920px)] flex-col overflow-hidden 2xl:w-[min(94vw,1040px)]">
+        <DialogHeader name={group.name} />
+        <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
+          <RuleEditor
+            group={group}
+            names={names}
+            rates={platformRates}
+            draft={draft}
+            preview={preview}
+            update={update}
+            setPreview={setPreview}
+          />
+        </div>
+        <DialogActions saving={pending === `save:${group.id}`} onSave={() => void save()} />
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -100,18 +98,18 @@ function RuleEditor(input: Readonly<{
 
 function DialogHeader({ name }: Readonly<{ name: string }>) {
   return <div className="shrink-0 border-b border-border px-5 py-4 pr-16 sm:px-6">
-    <Dialog.Title className="text-lg font-semibold">编辑 {name}</Dialog.Title>
-    <Dialog.Description className="mt-1 text-sm text-muted">配置计算规则和参与计算的采集分组。</Dialog.Description>
-    <Dialog.Close aria-label="关闭编辑规则弹窗" className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-muted hover:text-foreground"><X className="size-4" /></Dialog.Close>
+    <DialogTitle className="text-lg font-semibold">编辑 {name}</DialogTitle>
+    <DialogDescription className="mt-1 text-sm text-muted">配置计算规则和参与计算的采集分组。</DialogDescription>
+    <DialogClose asChild><Button type="button" variant="ghost" size="icon" aria-label="关闭编辑规则弹窗" className="absolute right-3 top-3 text-muted"><X className="size-4" /></Button></DialogClose>
   </div>;
 }
 
 function DialogActions({ saving, onSave }: Readonly<{ saving: boolean; onSave: () => void }>) {
   return <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-    <Dialog.Close className="secondary-button">取消</Dialog.Close>
-    <button type="button" disabled={saving} onClick={onSave} className="primary-button min-w-32">
+    <DialogClose asChild><Button type="button" variant="secondary">取消</Button></DialogClose>
+    <Button type="button" disabled={saving} onClick={onSave} className="min-w-32">
       {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}保存规则
-    </button>
+    </Button>
   </div>;
 }
 
@@ -124,7 +122,8 @@ function draftFromGroup(group: TargetGroupView): RuleDraft {
     enabled: group.rule.enabled,
     ruleVersion: TARGET_RULE_VERSION,
     ruleType: group.rule.ruleType,
-    offset: String(group.rule.parameters.offset),
+    adjustmentMode: group.rule.parameters.adjustmentMode,
+    adjustmentValue: String(group.rule.parameters.adjustmentValue),
     minimum: String(group.rule.parameters.minimum),
     formula: group.rule.parameters.formula,
     bindings: group.bindings,

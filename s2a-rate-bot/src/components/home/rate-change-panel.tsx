@@ -2,6 +2,7 @@ import { ArrowRight, CirclePlus, Trash2, TrendingDown, TrendingUp } from "lucide
 import { Tag } from "../ui/tag";
 
 const HOME_CHANGE_LIMIT = 20;
+const HOME_CHANGE_PREVIEW = 10;
 
 export type RateChange = {
   readonly id: number;
@@ -17,6 +18,7 @@ export type RateChange = {
 
 export function RateChangePanel({ changes }: Readonly<{ changes: readonly RateChange[] }>) {
   const visibleChanges = changes.slice(0, HOME_CHANGE_LIMIT);
+  const previewChanges = visibleChanges.slice(0, HOME_CHANGE_PREVIEW);
   return (
     <section className="panel overflow-hidden" aria-labelledby="rate-change-title">
       <div className="panel-header">
@@ -26,7 +28,18 @@ export function RateChangePanel({ changes }: Readonly<{ changes: readonly RateCh
         </div>
         <Tag>{changes.length} 条变化</Tag>
       </div>
-      {visibleChanges.length ? <ChangeList changes={visibleChanges} /> : <EmptyChanges />}
+      {visibleChanges.length ? (
+        <div className="home-feed-viewport">
+          <ChangeList changes={previewChanges} />
+          {visibleChanges.length > HOME_CHANGE_PREVIEW ? (
+            <p className="border-t border-border px-4 py-3 text-center text-xs text-muted sm:px-5 xl:px-6">
+              已显示最近 {HOME_CHANGE_PREVIEW} 条，共 {changes.length} 条变化
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <EmptyChanges />
+      )}
     </section>
   );
 }
@@ -42,7 +55,7 @@ function ChangeList({ changes }: Readonly<{ changes: readonly RateChange[] }>) {
 function ChangeRow({ change }: Readonly<{ change: RateChange }>) {
   const state = changeState(change);
   return (
-    <article className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <article className="flex flex-col gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/50 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className="flex min-w-0 items-start gap-3">
         <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${state.iconClass}`} aria-hidden="true">
           {state.icon}
@@ -90,7 +103,11 @@ function rateChangeLabel(change: RateChange) {
 }
 
 function EmptyChanges() {
-  return <p className="p-5 text-sm text-muted">最近 24 小时暂无倍率变化。</p>;
+  return (
+    <div className="empty-state-inline m-4 rounded-lg border border-dashed border-border-strong bg-surface-muted/40">
+      <p>最近 24 小时暂无倍率变化。</p>
+    </div>
+  );
 }
 
 function formatRate(value: number | null) {

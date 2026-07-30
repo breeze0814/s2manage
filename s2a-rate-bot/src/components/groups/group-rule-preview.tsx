@@ -1,6 +1,7 @@
 import { Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { evaluateRateRule } from "../../core/rate-rule";
+import { Button } from "../ui/button";
 import type { RuleDraft, SourceBinding, SourceRateOption } from "./types";
 
 export type PreviewState = { readonly rate: number | null };
@@ -24,9 +25,9 @@ export function PreviewRate({ draft, rates, currentRate, preview, setPreview }: 
     <div><p className="text-sm font-medium">预览倍率</p><p className="mt-1 text-xs text-muted">
       {preview.rate === null ? "使用当前草稿计算，不会保存或应用。" : <>计算结果：<strong className="font-mono text-rate">×{preview.rate}</strong></>}
     </p></div>
-    <button type="button" onClick={calculate} disabled={!draft.enabled || draft.bindings.length === 0} className="secondary-button w-full">
+    <Button type="button" variant="secondary" onClick={calculate} disabled={!draft.enabled || draft.bindings.length === 0} className="w-full">
       <Calculator className="size-4" />预览倍率
-    </button>
+    </Button>
   </div>;
 }
 
@@ -42,7 +43,8 @@ function calculatePreview(draft: RuleDraft, rates: readonly SourceRateOption[], 
     rule: {
       enabled: draft.enabled,
       mode: draft.ruleType,
-      offset: draftNumber(draft.offset, "偏移"),
+      adjustmentMode: draft.adjustmentMode,
+      adjustmentValue: draftNumber(draft.adjustmentValue, "倍率调整值"),
       minimum: draftNumber(draft.minimum, "计算最小值"),
       formula: draft.formula,
     },

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { evaluateRateRule, resolveRateUpdate } from "../src/core/rate-rule.ts";
 
-test("evaluates average source rates with offset and two decimal normalization", () => {
+test("evaluates average source rates with fixed adjustment and two decimal normalization", () => {
   const result = evaluateRateRule({
-    rule: { enabled: true, mode: "average", offset: 0.05 },
+    rule: { enabled: true, mode: "average", ...fixed(0.05) },
     sourceRates: [1.111, 1.219],
     currentRate: 1,
   });
@@ -15,7 +15,7 @@ test("evaluates average source rates with offset and two decimal normalization",
 test("rejects enabled rules without finite source rates", () => {
   assert.throws(
     () => evaluateRateRule({
-      rule: { enabled: true, mode: "first", offset: 0 },
+      rule: { enabled: true, mode: "first", ...fixed(0) },
       sourceRates: [null, Number.NaN],
       currentRate: 1,
     }),
@@ -26,7 +26,7 @@ test("rejects enabled rules without finite source rates", () => {
 test("resolves no update when normalized target rate is unchanged", () => {
   const decision = resolveRateUpdate({
     target: { id: 8, name: "VIP", currentRate: 1.204 },
-    rule: { enabled: true, mode: "first", offset: 0 },
+    rule: { enabled: true, mode: "first", ...fixed(0) },
     sourceRates: [1.2],
   });
 
@@ -43,7 +43,7 @@ test("resolves no update when normalized target rate is unchanged", () => {
 test("resolves update when computed rate differs from target rate", () => {
   const decision = resolveRateUpdate({
     target: { id: 9, name: "标准", currentRate: 1 },
-    rule: { enabled: true, mode: "max", offset: -0.1 },
+    rule: { enabled: true, mode: "max", ...fixed(-0.1) },
     sourceRates: [1.1, 1.4],
   });
 
@@ -58,13 +58,13 @@ test("resolves update when computed rate differs from target rate", () => {
 
 test("evaluates multiple source groups with min max and fixed offset", () => {
   assert.equal(evaluateRateRule({
-    rule: { enabled: true, mode: "max", offset: 0.25 },
+    rule: { enabled: true, mode: "max", ...fixed(0.25) },
     sourceRates: [1.1, 1.4, 1.2],
     currentRate: 1,
   }), 1.65);
 
   assert.equal(evaluateRateRule({
-    rule: { enabled: true, mode: "min", offset: -0.1 },
+    rule: { enabled: true, mode: "min", ...fixed(-0.1) },
     sourceRates: [1.1, 1.4, 1.2],
     currentRate: 1,
   }), 1);
@@ -72,7 +72,7 @@ test("evaluates multiple source groups with min max and fixed offset", () => {
 
 test("evaluates custom average formula before fixed offset", () => {
   const result = evaluateRateRule({
-    rule: { enabled: true, mode: "avg_formula", formula: "10*avg", offset: 1 },
+    rule: { enabled: true, mode: "avg_formula", formula: "10*avg", ...fixed(1) },
     sourceRates: [1, 3],
     currentRate: 1,
   });
@@ -82,7 +82,7 @@ test("evaluates custom average formula before fixed offset", () => {
 
 test("custom formula uses the displayed two-decimal average", () => {
   const result = evaluateRateRule({
-    rule: { enabled: true, mode: "avg_formula", formula: "avg*10", offset: 0 },
+    rule: { enabled: true, mode: "avg_formula", formula: "avg*10", ...fixed(0) },
     sourceRates: [0.36, 0.37, 0.37],
     currentRate: 1,
   });
@@ -92,13 +92,13 @@ test("custom formula uses the displayed two-decimal average", () => {
 
 test("applies the fixed calculation minimum after offset", () => {
   assert.equal(evaluateRateRule({
-    rule: { enabled: true, mode: "first", offset: -0.5, minimum: 1.25 },
+    rule: { enabled: true, mode: "first", ...fixed(-0.5), minimum: 1.25 },
     sourceRates: [1],
     currentRate: 1,
   }), 1.25);
 
   assert.equal(evaluateRateRule({
-    rule: { enabled: true, mode: "first", offset: 0.5, minimum: 1.25 },
+    rule: { enabled: true, mode: "first", ...fixed(0.5), minimum: 1.25 },
     sourceRates: [2],
     currentRate: 1,
   }), 2.5);
@@ -106,17 +106,34 @@ test("applies the fixed calculation minimum after offset", () => {
 
 test("rejects invalid calculation minimum values", () => {
   const input = { sourceRates: [1], currentRate: 1 } as const;
-  assert.throws(() => evaluateRateRule({ ...input, rule: { enabled: true, mode: "first", offset: 0, minimum: Number.NaN } }), /计算最小值/);
-  assert.throws(() => evaluateRateRule({ ...input, rule: { enabled: true, mode: "first", offset: 0, minimum: -1 } }), /计算最小值/);
+  assert.throws(() => evaluateRateRule({ ...input, rule: { enabled: true, mode: "first", ...fixed(0), minimum: Number.NaN } }), /计算最小值/);
+  assert.throws(() => evaluateRateRule({ ...input, rule: { enabled: true, mode: "first", ...fixed(0), minimum: -1 } }), /计算最小值/);
 });
 
 test("rejects invalid average formulas instead of evaluating arbitrary code", () => {
   assert.throws(
     () => evaluateRateRule({
-      rule: { enabled: true, mode: "avg_formula", formula: "process.exit()", offset: 0 },
+      rule: { enabled: true, mode: "avg_formula", formula: "process.exit()", ...fixed(0) },
       sourceRates: [1, 2],
       currentRate: 1,
     }),
     /公式/,
   );
 });
+
+test("applies percentage adjustment after selecting the base rate", () => {
+  assert.equal(evaluateRateRule({
+    rule: { enabled: true, mode: "average", adjustmentMode: "percentage", adjustmentValue: 10 },
+    sourceRates: [1, 1.4],
+    currentRate: 1,
+  }), 1.32);
+  assert.equal(evaluateRateRule({
+    rule: { enabled: true, mode: "first", adjustmentMode: "percentage", adjustmentValue: -20 },
+    sourceRates: [2],
+    currentRate: 1,
+  }), 1.6);
+});
+
+function fixed(adjustmentValue: number) {
+  return { adjustmentMode: "fixed" as const, adjustmentValue };
+}

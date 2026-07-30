@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { initializeSqliteSchema } from "../src/storage/sqlite-schema.ts";
+import { EMBED_SCHEMA_VERSION } from "../src/storage/sqlite-embed-schema.ts";
 
 test("existing collection sites gain an empty website without losing data", async () => {
   const directory = await mkdtemp(join(tmpdir(), "s2a-source-website-"));
@@ -28,7 +29,7 @@ test("existing collection sites gain an empty website without losing data", asyn
     assert.equal(columns.some((column) => column.name === "website_url"), true);
     assert.equal(row.name, "Existing Source");
     assert.equal(row.website_url, "");
-    assert.equal(version.value, "19");
+    assert.equal(version.value, String(EMBED_SCHEMA_VERSION));
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

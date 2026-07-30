@@ -59,6 +59,7 @@ export function createWorkerService(input: {
   readonly collection: { readonly list: () => Promise<readonly WorkerSource[]>; readonly refresh: (id: number) => Promise<unknown> };
   readonly targetGroups: { readonly list: () => Promise<readonly WorkerGroup[]>; readonly apply: (id: number) => Promise<{ readonly action: string }> };
   readonly notifications: { readonly run: () => Promise<TaskStats> };
+  readonly scheduled: { readonly run: () => Promise<void> };
   readonly runs: WorkerRunStore;
   readonly now: () => Date;
 }): WorkerService {
@@ -100,6 +101,7 @@ async function executeCycle(input: WorkerDependencies, startedAt: string) {
     ? await applyTargetRules(input)
     : emptyStats();
   const notificationStats = await runNotifications(input);
+  const scheduledErrors = await runScheduled(input);
   return completedSummary({
     startedAt,
     finishedAt: input.now().toISOString(),
@@ -107,6 +109,7 @@ async function executeCycle(input: WorkerDependencies, startedAt: string) {
     source: sourceStats,
     group: groupStats,
     notification: notificationStats,
+    scheduledErrors,
   });
 }
 
@@ -155,8 +158,9 @@ function completedSummary(input: Readonly<{
   source: TaskStats;
   group: TaskStats;
   notification: TaskStats;
+  scheduledErrors: readonly string[];
 }>): WorkerRunSummary {
-  const errors = [...input.source.errors, ...input.group.errors, ...input.notification.errors];
+  const errors = [...input.source.errors, ...input.group.errors, ...input.notification.errors, ...input.scheduledErrors];
   return {
     status: runStatus(input.source.success + input.group.success + input.notification.success, errors.length),
     collectedSources: input.source.success,
@@ -179,6 +183,15 @@ async function runNotifications(input: WorkerDependencies): Promise<TaskStats> {
     return await input.notifications.run();
   } catch (error) {
     return { success: 0, skipped: 0, failed: 1, errors: [`Telegram 通知: ${errorMessage(error)}`] };
+  }
+}
+
+async function runScheduled(input: WorkerDependencies) {
+  try {
+    await input.scheduled.run();
+    return [];
+  } catch (error) {
+    return [`抽奖定时任务: ${errorMessage(error)}`];
   }
 }
 

@@ -9,6 +9,19 @@ export type EmbedConfig = {
   readonly updatedAt: string;
 };
 
+export type TicketTemplate = "default" | "minimal" | "support";
+export type TicketStatus = "open" | "pending" | "replied" | "closed";
+
+export type TicketEmbedSettings = {
+  readonly sourceOrigin: string;
+  readonly template: TicketTemplate;
+  readonly maxImagesPerTicket: number;
+  readonly categoryOptions: readonly string[];
+  readonly priorityOptions: readonly string[];
+};
+
+export type BasicEmbedSettings = { readonly sourceOrigin: string };
+
 export type EmbedIdentity = {
   readonly kind: EmbedKind;
   readonly embedToken: string;
@@ -37,7 +50,7 @@ export type Ticket = {
   readonly sub2apiRole: string;
   readonly manualEmail: string;
   readonly title: string;
-  readonly status: "open" | "pending" | "closed";
+  readonly status: TicketStatus;
   readonly category: string;
   readonly priority: string;
   readonly lastMessageAt: string;
@@ -52,9 +65,23 @@ export type TicketMessage = {
   readonly authorName: string;
   readonly body: string;
   readonly createdAt: string;
+  readonly attachments: readonly TicketAttachment[];
 };
 
 export type TicketDetail = Ticket & { readonly messages: readonly TicketMessage[] };
+
+export type TicketAttachment = {
+  readonly id: string;
+  readonly originalName: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly createdAt: string;
+};
+
+export type TicketAttachmentData = TicketAttachment & {
+  readonly ticketId: string;
+  readonly data: Uint8Array;
+};
 
 export type LeaderboardRow = {
   readonly rank: number;
@@ -76,8 +103,16 @@ export type Leaderboard = {
 export type LotteryPrize = {
   readonly id: string;
   readonly name: string;
+  readonly type: "balance" | "subscription";
+  readonly value: number;
   readonly quantity: number;
-  readonly weight: number;
+  readonly probability: number | null;
+};
+
+export type LotteryPrizeInventory = {
+  readonly prizeId: string;
+  readonly awarded: number;
+  readonly remaining: number;
 };
 
 export type LotteryCampaign = {
@@ -85,12 +120,13 @@ export type LotteryCampaign = {
   readonly name: string;
   readonly description: string;
   readonly drawMode: "instant" | "scheduled";
-  readonly status: "scheduled" | "open" | "drawn" | "cancelled";
+  readonly status: "scheduled" | "open" | "drawing" | "drawn" | "exhausted" | "cancelled";
   readonly registrationStart: string | null;
   readonly registrationEnd: string | null;
   readonly drawAt: string | null;
   readonly publicWinners: boolean;
   readonly prizes: readonly LotteryPrize[];
+  readonly prizeInventory: readonly LotteryPrizeInventory[];
   readonly entryCount: number;
   readonly winnerCount: number;
   readonly currentEntry: LotteryEntry | null;
@@ -98,6 +134,7 @@ export type LotteryCampaign = {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly drawnAt: string | null;
+  readonly lastError: string | null;
 };
 
 export type LotteryEntry = {
@@ -108,6 +145,10 @@ export type LotteryEntry = {
   readonly status: "entered" | "won" | "not_won" | "withdrawn";
   readonly prizeId: string | null;
   readonly prizeName: string | null;
+  readonly prizeType: LotteryPrize["type"] | null;
+  readonly prizeValue: number | null;
+  readonly redemptionCode: string | null;
+  readonly rewardCodeId: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };

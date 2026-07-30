@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import type { Viewport } from "next";
 import type { ReactNode } from "react";
-import { AuthDialog } from "../components/auth-dialog";
-import { AppShell } from "../components/app-shell";
-import { Toaster } from "../components/ui/sonner";
+import { ApplicationFrame } from "../components/application-frame";
 import "./globals.css";
+import "./design-system.css";
 
 export const metadata: Metadata = {
   title: "S2A Rate Bot",
@@ -30,11 +29,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} /></head>
-      <body>
-        <AuthDialog />
-        <AppShell>{children}</AppShell>
-        <Toaster />
-      </body>
+      <body><ApplicationFrame>{children}</ApplicationFrame></body>
     </html>
   );
 }

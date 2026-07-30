@@ -55,7 +55,7 @@ async function targetContext(databaseUrl: string) {
   ];
   const service = modules.service.createTargetGroupService({ store, client, sourceRates });
   return {
-    ...modules, store, service, updates,
+    ...modules, store, service, updates, databaseUrl,
     setGroups: (value: typeof groups) => { groups = value; },
     setListError: (value: Error | null) => { listError = value; },
     listCalls: () => listCalls,
@@ -77,9 +77,9 @@ function seedSourceSites(databaseUrl: string) {
 function ruleInput() {
   return {
     enabled: true,
-    ruleVersion: 1,
+    ruleVersion: 2,
     ruleType: "average",
-    parameters: { offset: 0.1, minimum: 2.5, formula: "avg" },
+    parameters: { adjustmentMode: "fixed", adjustmentValue: 0.1, minimum: 2.5, formula: "avg" },
     bindings: [
       { sourceSiteId: 1, sourceGroupId: "vip" },
       { sourceSiteId: 2, sourceGroupId: "pro" },
@@ -153,7 +153,7 @@ test("versioned rule and independent source bindings persist with the target gro
     await service.saveRule(7, ruleInput());
 
     const [group] = await service.list();
-    assert.equal(group.rule.ruleVersion, 1);
+    assert.equal(group.rule.ruleVersion, 2);
     assert.equal(group.rule.ruleType, "average");
     assert.equal(group.rule.parameters.minimum, 2.5);
     assert.deepEqual(group.bindings, ruleInput().bindings);
@@ -171,6 +171,9 @@ test("preview and apply use bound collected rates and update only when changed",
     const applied = await service.apply(7);
     assert.equal(applied.action, "update");
     assert.deepEqual(updates, [{ groupId: 7, rate: 3.1 }]);
+    const [updatedGroup] = await service.list();
+    assert.equal(updatedGroup.rule.lastAppliedFromRate, 1);
+    assert.equal(updatedGroup.rule.lastAppliedToRate, 3.1);
 
     const unchanged = await service.apply(7);
     assert.equal(unchanged.action, "skip");
@@ -180,7 +183,7 @@ test("preview and apply use bound collected rates and update only when changed",
 
 test("save removes missing bindings and disables a rule when none remain", async () => {
   await withTargetService(async ({ service }) => {
-    await assert.rejects(service.saveRule(7, { ...ruleInput(), ruleVersion: 2 }), /不支持的倍率规则版本/);
+    await assert.rejects(service.saveRule(7, { ...ruleInput(), ruleVersion: 1 }), /不支持的倍率规则版本/);
     await service.refreshAll();
     const partial = await service.saveRule(7, { ...ruleInput(), bindings: [
       { sourceSiteId: 1, sourceGroupId: "vip" },
@@ -194,6 +197,25 @@ test("save removes missing bindings and disables a rule when none remain", async
     assert.deepEqual(empty.bindings, []);
     assert.match(empty.rule.lastError ?? "", /自动取消绑定/);
     assert.equal((await service.preview(7)).action, "skip");
+  });
+});
+
+test("version one fixed offsets migrate explicitly to version two adjustments", async () => {
+  await withTargetService(async ({ service, databaseUrl }) => {
+    await service.refreshAll();
+    await service.saveRule(7, ruleInput());
+    const database = new DatabaseSync(databaseUrl.slice("file:".length));
+    database.prepare("UPDATE target_group_rules SET rule_version = 1, parameters_json = ? WHERE group_id = 7")
+      .run(JSON.stringify({ offset: -0.25, minimum: 0, formula: "avg" }));
+    database.close();
+    const migrated = (await import("../src/server/target-groups/store.ts"))
+      .createSqliteTargetGroupStore(databaseUrl);
+    try {
+      assert.equal(migrated.getRule(7)?.ruleVersion, 2);
+      assert.deepEqual(migrated.getRule(7)?.parameters, {
+        adjustmentMode: "fixed", adjustmentValue: -0.25, minimum: 0, formula: "avg",
+      });
+    } finally { migrated.close(); }
   });
 });
 

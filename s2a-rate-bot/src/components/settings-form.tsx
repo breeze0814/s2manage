@@ -1,10 +1,13 @@
 "use client";
 
-import * as Switch from "@radix-ui/react-switch";
 import { Loader2, PlugZap, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "./ui/button";
 import { CompactNumberInput } from "./ui/compact-number-input";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Switch } from "./ui/switch";
 import { WorkerStatusPanel } from "./worker-status-panel";
 import { TelegramSettingsFields, type TelegramFormValue } from "./telegram-settings-fields";
 import { SettingsNavigation, type SettingsSection } from "./settings-navigation";
@@ -60,7 +63,10 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
   if (presentation === "dialog") {
     return (
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
-        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6"><SettingsNavigation active={section} onChange={setSection} /><div className="min-w-0">{panel}</div></div>
+        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6 2xl:grid 2xl:grid-cols-[220px_minmax(0,1fr)] 2xl:items-start 2xl:gap-6 2xl:px-8">
+          <SettingsNavigation active={section} onChange={setSection} dialogWide />
+          <div className="min-w-0">{panel}</div>
+        </div>
         <ActionBar compact pending={pending} onTest={() => { void testTarget({ setPending }); }} />
       </form>
     );
@@ -68,9 +74,9 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
   return (
     <section className="page-stack">
       <header className="page-header"><div><h1 className="page-heading">全局配置</h1><p className="page-description">目标站、代理、Worker 与 Telegram 通知设置</p></div></header>
-      <form className="grid w-full max-w-6xl items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]" onSubmit={submit}>
+      <form className="grid w-full max-w-6xl items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)] xl:max-w-none xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,56rem)]" onSubmit={submit}>
         <SettingsNavigation sidebar active={section} onChange={setSection} />
-        <div className="min-w-0 space-y-5">{panel}<ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} /></div>
+        <div className="min-w-0 max-w-4xl space-y-5 2xl:max-w-none">{panel}<ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} /></div>
       </form>
     </section>
   );
@@ -98,9 +104,7 @@ function ProxyFields({ form, update }: SettingsFieldsProps) {
     <SettingsCard title="全局代理" description="启用后，目标站和采集站请求统一使用此代理。">
       <div className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-border bg-surface-muted/50 px-3">
         <span className="text-sm font-medium text-foreground">启用代理</span>
-        <Switch.Root aria-label="启用全局代理" checked={form.proxyEnabled} onCheckedChange={(value) => update("proxyEnabled", value)} className="h-6 w-11 rounded-full bg-border-strong p-0.5 transition-colors data-[state=checked]:bg-primary">
-          <Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" />
-        </Switch.Root>
+        <Switch aria-label="启用全局代理" checked={form.proxyEnabled} onCheckedChange={(value) => update("proxyEnabled", value)} />
       </div>
       <Field label="代理地址" hint="支持 http:// 和 https://。">
         <TextInput value={form.proxyUrl} onChange={(value) => update("proxyUrl", value)} placeholder="http://127.0.0.1:7890" disabled={!form.proxyEnabled} />
@@ -133,28 +137,28 @@ function SettingsCard({ title, description, children }: Readonly<{ title: string
 
 function Field({ label, hint, children }: Readonly<{ label: string; hint?: string; children: React.ReactNode }>) {
   return (
-    <label className="block space-y-2 text-sm font-medium text-foreground">
+    <Label className="block space-y-2 text-foreground">
       <span>{label}</span>{children}{hint ? <span className="block text-xs font-normal text-muted">{hint}</span> : null}
-    </label>
+    </Label>
   );
 }
 
 function TextInput(input: Readonly<{ value: string; onChange: (value: string) => void; type?: string; placeholder?: string; autoComplete?: string; disabled?: boolean }>) {
-  return <input {...input} onChange={(event) => input.onChange(event.target.value)} className="form-control" />;
+  return <Input {...input} onChange={(event) => input.onChange(event.target.value)} />;
 }
 
 function ActionBar({ pending, onTest, compact = false }: Readonly<{ pending: PendingAction; onTest: () => void; compact?: boolean }>) {
   const layout = compact
     ? "flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:justify-end sm:px-6"
-    : "sticky bottom-20 z-20 flex flex-col gap-2 rounded-lg border border-border bg-surface/95 p-3 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end lg:bottom-4";
+    : "sticky bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 flex flex-col gap-2 rounded-lg border border-border bg-surface/95 p-3 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end";
   return (
     <div className={layout}>
-      <button type="button" onClick={onTest} disabled={pending !== null} className="secondary-button">
+      <Button type="button" variant="secondary" onClick={onTest} disabled={pending !== null}>
         {pending === "testTarget" ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}测试目标站
-      </button>
-      <button type="submit" disabled={pending !== null} className="primary-button">
+      </Button>
+      <Button type="submit" disabled={pending !== null}>
         {pending === "save" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}保存配置
-      </button>
+      </Button>
     </div>
   );
 }

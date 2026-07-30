@@ -1,10 +1,12 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
-import * as Switch from "@radix-ui/react-switch";
 import { Loader2, Pencil, Save, Unlink, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { Button } from "../ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "../ui/dialog";
+import { Label } from "../ui/label";
 import { Select, type SelectOption } from "../ui/select";
+import { Switch } from "../ui/switch";
 import type { AccountSourceBinding, AccountSourceRate, AccountSourceSite, TargetAccountView } from "./types";
 
 const UNSELECTED = "unselected";
@@ -39,21 +41,18 @@ export function AccountBindingDialog(input: BindingDialogProps) {
     setOpen(next);
   };
   return (
-    <Dialog.Root open={open} onOpenChange={changeOpen}>
-      <Dialog.Trigger asChild>
-        <button type="button" disabled={input.disabled} aria-label={triggerTitle} title={triggerTitle} className="icon-button">
+    <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="ghost" size="icon" disabled={input.disabled} aria-label={triggerTitle} title={triggerTitle} className="icon-button">
           <Pencil className="size-4" aria-hidden="true" />
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="dialog-content-motion fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(94vw,560px)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl">
-          <BindingHeader accountName={input.account.name} pending={input.pending} />
-          <BindingForm input={input} draft={draft} selectedRates={selectedRates} binding={binding}
-            onDraftChange={setDraft} onSubmit={(event) => void save(event)} onClear={() => void clear()} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="flex max-h-[92dvh] w-[min(94vw,560px)] flex-col overflow-hidden">
+        <BindingHeader accountName={input.account.name} pending={input.pending} />
+        <BindingForm input={input} draft={draft} selectedRates={selectedRates} binding={binding}
+          onDraftChange={setDraft} onSubmit={(event) => void save(event)} onClear={() => void clear()} />
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -72,12 +71,10 @@ export function AccountBindingSummary({ account, rates, sites }: Readonly<{
 
 function BindingHeader({ accountName, pending }: Readonly<{ accountName: string; pending: boolean }>) {
   return <div className="shrink-0 border-b border-border px-5 py-4 pr-16 sm:px-6">
-    <Dialog.Title className="text-lg font-semibold">绑定倍率采集分组</Dialog.Title>
-    <Dialog.Description className="mt-1 truncate text-sm text-muted" title={accountName}>账号 {accountName} · 配置倍率采集来源</Dialog.Description>
-    <Dialog.Close disabled={pending} aria-label="关闭倍率采集绑定弹窗"
-      className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50">
-      <X className="size-4" />
-    </Dialog.Close>
+    <DialogTitle className="text-lg font-semibold">绑定倍率采集分组</DialogTitle>
+    <DialogDescription className="mt-1 truncate text-sm text-muted" title={accountName}>账号 {accountName} · 配置倍率采集来源</DialogDescription>
+    <DialogClose asChild><Button type="button" variant="ghost" size="icon" disabled={pending} aria-label="关闭倍率采集绑定弹窗"
+      className="absolute right-3 top-3 text-muted"><X className="size-4" /></Button></DialogClose>
   </div>;
 }
 
@@ -112,23 +109,20 @@ function BindingForm({ input, draft, selectedRates, binding, onDraftChange, onSu
 
 function BindingAutomationField({ accountId, enabled, onChange }: Readonly<{ accountId: number; enabled: boolean; onChange: (value: boolean) => void }>) {
   const controlId = `account-test-scheduling-${accountId}`;
-  return <label htmlFor={controlId} className="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-border bg-surface-muted/40 px-3">
+  return <Label htmlFor={controlId} className="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-border bg-surface-muted/40 px-3">
     <div>
       <p className="text-sm font-medium">测试失败禁用，成功启用</p>
       <p className="mt-0.5 text-xs font-normal text-muted">请求错误按失败处理</p>
     </div>
-    <Switch.Root id={controlId} aria-label="测试结果自动启停调度" checked={enabled} onCheckedChange={onChange}
-      className="h-6 w-11 shrink-0 rounded-full bg-border-strong p-0.5 data-[state=checked]:bg-primary">
-      <Switch.Thumb className="block size-5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-5" />
-    </Switch.Root>
-  </label>;
+    <Switch id={controlId} aria-label="测试结果自动启停调度" checked={enabled} onCheckedChange={onChange} />
+  </Label>;
 }
 
 function BindingField({ step, label, children }: Readonly<{ step: string; label: string; children: React.ReactNode }>) {
-  return <label className="block space-y-2 text-sm font-medium">
+  return <Label className="block space-y-2 text-sm font-medium">
     <span className="flex items-center gap-2"><span className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{step}</span>{label}</span>
     {children}
-  </label>;
+  </Label>;
 }
 
 function BindingActions({ bound, pending, saveDisabled, onClear }: Readonly<{
@@ -138,14 +132,14 @@ function BindingActions({ bound, pending, saveDisabled, onClear }: Readonly<{
   onClear: () => void;
 }>) {
   return <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
-    {bound ? <button type="button" disabled={pending} onClick={onClear} className="secondary-button border-danger/30 text-danger hover:bg-danger/10">
+    {bound ? <Button type="button" variant="secondary" disabled={pending} onClick={onClear} className="border-danger/30 text-danger hover:bg-danger/10">
       <Unlink className="size-4" />解除绑定
-    </button> : <span />}
+    </Button> : <span />}
     <div className="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
-      <Dialog.Close type="button" disabled={pending} className="secondary-button">取消</Dialog.Close>
-      <button type="submit" disabled={pending || saveDisabled} className="primary-button min-w-32">
+      <DialogClose asChild><Button type="button" variant="secondary" disabled={pending}>取消</Button></DialogClose>
+      <Button type="submit" disabled={pending || saveDisabled} className="min-w-32">
         {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}{pending ? "保存中..." : "保存绑定"}
-      </button>
+      </Button>
     </div>
   </div>;
 }

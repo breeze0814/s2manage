@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { EMBED_SCHEMA_VERSION, ensureEmbedSchema } from "./sqlite-embed-schema.ts";
+import { ensureTargetRuleSchema } from "./sqlite-target-rule-schema.ts";
 import { ensureTelegramSchema, TELEGRAM_SCHEMA_VERSION } from "./sqlite-telegram-schema.ts";
 
 const MINIMUM_PARAMETER_SCHEMA_VERSION = 9;
@@ -160,6 +161,8 @@ const CREATE_TABLES = [
     rule_type TEXT NOT NULL,
     parameters_json TEXT NOT NULL,
     current_rate REAL,
+    last_applied_from_rate REAL,
+    last_applied_to_rate REAL,
     last_applied_at TEXT,
     last_error TEXT,
     updated_at TEXT NOT NULL
@@ -212,6 +215,7 @@ function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureRefreshVersion(database);
   ensureCollectionSiteWebsiteUrl(database);
   ensureTargetAccountSchedulingSchema(database);
+  ensureTargetRuleSchema(database);
   ensureTelegramSchema(database);
   ensureEmbedSchema(database);
   if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {

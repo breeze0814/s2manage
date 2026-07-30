@@ -31,8 +31,11 @@ test("package scripts and dependencies describe only the Next.js app and generic
   assert.equal(packageJson.scripts.api, undefined);
   assert.equal(packageJson.scripts.bot, undefined);
   assert.match(packageJson.scripts.worker ?? "", /src\/worker\/main\.ts/);
-  for (const dependency of ["@radix-ui/react-label", "@radix-ui/react-slot", "@radix-ui/react-tabs", "class-variance-authority", "clsx", "tailwind-merge"]) {
+  for (const dependency of ["@radix-ui/react-tabs"]) {
     assert.equal(packageJson.dependencies[dependency], undefined, `${dependency} should be removed`);
+  }
+  for (const dependency of ["@radix-ui/react-label", "@radix-ui/react-slot", "class-variance-authority", "clsx", "tailwind-merge"]) {
+    assert.ok(packageJson.dependencies[dependency], `${dependency} should support the shadcn component layer`);
   }
 });
 

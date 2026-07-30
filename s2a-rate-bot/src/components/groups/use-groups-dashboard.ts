@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { TARGET_RULE_VERSION } from "../../core/rule-version";
 import type { RuleDraft, SourceRateOption, SourceSiteOption, TargetGroupView } from "./types";
 
 export function useGroupsDashboard() {
@@ -79,7 +80,14 @@ async function executeAction(input: ExecuteActions) {
 function rulePayload(draft: RuleDraft) {
   const minimum = finiteNumber(draft.minimum, "计算最小值");
   if (minimum < 0) throw new Error("计算最小值必须大于或等于 0");
-  return { enabled: draft.enabled, ruleVersion: 1, ruleType: draft.ruleType, parameters: { offset: finiteNumber(draft.offset, "偏移"), minimum, formula: draft.formula }, bindings: draft.bindings.map((binding) => ({ sourceSiteId: binding.sourceSiteId, sourceGroupId: binding.sourceGroupId })) };
+  return {
+    enabled: draft.enabled, ruleVersion: TARGET_RULE_VERSION, ruleType: draft.ruleType,
+    parameters: { adjustmentMode: draft.adjustmentMode,
+      adjustmentValue: finiteNumber(draft.adjustmentValue, "倍率调整值"), minimum, formula: draft.formula },
+    bindings: draft.bindings.map((binding) => ({
+      sourceSiteId: binding.sourceSiteId, sourceGroupId: binding.sourceGroupId,
+    })),
+  };
 }
 
 async function refreshGroup(input: RefreshGroupActions) {

@@ -1,5 +1,7 @@
 import { PlatformLabel } from "../platform-icon";
+import { Checkbox } from "../ui/checkbox";
 import { EffectiveRateValue } from "../ui/effective-rate-value";
+import { Label } from "../ui/label";
 import { Tag } from "../ui/tag";
 import type { SourceBinding, SourceRateOption } from "./types";
 
@@ -31,13 +33,14 @@ function BindingRow({ rate, siteName, checked, onChange }: Readonly<{
   onChange: () => void;
 }>) {
   const displaySite = siteName ?? `#${rate.sourceSiteId}`;
-  return <label className={`flex min-h-10 cursor-pointer items-center gap-2 border-t border-border px-3 py-1.5 first:border-t-0 ${checked ? "bg-primary/10" : "hover:bg-surface-muted/60"}`}>
-    <input className="size-4 shrink-0 accent-primary" type="checkbox" checked={checked} onChange={onChange} />
+  const controlId = `binding-${rate.sourceSiteId}-${rate.groupId}`;
+  return <Label htmlFor={controlId} className={`flex min-h-10 cursor-pointer items-center gap-2 border-t border-border px-3 py-1.5 first:border-t-0 ${checked ? "bg-primary/10" : "hover:bg-surface-muted/60"}`}>
+    <Checkbox id={controlId} checked={checked} onCheckedChange={onChange} />
     <strong className="min-w-0 flex-1 truncate text-sm font-medium" title={rate.groupName}>{rate.groupName}</strong>
     <Tag title={displaySite} className="hidden sm:inline-flex"><span className="max-w-24 truncate">{displaySite}</span></Tag>
     <Tag tone="rate" className="shrink-0 font-mono tabular-nums">原 ×{formatRate(rate.rawRate)}</Tag>
     <EffectiveRateValue className="shrink-0 text-xs">有效 ×{formatRate(rate.effectiveRate)}</EffectiveRateValue>
-  </label>;
+  </Label>;
 }
 
 function toggleBinding(current: readonly SourceBinding[], binding: SourceBinding, checked: boolean) {

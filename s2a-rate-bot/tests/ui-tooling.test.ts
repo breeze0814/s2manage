@@ -36,7 +36,7 @@ test("forms use compact semantic number controls and lists share tag styling", (
   for (const pattern of [/TagTone/, /whitespace-nowrap/, /overflow-hidden/, /text-xs/, /rounded-md border/]) {
     assert.match(tag, pattern);
   }
-  assert.match(source("src/app/globals.css"), /text-base[\s\S]*sm:text-sm/);
+  assert.match(source("src/app/design-system.css"), /text-base[\s\S]*sm:text-sm/);
 });
 
 test("development and production builds use isolated Next.js output directories", () => {

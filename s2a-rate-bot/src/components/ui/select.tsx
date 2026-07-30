@@ -29,7 +29,7 @@ export function Select({ value, options, ariaLabel, disabled = false, triggerIco
         {triggerIcon ? <span className="sr-only"><SelectPrimitive.Value /></span> : <SelectPrimitive.Icon><ChevronDown className="size-4 text-muted" /></SelectPrimitive.Icon>}
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
-        <SelectPrimitive.Content position="popper" sideOffset={6} className="z-[70] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl">
+        <SelectPrimitive.Content position="popper" sideOffset={6} className="z-[70] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface-elevated p-1 shadow-elevated">
           <SelectPrimitive.Viewport>
             {options.map((option) => <SelectItem key={option.value} option={option} />)}
           </SelectPrimitive.Viewport>

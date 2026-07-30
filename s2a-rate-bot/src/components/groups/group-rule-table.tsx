@@ -1,13 +1,12 @@
 "use client";
-
 import { Loader2, Play, RefreshCw } from "lucide-react";
-import { useMemo } from "react";
-import { PlatformLabel } from "../platform-icon";
-import { EffectiveRateValue } from "../ui/effective-rate-value";
-import { Tag } from "../ui/tag";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "../ui/button";
+import { TableCell, TableRow } from "../ui/table";
 import { GroupRuleDialog } from "./group-rule-dialog";
+import { BindingCell, GroupCell, RateChangeCell, RuleCell, StatusBadge } from "./group-rule-presentations";
+import { GroupTableShell } from "./group-rule-table-layouts";
 import type { RuleDraft, SourceRateOption, SourceSiteOption, TargetGroupView } from "./types";
-
 type GroupRuleTableProps = Readonly<{
   groups: readonly TargetGroupView[];
   sites: readonly SourceSiteOption[];
@@ -17,54 +16,220 @@ type GroupRuleTableProps = Readonly<{
   onSave: (groupId: number, draft: RuleDraft) => Promise<boolean>;
   onApply: (groupId: number) => void;
 }>;
-
-const RULE_LABELS = { first: "首个倍率", average: "平均值", min: "最小值", max: "最大值", avg_formula: "平均公式" } as const;
-
+const BINDING_PREVIEW_LIMIT = 2;
+const BINDING_PREVIEW_LIMIT_WIDE = 3;
 export function GroupRuleTable(props: GroupRuleTableProps) {
   const { groups, sites, rates, pending, onRefresh, onSave, onApply } = props;
   const rateMap = useMemo(() => new Map(rates.map((rate) => [`${rate.sourceSiteId}:${rate.groupId}`, rate])), [rates]);
   const siteNames = useMemo(() => new Map(sites.map((site) => [site.id, site.name])), [sites]);
+  const [selectedId, setSelectedId] = useState<number | null>(groups[0]?.id ?? null);
+  useEffect(() => {
+    if (selectedId !== null && groups.some((group) => group.id === selectedId)) return;
+    setSelectedId(groups[0]?.id ?? null);
+  }, [groups, selectedId]);
+  const selected = groups.find((group) => group.id === selectedId) ?? null;
+  const rowProps = (group: TargetGroupView) => ({
+    group,
+    sites,
+    rates,
+    rateMap,
+    siteNames,
+    pending,
+    selected: selectedId === group.id,
+    onSelect: setSelectedId,
+    onRefresh,
+    onSave,
+    onApply,
+  });
+
+  const detail = selected ? <GroupDetailPanel {...rowProps(selected)} />
+    : <p className="empty-state-inline">请选择左侧分组查看详情。</p>;
+  return <GroupTableShell
+    count={groups.length}
+    mobileRows={groups.map((group) => <GroupCard key={group.id} {...rowProps(group)} />)}
+    tabletRows={groups.map((group) => <GroupRow key={group.id} {...rowProps(group)} />)}
+    masterRows={groups.map((group) => <MasterGroupRow key={group.id} {...rowProps(group)} />)}
+    detail={detail}
+  />;
+}
+
+type GroupRowProps = Readonly<{
+  group: TargetGroupView;
+  sites: readonly SourceSiteOption[];
+  rates: readonly SourceRateOption[];
+  rateMap: ReadonlyMap<string, SourceRateOption>;
+  siteNames: ReadonlyMap<number, string>;
+  pending: string;
+  selected: boolean;
+  onSelect: (groupId: number) => void;
+  onRefresh: GroupRuleTableProps["onRefresh"];
+  onSave: GroupRuleTableProps["onSave"];
+  onApply: GroupRuleTableProps["onApply"];
+}>;
+
+function GroupRow(props: GroupRowProps) {
+  const { group, sites, rates, rateMap, siteNames, pending, onRefresh, onSave, onApply } = props;
+  const busy = pending.endsWith(`:${group.id}`);
   return (
-    <section className="panel overflow-hidden" aria-label="分组倍率列表">
-      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 sm:px-5"><p className="text-sm"><span className="font-semibold">共 {groups.length} 个分组</span><span className="ml-2 text-muted">本地 SQL 快照</span></p><span className="hidden text-xs text-muted sm:inline">通过操作列刷新、编辑和应用</span></div>
-      <div className="desktop-table-viewport rounded-b-lg">
-        <table className="data-table data-table-sticky min-w-[960px]">
-          <TableHead />
-          <tbody>{groups.map((group) => <GroupRow key={group.id} group={group} sites={sites} rates={rates} rateMap={rateMap} siteNames={siteNames} pending={pending} onRefresh={onRefresh} onSave={onSave} onApply={onApply} />)}</tbody>
-        </table>
-      </div>
-    </section>
+    <TableRow>
+      <TableCell className="py-3.5 sm:px-5"><GroupCell group={group} /></TableCell>
+      <TableCell className="py-3.5"><StatusBadge enabled={group.rule.enabled} /></TableCell>
+      <TableCell className="py-3.5"><BindingCell group={group} rateMap={rateMap} siteNames={siteNames} limit={BINDING_PREVIEW_LIMIT} /></TableCell>
+      <TableCell className="py-3.5"><RuleCell group={group} /></TableCell>
+      <TableCell className="py-3.5"><RateChangeCell rule={group.rule} /></TableCell>
+      <TableCell className="sticky-action-cell py-3.5 sm:px-5">
+        <GroupActions group={group} sites={sites} rates={rates} pending={pending} busy={busy} onRefresh={onRefresh} onSave={onSave} onApply={onApply} />
+      </TableCell>
+    </TableRow>
   );
 }
 
-function TableHead() {
-  return <thead><tr><th className="w-56 sm:px-5">分组 / 倍率</th><th className="w-24">状态</th><th>绑定分组</th><th className="w-56">计算规则</th><th className="w-40">最近应用</th><th className="sticky-action-header w-44 sm:px-5">操作</th></tr></thead>;
+function MasterGroupRow(props: GroupRowProps) {
+  const { group, sites, rates, rateMap, siteNames, pending, selected, onSelect, onRefresh, onSave, onApply } = props;
+  const busy = pending.endsWith(`:${group.id}`);
+  return (
+    <TableRow
+      data-selected={selected ? "true" : undefined}
+      className="cursor-pointer"
+      onClick={() => onSelect(group.id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(group.id);
+        }
+      }}
+      tabIndex={0}
+      aria-selected={selected}
+    >
+      <TableCell className="py-3.5 sm:px-5"><GroupCell group={group} wideName /></TableCell>
+      <TableCell className="py-3.5"><StatusBadge enabled={group.rule.enabled} /></TableCell>
+      <TableCell className="py-3.5"><BindingCell group={group} rateMap={rateMap} siteNames={siteNames} limit={BINDING_PREVIEW_LIMIT_WIDE} /></TableCell>
+      <TableCell className="py-3.5"><RateChangeCell rule={group.rule} compact /></TableCell>
+      <TableCell className="sticky-action-cell py-3.5 sm:px-5" onClick={(event) => event.stopPropagation()}>
+        <GroupActions group={group} sites={sites} rates={rates} pending={pending} busy={busy} onRefresh={onRefresh} onSave={onSave} onApply={onApply} />
+      </TableCell>
+    </TableRow>
+  );
 }
 
-function GroupRow(props: Readonly<{ group: TargetGroupView; sites: readonly SourceSiteOption[]; rates: readonly SourceRateOption[]; rateMap: ReadonlyMap<string, SourceRateOption>; siteNames: ReadonlyMap<number, string>; pending: string; onRefresh: GroupRuleTableProps["onRefresh"]; onSave: GroupRuleTableProps["onSave"]; onApply: GroupRuleTableProps["onApply"] }>) {
+function GroupDetailPanel(props: GroupRowProps) {
   const { group, sites, rates, rateMap, siteNames, pending, onRefresh, onSave, onApply } = props;
   const busy = pending.endsWith(`:${group.id}`);
-  return <tr><td className="py-3.5 sm:px-5"><GroupCell group={group} /></td><td className="py-3.5"><StatusBadge enabled={group.rule.enabled} /></td><td className="py-3.5"><BindingCell group={group} rateMap={rateMap} siteNames={siteNames} /></td><td className="py-3.5"><RuleCell group={group} /></td><td className="whitespace-nowrap py-3.5 text-xs text-muted">{formatAppliedAt(group.rule.lastAppliedAt)}</td><td className="sticky-action-cell py-3.5 sm:px-5"><div className="flex justify-end gap-1.5"><IconAction label="刷新此分组" pending={pending === `refresh:${group.id}`} disabled={busy} onClick={() => onRefresh(group.id)} icon={<RefreshCw className="size-3" />} /><GroupRuleDialog group={group} sites={sites} rates={rates} pending={pending} onSave={onSave} /><IconAction label="立即应用" primary pending={pending === `apply:${group.id}`} disabled={busy || !group.rule.enabled} onClick={() => onApply(group.id)} icon={<Play className="size-3" />} /></div></td></tr>;
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-3">
+        <GroupCell group={group} wideName />
+        <StatusBadge enabled={group.rule.enabled} />
+      </div>
+
+      <section className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase text-muted">绑定分组</h3>
+        <BindingCell group={group} rateMap={rateMap} siteNames={siteNames} limit={Number.POSITIVE_INFINITY} />
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase text-muted">计算规则</h3>
+        <RuleCell group={group} />
+      </section>
+
+      <section className="space-y-1">
+        <h3 className="text-xs font-semibold uppercase text-muted">最近倍率变化</h3>
+        <RateChangeCell rule={group.rule} />
+      </section>
+
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+        <span className="text-sm text-muted">操作</span>
+        <GroupActions group={group} sites={sites} rates={rates} pending={pending} busy={busy} onRefresh={onRefresh} onSave={onSave} onApply={onApply} />
+      </div>
+    </div>
+  );
 }
 
-function GroupCell({ group }: Readonly<{ group: TargetGroupView }>) {
-  return <div><div className="flex items-center gap-2"><p className="max-w-36 truncate font-medium" title={group.name}>{group.name}</p><span className="text-xs tabular-nums text-muted">#{group.id}</span></div><div className="mt-1.5 flex flex-wrap items-center gap-1.5"><Tag><PlatformLabel platform={group.platform} fallback="未知平台" /></Tag><p className="inline-flex items-center gap-1.5 font-mono text-base font-semibold tabular-nums text-rate"><span aria-hidden="true" className="size-1.5 rounded-full bg-rate" />{formatRate(group.rate_multiplier)}</p></div></div>;
+function GroupCard(props: GroupRowProps) {
+  const { group, sites, rates, rateMap, siteNames, pending, onRefresh, onSave, onApply } = props;
+  const busy = pending.endsWith(`:${group.id}`);
+  return (
+    <article className="rounded-lg border border-border bg-surface p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <GroupCell group={group} />
+        <StatusBadge enabled={group.rule.enabled} />
+      </div>
+      <dl className="mt-4 grid gap-3 border-t border-border pt-3 text-sm">
+        <div>
+          <dt className="mb-1 text-xs text-muted">绑定分组</dt>
+          <dd><BindingCell group={group} rateMap={rateMap} siteNames={siteNames} limit={BINDING_PREVIEW_LIMIT} /></dd>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <dt className="mb-1 text-xs text-muted">计算规则</dt>
+            <dd><RuleCell group={group} compact /></dd>
+          </div>
+          <div>
+            <dt className="mb-1 text-xs text-muted">最近倍率变化</dt>
+            <dd><RateChangeCell rule={group.rule} compact /></dd>
+          </div>
+        </div>
+      </dl>
+      <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+        <span className="text-sm text-muted">操作</span>
+        <GroupActions group={group} sites={sites} rates={rates} pending={pending} busy={busy} onRefresh={onRefresh} onSave={onSave} onApply={onApply} />
+      </div>
+    </article>
+  );
 }
 
-function BindingCell({ group, rateMap, siteNames }: Readonly<{ group: TargetGroupView; rateMap: ReadonlyMap<string, SourceRateOption>; siteNames: ReadonlyMap<number, string> }>) {
-  if (group.bindings.length === 0) return <span className="text-sm text-muted">尚未绑定</span>;
-  return <div className="flex max-w-md flex-col items-start gap-1.5">{group.bindings.map((binding) => { const rate = rateMap.get(`${binding.sourceSiteId}:${binding.sourceGroupId}`); const siteName = siteNames.get(binding.sourceSiteId) ?? `#${binding.sourceSiteId}`; return <div key={`${binding.sourceSiteId}:${binding.sourceGroupId}`} title={`${siteName} · ${rate?.groupName ?? binding.sourceGroupId}`} className="flex w-full items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate text-foreground"><span className="text-muted">{siteName}</span><span className="mx-1.5 text-border-strong">/</span>{rate?.groupName ?? binding.sourceGroupId}</span><EffectiveRateValue className="shrink-0">×{rate?.effectiveRate ?? "-"}</EffectiveRateValue></div>; })}</div>;
+function GroupActions({
+  group,
+  sites,
+  rates,
+  pending,
+  busy,
+  onRefresh,
+  onSave,
+  onApply,
+}: Readonly<{
+  group: TargetGroupView;
+  sites: readonly SourceSiteOption[];
+  rates: readonly SourceRateOption[];
+  pending: string;
+  busy: boolean;
+  onRefresh: GroupRuleTableProps["onRefresh"];
+  onSave: GroupRuleTableProps["onSave"];
+  onApply: GroupRuleTableProps["onApply"];
+}>) {
+  return (
+    <div className="flex justify-end gap-1.5">
+      <IconAction
+        label="刷新此分组"
+        pending={pending === `refresh:${group.id}`}
+        disabled={busy}
+        onClick={() => onRefresh(group.id)}
+        icon={<RefreshCw className="size-3" />}
+      />
+      <GroupRuleDialog group={group} sites={sites} rates={rates} pending={pending} onSave={onSave} />
+      <IconAction
+        label="立即应用"
+        primary
+        pending={pending === `apply:${group.id}`}
+        disabled={busy || !group.rule.enabled}
+        onClick={() => onApply(group.id)}
+        icon={<Play className="size-3" />}
+      />
+    </div>
+  );
 }
 
-function RuleCell({ group }: Readonly<{ group: TargetGroupView }>) {
-  const parameters = group.rule.parameters;
-  return <div><Tag tone="primary">{RULE_LABELS[group.rule.ruleType]}</Tag><p className="mt-1.5 font-mono text-xs tabular-nums text-rate">偏移 {parameters.offset}</p><p className="mt-1 font-mono text-xs tabular-nums text-rate">固定下限 {parameters.minimum}</p>{group.rule.ruleType === "avg_formula" ? <p className="mt-1 max-w-48 truncate font-mono text-xs" title={parameters.formula}>{parameters.formula}</p> : null}{group.rule.lastError ? <p className="mt-1 max-w-48 truncate text-xs text-danger" title={group.rule.lastError}>{group.rule.lastError}</p> : null}</div>;
+function IconAction({
+  label,
+  icon,
+  pending,
+  primary = false,
+  ...button
+}: Readonly<{ label: string; icon: React.ReactNode; pending: boolean; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>>) {
+  return (
+    <Button type="button" variant={primary ? "default" : "ghost"} size="icon-sm" aria-label={label} title={label} {...button} className={primary ? "compact-icon-button-primary" : "compact-icon-button"}>
+      {pending ? <Loader2 className="size-3 animate-spin" /> : icon}
+      <span className="sr-only">{label}</span>
+    </Button>
+  );
 }
-
-function IconAction({ label, icon, pending, primary = false, ...button }: Readonly<{ label: string; icon: React.ReactNode; pending: boolean; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>>) {
-  return <button type="button" aria-label={label} title={label} {...button} className={primary ? "compact-icon-button-primary" : "compact-icon-button"}>{pending ? <Loader2 className="size-3 animate-spin" /> : icon}<span className="sr-only">{label}</span></button>;
-}
-
-function StatusBadge({ enabled }: Readonly<{ enabled: boolean }>) { return <Tag tone={enabled ? "success" : "neutral"}>{enabled ? "已启用" : "已停用"}</Tag>; }
-function formatRate(value: number | null | undefined) { return value === null || value === undefined ? "-" : String(value); }
-function formatAppliedAt(value: string | null) { return value ? new Date(value).toLocaleString("zh-CN") : "尚未应用"; }

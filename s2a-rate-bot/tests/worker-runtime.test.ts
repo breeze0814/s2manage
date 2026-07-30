@@ -142,6 +142,7 @@ function baseDependencies(overrides: Partial<WorkerDependencies> = {}): WorkerDe
     collection: { list: async () => [], refresh: async () => undefined },
     targetGroups: { list: async () => [], apply: async () => ({ action: "skip" }) },
     notifications: { run: async () => ({ success: 0, skipped: 2, failed: 0, errors: [] }) },
+    scheduled: { run: async () => undefined },
     now: () => new Date("2026-07-11T01:00:00Z"),
     ...overrides,
   };
@@ -156,5 +157,6 @@ type WorkerDependencies = {
   readonly collection: { readonly list: () => Promise<ReturnType<typeof site>[]>; readonly refresh: (id: number) => Promise<unknown> };
   readonly targetGroups: { readonly list: () => Promise<Array<{ id: number; name: string; rule: { enabled: boolean } }>>; readonly apply: (id: number) => Promise<{ action: string }> };
   readonly notifications: { readonly run: () => Promise<{ success: number; skipped: number; failed: number; errors: readonly string[] }> };
+  readonly scheduled: { readonly run: () => Promise<void> };
   readonly now: () => Date;
 };

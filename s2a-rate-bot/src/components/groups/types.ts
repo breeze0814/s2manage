@@ -1,4 +1,5 @@
 export type RuleType = "first" | "average" | "min" | "max" | "avg_formula";
+export type AdjustmentMode = "fixed" | "percentage";
 export type SourceBinding = { readonly sourceSiteId: number; readonly sourceGroupId: string };
 export type TargetGroupView = {
   readonly id: number;
@@ -8,9 +9,11 @@ export type TargetGroupView = {
   readonly rate_multiplier?: number | null;
   readonly rule: {
     readonly enabled: boolean;
-    readonly ruleVersion: 1;
+    readonly ruleVersion: 2;
     readonly ruleType: RuleType;
-    readonly parameters: { readonly offset: number; readonly minimum: number; readonly formula: string };
+    readonly parameters: { readonly adjustmentMode: AdjustmentMode; readonly adjustmentValue: number; readonly minimum: number; readonly formula: string };
+    readonly lastAppliedFromRate: number | null;
+    readonly lastAppliedToRate: number | null;
     readonly lastAppliedAt: string | null;
     readonly lastError: string | null;
   };
@@ -29,9 +32,10 @@ export type SourceRateOption = {
 
 export type RuleDraft = {
   readonly enabled: boolean;
-  readonly ruleVersion: 1;
+  readonly ruleVersion: 2;
   readonly ruleType: RuleType;
-  readonly offset: string;
+  readonly adjustmentMode: AdjustmentMode;
+  readonly adjustmentValue: string;
   readonly minimum: string;
   readonly formula: string;
   readonly bindings: readonly SourceBinding[];
