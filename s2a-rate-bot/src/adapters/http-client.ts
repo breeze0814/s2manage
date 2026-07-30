@@ -15,11 +15,15 @@ export type JsonRequest = {
 export type HttpClientRequest = Omit<JsonRequest, "proxyUrl">;
 export type JsonClientRequest = HttpClientRequest;
 export type TextHttpResponse = { readonly status: number; readonly text: string; readonly headers: Record<string, string> };
+export type JsonHttpResponse<T = unknown> = { readonly status: number; readonly data: T; readonly headers: Record<string, string> };
 export type JsonHttpClient = {
   readonly request: <T = unknown>(input: JsonClientRequest) => Promise<T>;
 };
+export type JsonResponseHttpClient = JsonHttpClient & {
+  readonly requestResponse: <T = unknown>(input: JsonClientRequest) => Promise<JsonHttpResponse<T>>;
+};
 export type TextHttpClient = { readonly requestText: (input: HttpClientRequest) => Promise<TextHttpResponse> };
-export type HttpClient = JsonHttpClient & TextHttpClient;
+export type HttpClient = JsonResponseHttpClient & TextHttpClient;
 
 export function createJsonHttpClient(options: {
   readonly timeoutMs: number;
@@ -27,6 +31,7 @@ export function createJsonHttpClient(options: {
 }): HttpClient {
   return {
     request: (input) => requestJson({ ...options, ...input }),
+    requestResponse: (input) => requestJsonResponse({ ...options, ...input }),
     requestText: (input) => requestTextResponse({ ...options, ...input }),
   };
 }
@@ -37,7 +42,7 @@ export async function requestJson<T = unknown>(input: JsonRequest): Promise<T> {
   return (await requestJsonResponse<T>(input)).data;
 }
 
-export async function requestJsonResponse<T = unknown>(input: JsonRequest) {
+export async function requestJsonResponse<T = unknown>(input: JsonRequest): Promise<JsonHttpResponse<T>> {
   return requestResponse(input, (result) => {
     if (!result.ok) throw new HttpResponseError(result.status, result.text);
     return { data: (result.text.trim() ? JSON.parse(result.text) : {}) as T, headers: result.headers, status: result.status };
@@ -64,7 +69,7 @@ async function requestResponse<T>(input: JsonRequest, parse: (result: FetchTextR
   }
 }
 
-class HttpResponseError extends Error {
+export class HttpResponseError extends Error {
   constructor(readonly status: number, text: string) { super(`HTTP ${status}: ${text.slice(0, 300)}`); }
 }
 

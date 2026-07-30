@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { EMBED_SCHEMA_VERSION, ensureEmbedSchema } from "./sqlite-embed-schema.ts";
 import { ensureTelegramSchema, TELEGRAM_SCHEMA_VERSION } from "./sqlite-telegram-schema.ts";
 
 const MINIMUM_PARAMETER_SCHEMA_VERSION = 9;
@@ -9,7 +10,7 @@ const RATE_PLATFORM_SCHEMA_VERSION = 13;
 const REFRESH_VERSION_SCHEMA_VERSION = 14;
 const COLLECTION_SITE_WEBSITE_SCHEMA_VERSION = 17;
 const ACCOUNT_SCHEDULING_SCHEMA_VERSION = 18;
-const SCHEMA_VERSION = TELEGRAM_SCHEMA_VERSION;
+const SCHEMA_VERSION = Math.max(TELEGRAM_SCHEMA_VERSION, EMBED_SCHEMA_VERSION);
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -212,6 +213,7 @@ function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureCollectionSiteWebsiteUrl(database);
   ensureTargetAccountSchedulingSchema(database);
   ensureTelegramSchema(database);
+  ensureEmbedSchema(database);
   if (previousVersion < MINIMUM_PARAMETER_SCHEMA_VERSION) {
     database.exec(`UPDATE target_group_rules
       SET parameters_json = json_set(parameters_json, '$.minimum', 0)
