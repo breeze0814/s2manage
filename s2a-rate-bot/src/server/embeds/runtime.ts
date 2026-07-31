@@ -34,7 +34,11 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
   const identities = createEmbedIdentityService({ configs, sessions, upstream });
   const tickets = createTicketService({ store: ticketsStore, configs });
   const leaderboard = createLeaderboardService({ upstream });
-  const lottery = createLotteryService({ store: lotteryStore, rewards: createRuntimeRewardCodeGateway(settings) });
+  const lottery = createLotteryService({
+    store: lotteryStore,
+    rewards: createRuntimeRewardCodeGateway(settings),
+    balance: (identity) => upstream.userBalance(identity.sub2apiUserId),
+  });
   return {
     configs, identities, sessions, tickets, leaderboard, lottery,
     close: () => { lotteryStore.close(); ticketsStore.close(); store.close(); },

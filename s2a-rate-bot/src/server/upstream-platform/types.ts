@@ -27,6 +27,7 @@ export type CurrentUser = {
   readonly id: string;
   readonly email: string;
   readonly role: string;
+  readonly balance: number | null;
   readonly raw: UpstreamRecord;
 };
 

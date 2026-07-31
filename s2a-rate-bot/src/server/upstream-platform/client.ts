@@ -585,7 +585,13 @@ function parseCurrentUser(payload: unknown): CurrentUser {
   const raw = dataRecord(payload);
   const id = idField(raw);
   if (!id) throw new UpstreamProtocolError("当前用户响应缺少用户 ID", "invalid_response");
-  return { id, email: stringField(raw, "email"), role: stringField(raw, "role"), raw };
+  return {
+    id,
+    email: stringField(raw, "email"),
+    role: stringField(raw, "role"),
+    balance: numberField(raw, "balance"),
+    raw,
+  };
 }
 
 function parseAdminGroup(value: unknown): AdminGroup {

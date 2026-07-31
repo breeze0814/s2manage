@@ -107,3 +107,13 @@ test("engagement settings and lottery editing use accessible modal dialogs", () 
   assert.match(dashboards, /EngagementPageHeader/);
   assert.doesNotMatch(dashboards, /<EmbedLinkPanel|<TicketConfigPanel/);
 });
+
+test("customer lottery hides participant counts and explains the balance threshold", () => {
+  const customerLottery = source("src/components/embed/lottery-embed-page.tsx");
+  const operationsLottery = source("src/components/engagement/lottery-dashboard.tsx");
+
+  assert.doesNotMatch(customerLottery, /entryCount|人参与/);
+  assert.match(customerLottery, /参与条件：账户余额大于 10/);
+  assert.match(operationsLottery, /累计参与/);
+  assert.match(operationsLottery, /参与余额 &gt; 10/);
+});

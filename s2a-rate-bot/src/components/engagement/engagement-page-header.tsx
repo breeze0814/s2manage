@@ -14,15 +14,15 @@ export function EngagementPageHeader(props: Readonly<{
 }>) {
   const Icon = ICONS[props.kind];
   return (
-    <header className="overflow-hidden rounded-xl border border-border bg-surface shadow-panel">
-      <div className="flex flex-col gap-4 px-4 py-5 sm:px-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+    <header className="border-b border-border">
+      <div className="flex flex-col gap-4 pb-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-start gap-3.5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-strong"><Icon className="size-5" aria-hidden="true" /></span>
-          <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-strong">互动运营</p><h1 className="mt-1 text-2xl font-semibold leading-8">{props.title}</h1><p className="mt-1 max-w-3xl text-sm leading-6 text-muted">{props.description}</p></div>
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary-strong"><Icon className="size-5" aria-hidden="true" /></span>
+          <div className="min-w-0"><p className="text-xs font-semibold text-primary-strong">互动运营</p><h1 className="mt-1 text-2xl font-semibold leading-8">{props.title}</h1><p className="mt-1 max-w-3xl text-sm leading-6 text-muted">{props.description}</p></div>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:shrink-0"><EmbedSettingsDialog kind={props.kind} />{props.actions}</div>
       </div>
-      <div className="border-t border-border bg-surface-muted/45 px-3 py-2 sm:px-5"><EngagementNavigation /></div>
+      <div className="-mb-px"><EngagementNavigation /></div>
     </header>
   );
 }

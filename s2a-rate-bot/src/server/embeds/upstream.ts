@@ -11,6 +11,7 @@ import type { CurrentUser, Sub2ApiUserBreakdownQuery } from "../upstream-platfor
 export type EmbedUpstreamGateway = {
   readonly sourceOrigin: () => Promise<string>;
   readonly currentUser: (sourceOrigin: string, token: string) => Promise<CurrentUser>;
+  readonly userBalance: (userId: string) => Promise<number | null>;
   readonly userBreakdown: (query: Sub2ApiUserBreakdownQuery) => Promise<unknown>;
 };
 
@@ -23,6 +24,11 @@ export function createEmbedUpstreamGateway(
       const snapshot = await requireSettings(settings);
       assertCurrentOrigin(snapshot, origin);
       return createViewerClient(snapshot, origin, token).fetchCurrentUser();
+    },
+    userBalance: async (userId) => {
+      const snapshot = await requireSettings(settings);
+      const user = await createAdminClient(snapshot).fetchAdminUser(userId);
+      return finiteBalance(user.balance);
     },
     userBreakdown: async (query) => {
       const snapshot = await requireSettings(settings);
@@ -66,5 +72,10 @@ function assertCurrentOrigin(settings: ConfiguredSettings, value: string) {
 
 function sourceOrigin(settings: ConfiguredSettings) { return normalizedOrigin(settings.target.baseUrl); }
 export function normalizedOrigin(value: string) { return new URL(normalizeUpstreamUrl(value)).origin; }
+
+function finiteBalance(value: unknown) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 type ConfiguredSettings = SettingsSnapshot & { readonly target: NonNullable<SettingsSnapshot["target"]> };

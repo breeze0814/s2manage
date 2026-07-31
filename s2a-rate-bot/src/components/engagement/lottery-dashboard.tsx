@@ -1,34 +1,43 @@
 "use client";
 
-import { Activity, AlertTriangle, Ban, CalendarClock, Copy, Gift, Loader2, Pencil, Plus, RefreshCw, TicketCheck, Trophy } from "lucide-react";
+import { Activity, AlertTriangle, Ban, CalendarClock, Copy, Gift, Loader2, Pencil, Plus, RefreshCw, Search, TicketCheck, Trophy, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { LotteryCampaign } from "../../server/embeds/types";
 import { Button } from "../ui/button";
 import { ConfirmAlert } from "../ui/confirm-alert";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Tag } from "../ui/tag";
 import { requestJson } from "./api";
 import { EngagementPageHeader } from "./engagement-page-header";
 import { LotteryForm } from "./lottery-form";
 
 const PRIZE_TYPE_LABELS = { balance: "余额", subscription: "订阅" } as const;
+type CampaignFilter = "all" | "active" | "finished";
 
 export function LotteryDashboard() {
   const [items, setItems] = useState<LotteryCampaign[]>([]);
   const [editing, setEditing] = useState<LotteryCampaign | "new" | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<CampaignFilter>("all");
+  const [search, setSearch] = useState("");
+  const visibleItems = items.filter((campaign) => matchesCampaign(campaign, filter, search));
   const load = () => void loadCampaigns(setItems, setLoading);
   useEffect(() => { void loadCampaigns(setItems, setLoading); }, []);
   return (
     <section className="page-stack">
       <EngagementPageHeader kind="lottery" title="抽奖活动" description="创建活动、管理报名并查看开奖结果，定时活动由 Worker 自动结算。" actions={<>
+        <Tag tone="success" className="h-9 px-3"><WalletCards className="size-3.5" />参与余额 &gt; 10</Tag>
         <Button type="button" variant="secondary" size="icon" aria-label="刷新活动" title="刷新活动" disabled={loading} onClick={load}>{loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button>
         <Button type="button" onClick={() => setEditing("new")}><Plus className="size-4" />新建抽奖</Button>
       </>} />
       <LotteryStats items={items} />
-      <section className="panel overflow-hidden">
-        <div className="panel-header"><div><h2 className="panel-title">活动列表</h2><p className="panel-description">共 {items.length} 个活动，按创建时间排列</p></div></div>
-        <CampaignList items={items} loading={loading} onEdit={setEditing} onCancel={setPendingId} />
+      <section aria-labelledby="lottery-campaigns-heading">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><div><h2 id="lottery-campaigns-heading" className="text-lg font-semibold">活动列表</h2><p className="mt-1 text-sm text-muted">共 {items.length} 个活动，按创建时间排列</p></div><p className="text-sm text-muted">当前显示 {visibleItems.length} 个</p></div>
+        <CampaignToolbar filter={filter} search={search} onFilter={setFilter} onSearch={setSearch} />
+        <CampaignList items={visibleItems} total={items.length} loading={loading} onEdit={setEditing} onCancel={setPendingId} />
       </section>
       {editing ? <LotteryForm campaign={editing === "new" ? null : editing} onCancel={() => setEditing(null)} onSaved={(campaign) => { setItems((current) => [campaign, ...current.filter((item) => item.id !== campaign.id)]); setEditing(null); }} /> : null}
       <ConfirmAlert open={Boolean(pendingId)} onOpenChange={(open) => { if (!open) setPendingId(null); }}
@@ -36,6 +45,28 @@ export function LotteryDashboard() {
         onConfirm={() => { if (pendingId) void cancelCampaign(pendingId, setItems); }} />
     </section>
   );
+}
+
+function CampaignToolbar(props: Readonly<{
+  filter: CampaignFilter;
+  search: string;
+  onFilter: (value: CampaignFilter) => void;
+  onSearch: (value: string) => void;
+}>) {
+  const filters: ReadonlyArray<{ value: CampaignFilter; label: string }> = [
+    { value: "all", label: "全部" },
+    { value: "active", label: "进行中" },
+    { value: "finished", label: "已结束" },
+  ];
+  return <div className="mt-4 flex flex-col gap-3 border-y border-border bg-surface-muted/35 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div role="group" aria-label="活动状态筛选" className="flex w-fit rounded-lg border border-border-strong bg-surface p-1">
+      {filters.map((item) => <Button key={item.value} type="button" size="sm" variant="ghost" aria-pressed={props.filter === item.value}
+        className={props.filter === item.value ? "bg-primary/10 text-primary-strong hover:bg-primary/10" : ""} onClick={() => props.onFilter(item.value)}>{item.label}</Button>)}
+    </div>
+    <Label className="relative block w-full sm:max-w-sm"><span className="sr-only">搜索抽奖活动</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+      <Input type="search" value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder="搜索活动名称或说明" className="pl-9" />
+    </Label>
+  </div>;
 }
 
 function LotteryStats({ items }: Readonly<{ items: readonly LotteryCampaign[] }>) {
@@ -48,15 +79,15 @@ function LotteryStats({ items }: Readonly<{ items: readonly LotteryCampaign[] }>
   return <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">{values.map(({ label, value, icon: Icon }) => <div key={label} className="metric-card"><div className="flex items-center justify-between gap-3"><dt className="text-sm text-muted">{label}</dt><Icon className="size-4 text-primary-strong" /></div><dd className="mt-2 text-2xl font-semibold tabular-nums">{value}</dd></div>)}</dl>;
 }
 
-function CampaignList({ items, loading, onEdit, onCancel }: Readonly<{ items: readonly LotteryCampaign[]; loading: boolean; onEdit: (campaign: LotteryCampaign) => void; onCancel: (id: string) => void }>) {
-  if (loading && !items.length) return <div className="loading-state m-4"><Loader2 className="size-4 animate-spin" />读取活动…</div>;
-  if (!items.length) return <div className="empty-state m-4"><Gift className="size-7" /><span>还没有抽奖活动</span></div>;
-  return <div className="grid gap-3 p-4 lg:grid-cols-2 lg:p-5">{items.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onEdit={() => onEdit(campaign)} onCancel={() => onCancel(campaign.id)} />)}</div>;
+function CampaignList({ items, total, loading, onEdit, onCancel }: Readonly<{ items: readonly LotteryCampaign[]; total: number; loading: boolean; onEdit: (campaign: LotteryCampaign) => void; onCancel: (id: string) => void }>) {
+  if (loading && !total) return <div className="loading-state mt-4"><Loader2 className="size-4 animate-spin" />读取活动…</div>;
+  if (!items.length) return <div className="empty-state mt-4"><Gift className="size-7" /><span>{total ? "没有符合当前条件的活动" : "还没有抽奖活动"}</span></div>;
+  return <div className="grid gap-3 pt-4 lg:grid-cols-2">{items.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onEdit={() => onEdit(campaign)} onCancel={() => onCancel(campaign.id)} />)}</div>;
 }
 
 function CampaignCard({ campaign, onEdit, onCancel }: Readonly<{ campaign: LotteryCampaign; onEdit: () => void; onCancel: () => void }>) {
   const active = campaign.status === "open" || campaign.status === "scheduled";
-  return <article className="rounded-xl border border-border bg-surface p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/35 hover:shadow-md">
+  return <article className="rounded-lg border border-border bg-surface p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/35 hover:shadow-md">
     <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{campaign.name}</h3><p className="mt-1 line-clamp-2 text-sm leading-6 text-muted">{campaign.description || "暂无活动说明"}</p></div><span className={statusClass(campaign.status)}>{statusLabel(campaign)}</span></div>
     <p className="mt-3 flex items-center gap-2 text-xs text-muted"><CalendarClock className="size-3.5" />{campaign.drawMode === "scheduled" ? `定时开奖${campaign.drawAt ? ` · ${formatDate(campaign.drawAt)}` : ""}` : "即时开奖 · 用户抽奖后立即返回结果"}</p>
     <dl className="mt-4 grid grid-cols-3 gap-2 text-center"><Metric icon={TicketCheck} label="参与" value={campaign.entryCount} /><Metric icon={Gift} label="剩余奖品" value={campaign.prizeInventory.reduce((sum, item) => sum + item.remaining, 0)} /><Metric icon={Trophy} label="中奖" value={campaign.winnerCount} /></dl>
@@ -87,3 +118,11 @@ function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { m
 async function loadCampaigns(setItems: (items: LotteryCampaign[]) => void, setLoading: (value: boolean) => void) { setLoading(true); try { setItems((await requestJson<{ items: LotteryCampaign[] }>("/api/lottery/campaigns")).items); } catch (error) { toast.error(error instanceof Error ? error.message : String(error)); } finally { setLoading(false); } }
 async function cancelCampaign(id: string, setItems: React.Dispatch<React.SetStateAction<LotteryCampaign[]>>) { try { const campaign = await requestJson<LotteryCampaign>(`/api/lottery/campaigns/${id}/action`, { method: "POST", body: JSON.stringify({ action: "cancel" }) }); setItems((items) => items.map((item) => item.id === id ? campaign : item)); toast.success("活动已取消"); } catch (error) { toast.error(error instanceof Error ? error.message : String(error)); } }
 async function copyCode(code: string) { try { await navigator.clipboard.writeText(code); toast.success("兑换码已复制"); } catch (error) { toast.error(error instanceof Error ? error.message : "复制兑换码失败"); } }
+
+function matchesCampaign(campaign: LotteryCampaign, filter: CampaignFilter, search: string) {
+  const active = campaign.status === "open" || campaign.status === "scheduled" || campaign.status === "drawing";
+  if (filter === "active" && !active) return false;
+  if (filter === "finished" && active) return false;
+  const query = search.trim().toLocaleLowerCase("zh-CN");
+  return !query || `${campaign.name} ${campaign.description}`.toLocaleLowerCase("zh-CN").includes(query);
+}

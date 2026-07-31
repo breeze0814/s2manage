@@ -6,10 +6,12 @@ import { EmbedError, type EmbedIdentity, type LotteryCampaign, type LotteryEntry
 
 export type LotteryService = ReturnType<typeof createLotteryService>;
 const PROBABILITY_SCALE = 1_000_000;
+export const MINIMUM_LOTTERY_BALANCE = 10;
 
 export function createLotteryService(input: {
   readonly store: LotteryStore;
   readonly rewards: RewardCodeGateway;
+  readonly balance?: (identity: EmbedIdentity) => Promise<number | null>;
   readonly now?: () => Date;
   readonly id?: () => string;
   readonly random?: (maximum: number) => number;
@@ -17,6 +19,7 @@ export function createLotteryService(input: {
   const dependencies: LotteryDependencies = {
     ...input, now: input.now ?? (() => new Date()), id: input.id ?? randomUUID,
     random: input.random ?? ((maximum: number) => randomInt(maximum)),
+    balance: input.balance ?? (async (identity) => identity.sub2apiBalance),
   };
   return {
     list: (identity?: EmbedIdentity) => input.store.listCampaigns()
@@ -78,6 +81,7 @@ function campaignRecord(
 }
 
 async function enterCampaign(input: LotteryDependencies, id: string, identity: EmbedIdentity) {
+  await assertEligibleBalance(input, identity);
   const campaign = requiredCampaign(input.store, id);
   assertRegistrationOpen(campaign, input.now());
   const current = input.store.getEntry(id, identity.sub2apiUserId);
@@ -86,6 +90,18 @@ async function enterCampaign(input: LotteryDependencies, id: string, identity: E
   return campaign.drawMode === "instant"
     ? enterInstant(input, campaign, entry)
     : input.store.enter(entry);
+}
+
+async function assertEligibleBalance(input: LotteryDependencies, identity: EmbedIdentity) {
+  let balance: number | null;
+  try {
+    balance = await input.balance(identity);
+  } catch {
+    throw new EmbedError("暂时无法核验账户余额，请稍后重试", 503);
+  }
+  if (balance === null || balance <= MINIMUM_LOTTERY_BALANCE) {
+    throw new EmbedError(`账户余额必须大于 ${MINIMUM_LOTTERY_BALANCE} 才能参与抽奖`, 403);
+  }
 }
 
 async function enterInstant(input: LotteryDependencies, campaign: StoredCampaign, entry: LotteryEntry) {
@@ -280,4 +296,9 @@ function required<T>(value: T | null): T { if (!value) throw new EmbedError("抽
 function needsReward(entry: LotteryEntry) { return entry.status === "entered" && entry.prizeId !== null && entry.redemptionCode === null; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function maskEmail(value: string) { const [local, domain] = value.split("@"); return domain ? `${local?.slice(0, 1) || "*"}***@${domain}` : "***"; }
-type LotteryDependencies = Parameters<typeof createLotteryService>[0] & { readonly now: () => Date; readonly id: () => string; readonly random: (maximum: number) => number };
+type LotteryDependencies = Parameters<typeof createLotteryService>[0] & {
+  readonly now: () => Date;
+  readonly id: () => string;
+  readonly random: (maximum: number) => number;
+  readonly balance: (identity: EmbedIdentity) => Promise<number | null>;
+};

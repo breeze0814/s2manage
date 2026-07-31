@@ -25,7 +25,7 @@ export function createEmbedSessionService(secret: string): EmbedSessionService {
           kind: payload.kind,
           embedToken: text(payload.embedToken), srcHost: text(payload.srcHost), srcUrl: text(payload.srcUrl),
           sub2apiUserId: text(payload.sub2apiUserId), sub2apiEmail: text(payload.sub2apiEmail),
-          sub2apiRole: text(payload.sub2apiRole),
+          sub2apiRole: text(payload.sub2apiRole), sub2apiBalance: nullableNumber(payload.sub2apiBalance),
         } satisfies EmbedIdentity;
         return identity.embedToken && identity.srcHost && identity.sub2apiUserId ? identity : null;
       } catch {
@@ -36,4 +36,5 @@ export function createEmbedSessionService(secret: string): EmbedSessionService {
 }
 
 function text(value: unknown) { return typeof value === "string" ? value : ""; }
+function nullableNumber(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
 function isEmbedKind(value: unknown): value is EmbedKind { return EMBED_KINDS.includes(value as EmbedKind); }

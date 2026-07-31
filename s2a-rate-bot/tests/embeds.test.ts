@@ -80,6 +80,46 @@ test("instant lottery returns the result and generated reward code immediately",
   } finally { store.close(); }
 });
 
+test("lottery requires a verified balance strictly greater than ten", async () => {
+  const store = createSqliteLotteryStore("file::memory:");
+  const service = createLotteryService({
+    store, rewards: fakeRewards(), id: () => crypto.randomUUID(),
+    now: () => new Date("2026-07-30T10:00:00.000Z"),
+  });
+  try {
+    const campaign = service.create({
+      name: "余额门槛", description: "", drawMode: "scheduled", registrationStart: null,
+      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z", publicWinners: false,
+      prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
+    });
+    await assert.rejects(service.enter(campaign.id, identity("user-low", 10)), /大于 10/);
+    await assert.rejects(service.enter(campaign.id, identity("user-unknown", null)), /大于 10/);
+    assert.equal((await service.enter(campaign.id, identity("user-ok", 10.01))).status, "entered");
+  } finally { store.close(); }
+});
+
+test("lottery rechecks the live balance when the user enters", async () => {
+  const store = createSqliteLotteryStore("file::memory:");
+  let liveBalance: number | null = 20;
+  const service = createLotteryService({
+    store, rewards: fakeRewards(), id: () => crypto.randomUUID(),
+    now: () => new Date("2026-07-30T10:00:00.000Z"),
+    balance: async () => liveBalance,
+  });
+  try {
+    const campaign = service.create({
+      name: "实时余额", description: "", drawMode: "scheduled", registrationStart: null,
+      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z", publicWinners: false,
+      prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
+    });
+    const staleIdentity = identity("user-live", 99);
+    liveBalance = 10;
+    await assert.rejects(service.enter(campaign.id, staleIdentity), /大于 10/);
+    liveBalance = 11;
+    assert.equal((await service.enter(campaign.id, staleIdentity)).status, "entered");
+  } finally { store.close(); }
+});
+
 test("instant lottery exposes reward generation failures and releases the reserved prize", async () => {
   const store = createSqliteLotteryStore("file::memory:");
   const service = createLotteryService({
@@ -274,7 +314,8 @@ test("embed session exchange binds source origin and verifies claimed user", asy
     },
     upstream: {
       sourceOrigin: async () => TICKET_SETTINGS.sourceOrigin,
-      currentUser: async () => ({ id: "user-1", email: "user-1@example.com", role: "user", raw: {} }),
+      currentUser: async () => ({ id: "user-1", email: "user-1@example.com", role: "user", balance: 20, raw: {} }),
+      userBalance: async () => 20,
       userBreakdown: async () => ({}),
     },
   });
@@ -308,11 +349,11 @@ test("embed token rotation invalidates previously issued sessions", async () => 
   assert.equal(await sessions.verify(sessionToken, "leaderboard"), null);
 });
 
-function identity(userId: string): EmbedIdentity {
+function identity(userId: string, balance: number | null = 20): EmbedIdentity {
   return {
     kind: "tickets", embedToken: "embed-token", srcHost: TICKET_SETTINGS.sourceOrigin,
     srcUrl: `${TICKET_SETTINGS.sourceOrigin}/dashboard`, sub2apiUserId: userId,
-    sub2apiEmail: `${userId}@example.com`, sub2apiRole: "user",
+    sub2apiEmail: `${userId}@example.com`, sub2apiRole: "user", sub2apiBalance: balance,
   };
 }
 

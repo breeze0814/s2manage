@@ -69,6 +69,7 @@ function buildIdentity(
     sub2apiUserId: user.id,
     sub2apiEmail: user.email,
     sub2apiRole: user.role,
+    sub2apiBalance: user.balance,
   };
 }
 

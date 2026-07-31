@@ -85,7 +85,7 @@ function WorkerBadge() {
   const connected = useWorkerConnection();
   const label = connected ? "Worker 已连接" : "Worker 未连接";
   return (
-    <span title={label} aria-label={label} className={`hidden min-h-8 items-center gap-1.5 rounded-md border px-2 text-xs font-medium 2xl:inline-flex ${workerTone(connected)}`}>
+    <span title={label} aria-label={label} className={`hidden min-h-8 items-center gap-1.5 rounded-md border px-2 text-xs font-medium xl:inline-flex ${workerTone(connected)}`}>
       <CircleDot className="size-3" aria-hidden="true" />{connected ? "Worker 已连" : "Worker 未连"}
     </span>
   );

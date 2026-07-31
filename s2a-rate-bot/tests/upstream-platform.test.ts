@@ -136,11 +136,12 @@ test("Sub2API login and current-user lookup use the user Bearer token", async ()
       return;
     }
     assert.equal(request.headers.authorization, "Bearer jwt");
-    json(response, { data: { user_id: 88, email: "admin@example.com", role: "admin" } });
+    json(response, { data: { user_id: 88, email: "admin@example.com", role: "admin", balance: 18.5 } });
   }, async (baseUrl) => {
     const session = await createSub2ApiClient({ baseUrl, http: http() }).login("admin@example.com", "secret");
     const user = await createSub2ApiClient({ baseUrl, http: http(), session }).fetchCurrentUser();
     assert.deepEqual({ id: user.id, email: user.email, role: user.role }, { id: "88", email: "admin@example.com", role: "admin" });
+    assert.equal(user.balance, 18.5);
   });
 });
 

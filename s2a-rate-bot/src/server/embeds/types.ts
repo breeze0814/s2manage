@@ -30,6 +30,7 @@ export type EmbedIdentity = {
   readonly sub2apiUserId: string;
   readonly sub2apiEmail: string;
   readonly sub2apiRole: string;
+  readonly sub2apiBalance: number | null;
 };
 
 export type EmbedSessionRequest = {
