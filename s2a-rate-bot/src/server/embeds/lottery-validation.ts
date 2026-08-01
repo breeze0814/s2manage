@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS } from "../../core/lottery-eligibility.ts";
 
 const MAX_CAMPAIGN_NAME_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 2_000;
@@ -8,6 +9,16 @@ const MAX_PRIZE_QUANTITY = 100;
 const MAX_PRIZE_COUNT = 10;
 const MAX_PROBABILITY = 100;
 const MIN_PROBABILITY = 0.01;
+const MAX_ELIGIBILITY_CONDITIONS = 3;
+
+const eligibilityConditionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("minimum_balance"), minimum: z.coerce.number().finite().min(0) }),
+  z.object({ type: z.literal("redeemed_today") }),
+  z.object({ type: z.literal("invited_today") }),
+]);
+const eligibilityConditionsSchema = z.array(eligibilityConditionSchema)
+  .max(MAX_ELIGIBILITY_CONDITIONS)
+  .default([...DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS]);
 
 const prizeSchema = z.object({
   id: z.string().trim().max(MAX_PRIZE_ID_LENGTH).optional(),
@@ -24,11 +35,13 @@ const campaignFields = z.object({
   registrationStart: optionalDate(),
   registrationEnd: optionalDate(),
   drawAt: optionalDate(),
+  visibleToUsers: z.boolean().default(true),
+  eligibilityConditions: eligibilityConditionsSchema,
   publicWinners: z.boolean(),
   prizes: z.array(prizeSchema).min(1, "至少设置一个奖品").max(MAX_PRIZE_COUNT),
 });
 export type CampaignInput = z.infer<typeof campaignFields>;
-const campaignSchema: z.ZodType<CampaignInput> = campaignFields.superRefine(validateCampaign);
+const campaignSchema = campaignFields.superRefine(validateCampaign);
 
 export function parseCampaignInput(value: unknown) {
   return campaignSchema.parse(value);
@@ -37,6 +50,10 @@ export function parseCampaignInput(value: unknown) {
 export function campaignInputError(value: unknown) {
   const result = campaignSchema.safeParse(value);
   return result.success ? null : result.error.issues[0]?.message ?? "抽奖活动配置无效";
+}
+
+export function parseEligibilityConditions(value: unknown) {
+  return eligibilityConditionsSchema.parse(value);
 }
 
 function validateCampaign(value: CampaignInput, context: z.RefinementCtx) {
@@ -49,6 +66,7 @@ function validateCampaign(value: CampaignInput, context: z.RefinementCtx) {
   if (end !== null && draw !== null && draw < end) addIssue(context, "开奖时间不能早于报名结束时间", "drawAt");
   validateProbabilities(value, context);
   validatePrizeIds(value, context);
+  validateEligibilityConditions(value, context);
 }
 
 function validateProbabilities(value: CampaignInput, context: z.RefinementCtx) {
@@ -71,7 +89,14 @@ function validatePrizeIds(value: CampaignInput, context: z.RefinementCtx) {
   if (new Set(ids).size !== ids.length) addIssue(context, "奖品标识不能重复", "prizes");
 }
 
-function addIssue(context: z.RefinementCtx, message: string, path: "registrationEnd" | "drawAt" | "prizes") {
+function validateEligibilityConditions(value: CampaignInput, context: z.RefinementCtx) {
+  const types = value.eligibilityConditions.map((condition) => condition.type);
+  if (new Set(types).size !== types.length) {
+    addIssue(context, "同一种参与条件不能重复设置", "eligibilityConditions");
+  }
+}
+
+function addIssue(context: z.RefinementCtx, message: string, path: "registrationEnd" | "drawAt" | "prizes" | "eligibilityConditions") {
   context.addIssue({ code: "custom", message, path: [path] });
 }
 

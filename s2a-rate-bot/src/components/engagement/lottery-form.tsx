@@ -4,6 +4,7 @@ import { Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { LotteryCampaign, LotteryPrize } from "../../server/embeds/types";
+import { DEFAULT_MINIMUM_LOTTERY_BALANCE, type LotteryEligibilityCondition } from "../../core/lottery-eligibility";
 import { campaignInputError } from "../../server/embeds/lottery-validation";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -12,12 +13,15 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Select } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { requestJson } from "./api";
+import { LotteryEligibilityFields } from "./lottery-eligibility-fields";
 
 type Draft = {
   name: string; description: string; drawMode: "instant" | "scheduled";
   registrationStart: string; registrationEnd: string; drawAt: string;
+  visibleToUsers: boolean; eligibilityConditions: readonly LotteryEligibilityCondition[];
   publicWinners: boolean; prizes: LotteryPrize[];
 };
 const DEFAULT_PRIZE_VALUE = 10;
@@ -48,7 +52,14 @@ export function LotteryForm({ campaign, onSaved, onCancel }: Readonly<{
         <DateField label="活动开始" value={draft.registrationStart} onChange={(value) => setDraft({ ...draft, registrationStart: value })} />
         <DateField label="活动结束" value={draft.registrationEnd} onChange={(value) => setDraft({ ...draft, registrationEnd: value })} />
         {draft.drawMode === "scheduled" ? <DateField label="开奖时间" value={draft.drawAt} required onChange={(value) => setDraft({ ...draft, drawAt: value })} /> : null}
-        <Label htmlFor="lottery-public-winners" className="flex min-h-11 items-center gap-3 self-end rounded-lg border border-border px-3"><Checkbox id="lottery-public-winners" checked={draft.publicWinners} onCheckedChange={(checked) => setDraft({ ...draft, publicWinners: checked === true })} /><span><span className="block">公开中奖名单</span><span className="text-xs font-normal text-muted">仅展示脱敏邮箱，不公开兑换码</span></span></Label>
+        <LotteryEligibilityFields value={draft.eligibilityConditions} onChange={(eligibilityConditions) => setDraft({ ...draft, eligibilityConditions })} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2">
+          <Label htmlFor="lottery-visible-to-users" className="flex min-h-16 items-center gap-3 rounded-lg border border-border px-3">
+            <span className="min-w-0 flex-1"><span className="block">展示给用户</span><span className="text-xs font-normal leading-5 text-muted">关闭后用户端不可见且不能参与</span></span>
+            <Switch id="lottery-visible-to-users" checked={draft.visibleToUsers} onCheckedChange={(checked) => setDraft({ ...draft, visibleToUsers: checked })} />
+          </Label>
+          <Label htmlFor="lottery-public-winners" className="flex min-h-16 items-center gap-3 rounded-lg border border-border px-3"><Checkbox id="lottery-public-winners" checked={draft.publicWinners} onCheckedChange={(checked) => setDraft({ ...draft, publicWinners: checked === true })} /><span><span className="block">公开中奖名单</span><span className="text-xs font-normal leading-5 text-muted">仅展示脱敏邮箱，不公开兑换码</span></span></Label>
+        </div>
         <div className="space-y-3 lg:col-span-2">
           <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">奖品</h3><Button type="button" variant="secondary" onClick={() => setDraft({ ...draft, prizes: [...draft.prizes, emptyPrize()] })}><Plus className="size-4" />添加奖品</Button></div>
           {draft.drawMode === "instant" ? <ProbabilitySummary prizes={draft.prizes} /> : null}
@@ -113,7 +124,7 @@ async function saveCampaign(input: Readonly<{ draft: Draft; campaign: LotteryCam
 }
 
 function requestBody(draft: Draft) { return { ...draft, registrationStart: toIso(draft.registrationStart), registrationEnd: toIso(draft.registrationEnd), drawAt: draft.drawMode === "scheduled" ? toIso(draft.drawAt) : null }; }
-function initialDraft(campaign: LotteryCampaign | null): Draft { return campaign ? { ...campaign, registrationStart: toInput(campaign.registrationStart), registrationEnd: toInput(campaign.registrationEnd), drawAt: toInput(campaign.drawAt), prizes: [...campaign.prizes] } : { name: "", description: "", drawMode: "instant", registrationStart: "", registrationEnd: "", drawAt: "", publicWinners: true, prizes: [emptyPrize()] }; }
+function initialDraft(campaign: LotteryCampaign | null): Draft { return campaign ? { ...campaign, registrationStart: toInput(campaign.registrationStart), registrationEnd: toInput(campaign.registrationEnd), drawAt: toInput(campaign.drawAt), eligibilityConditions: [...campaign.eligibilityConditions], prizes: [...campaign.prizes] } : { name: "", description: "", drawMode: "instant", registrationStart: "", registrationEnd: "", drawAt: "", visibleToUsers: true, eligibilityConditions: [{ type: "minimum_balance", minimum: DEFAULT_MINIMUM_LOTTERY_BALANCE }], publicWinners: true, prizes: [emptyPrize()] }; }
 function emptyPrize(): LotteryPrize { return { id: crypto.randomUUID(), name: "", type: "balance", value: DEFAULT_PRIZE_VALUE, quantity: 1, probability: DEFAULT_PROBABILITY }; }
 function changeDrawMode(draft: Draft, drawMode: Draft["drawMode"]): Draft { return { ...draft, drawMode, drawAt: drawMode === "instant" ? "" : draft.drawAt, prizes: draft.prizes.map((prize) => ({ ...prize, probability: drawMode === "instant" ? prize.probability ?? DEFAULT_PROBABILITY : null })) }; }
 function ProbabilitySummary({ prizes }: Readonly<{ prizes: readonly LotteryPrize[] }>) { const total = prizes.reduce((sum, prize) => sum + (prize.probability ?? 0), 0); const invalid = total > 100; return <div className={`flex flex-wrap justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${invalid ? "border-danger/25 bg-danger/10 text-danger" : "border-primary/20 bg-primary/5"}`}><span>奖品概率合计 <strong>{total.toFixed(2)}%</strong></span><span>未中奖概率 <strong>{Math.max(0, 100 - total).toFixed(2)}%</strong></span></div>; }

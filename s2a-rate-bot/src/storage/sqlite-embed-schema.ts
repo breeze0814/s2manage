@@ -1,11 +1,14 @@
 import type { DatabaseSync } from "node:sqlite";
+import { DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS } from "../core/lottery-eligibility.ts";
 
-export const EMBED_SCHEMA_VERSION = 23;
+export const EMBED_SCHEMA_VERSION = 25;
+const DEFAULT_LOTTERY_ELIGIBILITY_JSON = JSON.stringify(DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS);
 
 export function ensureEmbedSchema(database: DatabaseSync) {
   for (const statement of EMBED_TABLES) database.exec(statement);
   migrateTicketStatus(database);
   migrateLotteryCampaignStatus(database);
+  ensureLotteryCampaignColumns(database);
   ensureLotteryRewardColumns(database);
 }
 
@@ -69,6 +72,8 @@ const EMBED_TABLES = [
     registration_start TEXT,
     registration_end TEXT,
     draw_at TEXT,
+    visible_to_users INTEGER NOT NULL DEFAULT 1 CHECK (visible_to_users IN (0, 1)),
+    eligibility_json TEXT NOT NULL DEFAULT '${DEFAULT_LOTTERY_ELIGIBILITY_JSON}' CHECK (json_valid(eligibility_json)),
     public_winners INTEGER NOT NULL CHECK (public_winners IN (0, 1)),
     prizes_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -156,6 +161,17 @@ function ensureLotteryRewardColumns(database: DatabaseSync) {
   ] as const;
   for (const [name, definition] of additions) {
     if (!names.has(name)) database.exec(`ALTER TABLE embed_lottery_entries ADD COLUMN ${name} ${definition}`);
+  }
+}
+
+function ensureLotteryCampaignColumns(database: DatabaseSync) {
+  const names = tableColumns(database, "embed_lottery_campaigns");
+  const additions = [
+    ["visible_to_users", "INTEGER NOT NULL DEFAULT 1 CHECK (visible_to_users IN (0, 1))"],
+    ["eligibility_json", `TEXT NOT NULL DEFAULT '${DEFAULT_LOTTERY_ELIGIBILITY_JSON}' CHECK (json_valid(eligibility_json))`],
+  ] as const;
+  for (const [name, definition] of additions) {
+    if (!names.has(name)) database.exec(`ALTER TABLE embed_lottery_campaigns ADD COLUMN ${name} ${definition}`);
   }
 }
 

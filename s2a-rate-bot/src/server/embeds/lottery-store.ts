@@ -6,6 +6,7 @@ import {
   type DrawAssignment,
 } from "./lottery-draw-store.ts";
 import type { RewardCode } from "./reward-code-gateway.ts";
+import { parseEligibilityConditions } from "./lottery-validation.ts";
 import { EmbedError, type LotteryCampaign, type LotteryEntry, type LotteryPrize } from "./types.ts";
 
 export type StoredCampaign = Omit<LotteryCampaign,
@@ -24,6 +25,7 @@ export function createSqliteLotteryStore(databaseUrl: string) {
     getCampaign: (id: string) => readCampaign(database, id),
     createCampaign: (campaign: NewCampaign) => insertCampaign(database, campaign),
     updateCampaign: (campaign: StoredCampaign) => updateCampaign(database, campaign),
+    setCampaignVisibility: (id: string, visible: boolean, at: string) => setVisibility(database, { id, visible, timestamp: at }),
     setCampaignStatus: (id: string, status: TransitionStatus, at: string) => setStatus(database, { id, status, timestamp: at }),
     listEntries: (campaignId: string) => listEntries(database, campaignId),
     getEntry: (campaignId: string, userId: string) => readEntry(database, campaignId, userId),
@@ -55,24 +57,34 @@ function readCampaign(database: DatabaseSync, id: string) {
 function insertCampaign(database: DatabaseSync, campaign: NewCampaign) {
   database.prepare(`INSERT INTO embed_lottery_campaigns
     (id, name, description, draw_mode, status, registration_start, registration_end, draw_at,
-      public_winners, prizes_json, created_at, updated_at, drawn_at, last_error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      visible_to_users, eligibility_json, public_winners, prizes_json, created_at, updated_at, drawn_at, last_error)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(campaign.id, campaign.name, campaign.description, campaign.drawMode, campaign.status,
-      campaign.registrationStart, campaign.registrationEnd, campaign.drawAt, flag(campaign.publicWinners),
-      JSON.stringify(campaign.prizes), campaign.createdAt, campaign.updatedAt, campaign.drawnAt,
-      campaign.lastError);
+      campaign.registrationStart, campaign.registrationEnd, campaign.drawAt, flag(campaign.visibleToUsers),
+      JSON.stringify(campaign.eligibilityConditions), flag(campaign.publicWinners), JSON.stringify(campaign.prizes), campaign.createdAt,
+      campaign.updatedAt, campaign.drawnAt, campaign.lastError);
   return requiredCampaign(database, campaign.id);
 }
 
 function updateCampaign(database: DatabaseSync, campaign: StoredCampaign) {
   const result = database.prepare(`UPDATE embed_lottery_campaigns SET name = ?, description = ?,
     draw_mode = ?, status = ?, registration_start = ?, registration_end = ?, draw_at = ?,
-    public_winners = ?, prizes_json = ?, updated_at = ? WHERE id = ?
+    visible_to_users = ?, eligibility_json = ?, public_winners = ?, prizes_json = ?, updated_at = ? WHERE id = ?
     AND NOT EXISTS (SELECT 1 FROM embed_lottery_entries WHERE campaign_id = ? AND status != 'withdrawn')`)
     .run(campaign.name, campaign.description, campaign.drawMode, campaign.status,
-      campaign.registrationStart, campaign.registrationEnd, campaign.drawAt, flag(campaign.publicWinners),
-      JSON.stringify(campaign.prizes), campaign.updatedAt, campaign.id, campaign.id);
+      campaign.registrationStart, campaign.registrationEnd, campaign.drawAt, flag(campaign.visibleToUsers),
+      JSON.stringify(campaign.eligibilityConditions), flag(campaign.publicWinners), JSON.stringify(campaign.prizes), campaign.updatedAt,
+      campaign.id, campaign.id);
   return result.changes === 1 ? requiredCampaign(database, campaign.id) : null;
+}
+
+function setVisibility(database: DatabaseSync, change: Readonly<{
+  id: string; visible: boolean; timestamp: string;
+}>) {
+  const result = database.prepare(`UPDATE embed_lottery_campaigns
+    SET visible_to_users = ?, updated_at = ? WHERE id = ?`)
+    .run(flag(change.visible), change.timestamp, change.id);
+  return result.changes === 1 ? requiredCampaign(database, change.id) : null;
 }
 
 function setStatus(database: DatabaseSync, change: Readonly<{
@@ -201,7 +213,9 @@ function mapCampaign(row: CampaignRow): StoredCampaign {
   return {
     id: row.id, name: row.name, description: row.description, drawMode: row.draw_mode,
     status: row.status, registrationStart: row.registration_start, registrationEnd: row.registration_end,
-    drawAt: row.draw_at, publicWinners: row.public_winners === 1, prizes,
+    drawAt: row.draw_at, visibleToUsers: row.visible_to_users === 1,
+    eligibilityConditions: storedEligibility(row.eligibility_json, row.id),
+    publicWinners: row.public_winners === 1, prizes,
     createdAt: row.created_at, updatedAt: row.updated_at, drawnAt: row.drawn_at,
     lastError: row.last_error,
   };
@@ -213,6 +227,14 @@ function parsePrizes(value: string, campaignId: string) {
     throw new Error(`抽奖活动 ${campaignId} 的奖品配置不是当前版本，请重新创建活动`);
   }
   return prizes.map((item) => ({ ...item, probability: item.probability ?? null })) as LotteryPrize[];
+}
+
+function storedEligibility(value: string, campaignId: string) {
+  try {
+    return parseEligibilityConditions(JSON.parse(value));
+  } catch {
+    throw new Error(`抽奖活动 ${campaignId} 的参与条件配置无效，请重新保存活动`);
+  }
 }
 
 function validPrize(value: unknown): value is LotteryPrize {
@@ -253,5 +275,5 @@ function requiredEntry(database: DatabaseSync, campaignId: string, userId: strin
 }
 
 type TransitionStatus = "open" | "drawn" | "exhausted" | "cancelled";
-type CampaignRow = { readonly id: string; readonly name: string; readonly description: string; readonly draw_mode: StoredCampaign["drawMode"]; readonly status: StoredCampaign["status"]; readonly registration_start: string | null; readonly registration_end: string | null; readonly draw_at: string | null; readonly public_winners: number; readonly prizes_json: string; readonly created_at: string; readonly updated_at: string; readonly drawn_at: string | null; readonly last_error: string | null };
+type CampaignRow = { readonly id: string; readonly name: string; readonly description: string; readonly draw_mode: StoredCampaign["drawMode"]; readonly status: StoredCampaign["status"]; readonly registration_start: string | null; readonly registration_end: string | null; readonly draw_at: string | null; readonly visible_to_users: number; readonly eligibility_json: string; readonly public_winners: number; readonly prizes_json: string; readonly created_at: string; readonly updated_at: string; readonly drawn_at: string | null; readonly last_error: string | null };
 type EntryRow = { readonly id: string; readonly campaign_id: string; readonly sub2api_user_id: string; readonly masked_email: string; readonly status: LotteryEntry["status"]; readonly prize_id: string | null; readonly prize_name: string | null; readonly prize_type: LotteryPrize["type"] | null; readonly prize_value: number | null; readonly redemption_code: string | null; readonly reward_code_id: number | null; readonly created_at: string; readonly updated_at: string };

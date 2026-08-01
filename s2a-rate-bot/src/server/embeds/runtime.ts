@@ -4,6 +4,7 @@ import { basicSettings, createEmbedConfigService, type EmbedConfigService } from
 import { createEmbedIdentityService } from "./identity-service.ts";
 import { createLeaderboardService } from "./leaderboard-service.ts";
 import { createLotteryService } from "./lottery-service.ts";
+import { createRuntimeLotteryEligibilityGateway } from "./lottery-eligibility-gateway.ts";
 import { createSqliteLotteryStore } from "./lottery-store.ts";
 import { createRuntimeRewardCodeGateway } from "./reward-code-gateway.ts";
 import { createEmbedSessionService, type EmbedSessionService } from "./session.ts";
@@ -37,7 +38,10 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
   const lottery = createLotteryService({
     store: lotteryStore,
     rewards: createRuntimeRewardCodeGateway(settings),
-    balance: (identity) => upstream.userBalance(identity.sub2apiUserId),
+    eligibility: createRuntimeLotteryEligibilityGateway(
+      settings,
+      (identity) => upstream.userBalance(identity.sub2apiUserId),
+    ),
   });
   return {
     configs, identities, sessions, tickets, leaderboard, lottery,

@@ -85,6 +85,7 @@ test("centered dialogs preserve their position during open and close animations"
 test("engagement settings and lottery editing use accessible modal dialogs", () => {
   const settings = source("src/components/engagement/embed-settings-dialog.tsx");
   const lotteryForm = source("src/components/engagement/lottery-form.tsx");
+  const eligibilityFields = source("src/components/engagement/lottery-eligibility-fields.tsx");
   const dashboards = [
     "src/components/engagement/tickets-dashboard.tsx",
     "src/components/engagement/leaderboard-dashboard.tsx",
@@ -103,17 +104,34 @@ test("engagement settings and lottery editing use accessible modal dialogs", () 
   assert.match(lotteryForm, /定时开奖/);
   assert.match(lotteryForm, /奖励类型/);
   assert.match(lotteryForm, /奖励额度/);
+  assert.match(lotteryForm, /lottery-visible-to-users/);
+  assert.match(lotteryForm, /Switch/);
+  assert.match(lotteryForm, /LotteryEligibilityFields/);
+  assert.match(eligibilityFields, /当前余额大于 X/);
+  assert.match(eligibilityFields, /当天使用过兑换码/);
+  assert.match(eligibilityFields, /当天邀请过好友/);
+  assert.match(eligibilityFields, /Checkbox/);
   assert.doesNotMatch(lotteryForm, /奖品权重|手动开奖/);
   assert.match(dashboards, /EngagementPageHeader/);
   assert.doesNotMatch(dashboards, /<EmbedLinkPanel|<TicketConfigPanel/);
 });
 
-test("customer lottery hides participant counts and explains the balance threshold", () => {
+test("customer lottery hides participant counts and explains configured eligibility conditions", () => {
   const customerLottery = source("src/components/embed/lottery-embed-page.tsx");
+  const lotteryWheel = source("src/components/embed/lottery-wheel.tsx");
   const operationsLottery = source("src/components/engagement/lottery-dashboard.tsx");
+  const eligibilitySummary = source("src/components/lottery-eligibility-summary.tsx");
 
   assert.doesNotMatch(customerLottery, /entryCount|人参与/);
-  assert.match(customerLottery, /参与条件：账户余额大于 10/);
+  assert.match(customerLottery, /LotteryEligibilitySummary/);
+  assert.match(eligibilitySummary, /lotteryEligibilityRequirement/);
+  assert.match(customerLottery, /LotteryWheel/);
+  assert.match(lotteryWheel, /conic-gradient/);
+  assert.match(lotteryWheel, /prefers-reduced-motion/);
+  assert.match(lotteryWheel, /resultSegmentIndex/);
   assert.match(operationsLottery, /累计参与/);
-  assert.match(operationsLottery, /参与余额 &gt; 10/);
+  assert.match(operationsLottery, /LotteryEligibilitySummary/);
+  assert.doesNotMatch(operationsLottery, /参与余额 &gt; 10/);
+  assert.match(operationsLottery, /set-visibility/);
+  assert.match(operationsLottery, /<Switch/);
 });

@@ -10,10 +10,13 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest, { params }: Context) {
   try {
     await requireAuthenticatedRequest(request);
-    const body = await readJsonBody(request) as { action?: unknown };
+    const body = await readJsonBody(request) as { action?: unknown; visibleToUsers?: unknown };
     const service = getRuntimeEmbedServices().lottery;
     if (body.action === "draw") return NextResponse.json(await service.draw(params.id));
     if (body.action === "cancel") return NextResponse.json(service.cancel(params.id));
+    if (body.action === "set-visibility") {
+      return NextResponse.json(service.setVisibility(params.id, body.visibleToUsers as boolean));
+    }
     throw new Error("不支持的抽奖活动操作");
   } catch (error) { return embedErrorResponse(error); }
 }

@@ -54,7 +54,7 @@ test("instant lottery returns the result and generated reward code immediately",
   let sequence = 0;
   const rewards = fakeRewards();
   const service = createLotteryService({
-    store, rewards,
+    store, rewards, eligibility: identityEligibility(),
     now: () => new Date("2026-07-30T10:00:00.000Z"),
     id: () => `lottery-${++sequence}`,
     random: () => 0,
@@ -62,7 +62,8 @@ test("instant lottery returns the result and generated reward code immediately",
   try {
     const campaign = service.create({
       name: "夏日活动", description: "测试活动", drawMode: "instant",
-      registrationStart: null, registrationEnd: null, drawAt: null, publicWinners: false,
+      registrationStart: null, registrationEnd: null, drawAt: null,
+      visibleToUsers: true, publicWinners: false,
       prizes: [{ name: "余额奖励", type: "balance", value: 10, quantity: 1, probability: 100 }],
     });
     const winner = await service.enter(campaign.id, identity("user-1"));
@@ -80,16 +81,44 @@ test("instant lottery returns the result and generated reward code immediately",
   } finally { store.close(); }
 });
 
+test("administrators control whether a lottery is exposed to users", async () => {
+  const store = createSqliteLotteryStore("file::memory:");
+  const service = createLotteryService({
+    store, eligibility: identityEligibility(),
+    rewards: fakeRewards(),
+    id: () => crypto.randomUUID(),
+    now: () => new Date("2026-07-30T10:00:00.000Z"),
+  });
+  try {
+    const campaign = service.create({
+      name: "隐藏活动", description: "管理员暂不发布", drawMode: "instant",
+      registrationStart: null, registrationEnd: null, drawAt: null,
+      visibleToUsers: false, publicWinners: false,
+      prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: 100 }],
+    });
+    assert.equal(service.list().length, 1);
+    assert.equal(service.list(identity("user-1")).length, 0);
+    assert.throws(() => service.get(campaign.id, identity("user-1")), /不存在/);
+    await assert.rejects(service.enter(campaign.id, identity("user-1")), /不存在/);
+
+    const published = service.setVisibility(campaign.id, true);
+    assert.equal(published.visibleToUsers, true);
+    assert.equal(service.list(identity("user-1")).length, 1);
+    assert.equal(service.get(campaign.id, identity("user-1")).id, campaign.id);
+  } finally { store.close(); }
+});
+
 test("lottery requires a verified balance strictly greater than ten", async () => {
   const store = createSqliteLotteryStore("file::memory:");
   const service = createLotteryService({
-    store, rewards: fakeRewards(), id: () => crypto.randomUUID(),
+    store, rewards: fakeRewards(), eligibility: identityEligibility(), id: () => crypto.randomUUID(),
     now: () => new Date("2026-07-30T10:00:00.000Z"),
   });
   try {
     const campaign = service.create({
       name: "余额门槛", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z", publicWinners: false,
+      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z",
+      visibleToUsers: true, publicWinners: false,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     await assert.rejects(service.enter(campaign.id, identity("user-low", 10)), /大于 10/);
@@ -104,12 +133,13 @@ test("lottery rechecks the live balance when the user enters", async () => {
   const service = createLotteryService({
     store, rewards: fakeRewards(), id: () => crypto.randomUUID(),
     now: () => new Date("2026-07-30T10:00:00.000Z"),
-    balance: async () => liveBalance,
+    eligibility: { ...identityEligibility(), currentBalance: async () => liveBalance },
   });
   try {
     const campaign = service.create({
       name: "实时余额", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z", publicWinners: false,
+      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z",
+      visibleToUsers: true, publicWinners: false,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     const staleIdentity = identity("user-live", 99);
@@ -124,12 +154,13 @@ test("instant lottery exposes reward generation failures and releases the reserv
   const store = createSqliteLotteryStore("file::memory:");
   const service = createLotteryService({
     store, random: () => 0, id: () => crypto.randomUUID(),
+    eligibility: identityEligibility(),
     rewards: { generate: async () => { throw new Error("target redeem API unavailable"); } },
   });
   try {
     const campaign = service.create({
       name: "失败测试", description: "", drawMode: "instant", registrationStart: null,
-      registrationEnd: null, drawAt: null, publicWinners: false,
+      registrationEnd: null, drawAt: null, visibleToUsers: true, publicWinners: false,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: 100 }],
     });
     await assert.rejects(service.enter(campaign.id, identity("user-1")), /target redeem API unavailable/);
@@ -142,12 +173,12 @@ test("instant lottery keeps configured probabilities and does not renormalize ex
   const rewards = fakeRewards();
   const targets = [0, 0, 999_999];
   const service = createLotteryService({
-    store, rewards, random: () => targets.shift() ?? 0, id: () => crypto.randomUUID(),
+    store, rewards, eligibility: identityEligibility(), random: () => targets.shift() ?? 0, id: () => crypto.randomUUID(),
   });
   try {
     const campaign = service.create({
       name: "概率测试", description: "", drawMode: "instant", registrationStart: null,
-      registrationEnd: null, drawAt: null, publicWinners: false,
+      registrationEnd: null, drawAt: null, visibleToUsers: true, publicWinners: false,
       prizes: [
         { name: "高等奖", type: "balance", value: 10, quantity: 1, probability: 50 },
         { name: "二等奖", type: "balance", value: 5, quantity: 1, probability: 30 },
@@ -167,12 +198,13 @@ test("reading a due scheduled lottery does not start drawing or call the reward 
   const store = createSqliteLotteryStore("file::memory:");
   const rewards = fakeRewards();
   const service = createLotteryService({
-    store, rewards, now: () => new Date("2026-07-30T10:31:00.000Z"), id: () => crypto.randomUUID(), random: () => 0,
+    store, rewards, eligibility: identityEligibility(), now: () => new Date("2026-07-30T10:31:00.000Z"), id: () => crypto.randomUUID(), random: () => 0,
   });
   try {
     const campaign = service.create({
       name: "读取无副作用", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z", publicWinners: true,
+      registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z",
+      visibleToUsers: true, publicWinners: true,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     await service.enter(campaign.id, identity("user-1"));
@@ -188,12 +220,12 @@ test("scheduled lottery generates subscription codes at the configured draw time
   const store = createSqliteLotteryStore("file::memory:");
   let now = new Date("2026-07-30T10:00:00.000Z");
   const rewards = fakeRewards();
-  const service = createLotteryService({ store, rewards, now: () => now, id: () => crypto.randomUUID(), random: () => 0 });
+  const service = createLotteryService({ store, rewards, eligibility: identityEligibility(), now: () => now, id: () => crypto.randomUUID(), random: () => 0 });
   try {
     const campaign = service.create({
       name: "定时活动", description: "统一开奖", drawMode: "scheduled",
       registrationStart: null, registrationEnd: "2026-07-30T10:20:00.000Z",
-      drawAt: "2026-07-30T10:30:00.000Z", publicWinners: true,
+      drawAt: "2026-07-30T10:30:00.000Z", visibleToUsers: true, publicWinners: true,
       prizes: [{ name: "月度订阅", type: "subscription", value: 30, quantity: 1, probability: null }],
     });
     await service.enter(campaign.id, identity("user-1"));
@@ -212,12 +244,13 @@ test("scheduled lottery closes an empty campaign without generating codes", asyn
   const store = createSqliteLotteryStore("file::memory:");
   let now = new Date("2026-07-30T10:00:00.000Z");
   const rewards = fakeRewards();
-  const service = createLotteryService({ store, rewards, now: () => now, id: () => crypto.randomUUID(), random: () => 0 });
+  const service = createLotteryService({ store, rewards, eligibility: identityEligibility(), now: () => now, id: () => crypto.randomUUID(), random: () => 0 });
   try {
     const campaign = service.create({
       name: "空活动", description: "无人报名", drawMode: "scheduled",
       registrationStart: null, registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z",
-      publicWinners: true, prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
+      visibleToUsers: true, publicWinners: true,
+      prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     now = new Date("2026-07-30T10:31:00.000Z");
     await service.processDue();
@@ -231,12 +264,14 @@ test("scheduled lottery persists a draw error and resumes the unfinished reward"
   let calls = 0;
   const service = createLotteryService({
     store, id: () => crypto.randomUUID(), now: () => new Date("2026-07-30T10:31:00.000Z"), random: () => 0,
+    eligibility: identityEligibility(),
     rewards: { generate: async (request) => { calls += 1; if (calls === 1) throw new Error("redeem service timeout"); return [{ id: 8, code: "CODE-8", ...request }]; } },
   });
   try {
     const campaign = service.create({
       name: "可恢复开奖", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z", publicWinners: true,
+      registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z",
+      visibleToUsers: true, publicWinners: true,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     await service.enter(campaign.id, identity("user-1"));
@@ -354,6 +389,14 @@ function identity(userId: string, balance: number | null = 20): EmbedIdentity {
     kind: "tickets", embedToken: "embed-token", srcHost: TICKET_SETTINGS.sourceOrigin,
     srcUrl: `${TICKET_SETTINGS.sourceOrigin}/dashboard`, sub2apiUserId: userId,
     sub2apiEmail: `${userId}@example.com`, sub2apiRole: "user", sub2apiBalance: balance,
+  };
+}
+
+function identityEligibility() {
+  return {
+    currentBalance: async (viewer: EmbedIdentity) => viewer.sub2apiBalance,
+    redeemedToday: async () => false,
+    invitedToday: async () => false,
   };
 }
 

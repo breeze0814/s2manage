@@ -1,3 +1,7 @@
+import type { LotteryEligibilityCondition } from "../../core/lottery-eligibility.ts";
+
+export type { LotteryEligibilityCondition } from "../../core/lottery-eligibility.ts";
+
 export const EMBED_KINDS = ["tickets", "leaderboard", "lottery"] as const;
 export type EmbedKind = typeof EMBED_KINDS[number];
 
@@ -125,6 +129,8 @@ export type LotteryCampaign = {
   readonly registrationStart: string | null;
   readonly registrationEnd: string | null;
   readonly drawAt: string | null;
+  readonly visibleToUsers: boolean;
+  readonly eligibilityConditions: readonly LotteryEligibilityCondition[];
   readonly publicWinners: boolean;
   readonly prizes: readonly LotteryPrize[];
   readonly prizeInventory: readonly LotteryPrizeInventory[];

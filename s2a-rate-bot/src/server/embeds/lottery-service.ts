@@ -1,17 +1,22 @@
 import { randomInt, randomUUID } from "node:crypto";
 import type { DrawAssignment, LotteryStore, StoredCampaign } from "./lottery-store.ts";
+import { assertLotteryEligibility, type LotteryEligibilityGateway } from "./lottery-eligibility.ts";
 import { parseCampaignInput, type CampaignInput } from "./lottery-validation.ts";
+import {
+  assertLotteryCampaignVisible,
+  lotteryCampaignDetail,
+  lotteryCampaignForViewer,
+} from "./lottery-view.ts";
 import type { RewardCodeGateway } from "./reward-code-gateway.ts";
-import { EmbedError, type EmbedIdentity, type LotteryCampaign, type LotteryEntry, type LotteryPrize } from "./types.ts";
+import { EmbedError, type EmbedIdentity, type LotteryEntry, type LotteryPrize } from "./types.ts";
 
 export type LotteryService = ReturnType<typeof createLotteryService>;
 const PROBABILITY_SCALE = 1_000_000;
-export const MINIMUM_LOTTERY_BALANCE = 10;
 
 export function createLotteryService(input: {
   readonly store: LotteryStore;
   readonly rewards: RewardCodeGateway;
-  readonly balance?: (identity: EmbedIdentity) => Promise<number | null>;
+  readonly eligibility: LotteryEligibilityGateway;
   readonly now?: () => Date;
   readonly id?: () => string;
   readonly random?: (maximum: number) => number;
@@ -19,16 +24,16 @@ export function createLotteryService(input: {
   const dependencies: LotteryDependencies = {
     ...input, now: input.now ?? (() => new Date()), id: input.id ?? randomUUID,
     random: input.random ?? ((maximum: number) => randomInt(maximum)),
-    balance: input.balance ?? (async (identity) => identity.sub2apiBalance),
   };
   return {
     list: (identity?: EmbedIdentity) => input.store.listCampaigns()
-      .map((campaign) => detail(input.store, campaign, identity)),
-    get: (id: string, identity?: EmbedIdentity) => detail(
-      input.store, requiredCampaign(input.store, id), identity,
-    ),
+      .filter((campaign) => !identity || campaign.visibleToUsers)
+      .map((campaign) => lotteryCampaignDetail(input.store, campaign, identity)),
+    get: (id: string, identity?: EmbedIdentity) => lotteryCampaignDetail(input.store,
+      lotteryCampaignForViewer(input.store, id, identity), identity),
     create: (raw: unknown) => createCampaign(dependencies, raw),
     update: (id: string, raw: unknown) => updateCampaign(dependencies, id, raw),
+    setVisibility: (id: string, visible: boolean) => setCampaignVisibility(dependencies, id, visible),
     cancel: (id: string) => cancelCampaign(dependencies, id),
     draw: (id: string) => drawScheduledCampaign(dependencies, id),
     enter: (id: string, identity: EmbedIdentity) => enterCampaign(dependencies, id, identity),
@@ -43,7 +48,7 @@ function createCampaign(input: LotteryDependencies, raw: unknown) {
   const campaign = campaignRecord(input, {
     values, id: input.id(), createdAt: timestamp, updatedAt: timestamp,
   });
-  return detail(input.store, input.store.createCampaign(campaign));
+  return lotteryCampaignDetail(input.store, input.store.createCampaign(campaign));
 }
 
 function updateCampaign(input: LotteryDependencies, id: string, raw: unknown) {
@@ -63,7 +68,7 @@ function updateCampaign(input: LotteryDependencies, id: string, raw: unknown) {
   });
   const saved = input.store.updateCampaign(updated);
   if (!saved) throw new EmbedError("活动状态或参与记录已变化，无法保存", 409);
-  return detail(input.store, saved);
+  return lotteryCampaignDetail(input.store, saved);
 }
 
 function campaignRecord(
@@ -81,8 +86,14 @@ function campaignRecord(
 }
 
 async function enterCampaign(input: LotteryDependencies, id: string, identity: EmbedIdentity) {
-  await assertEligibleBalance(input, identity);
   const campaign = requiredCampaign(input.store, id);
+  assertLotteryCampaignVisible(campaign);
+  await assertLotteryEligibility({
+    conditions: campaign.eligibilityConditions,
+    identity,
+    gateway: input.eligibility,
+    now: input.now(),
+  });
   assertRegistrationOpen(campaign, input.now());
   const current = input.store.getEntry(id, identity.sub2apiUserId);
   if (current && current.status !== "withdrawn") return assertTerminalInstant(campaign, current);
@@ -90,18 +101,6 @@ async function enterCampaign(input: LotteryDependencies, id: string, identity: E
   return campaign.drawMode === "instant"
     ? enterInstant(input, campaign, entry)
     : input.store.enter(entry);
-}
-
-async function assertEligibleBalance(input: LotteryDependencies, identity: EmbedIdentity) {
-  let balance: number | null;
-  try {
-    balance = await input.balance(identity);
-  } catch {
-    throw new EmbedError("暂时无法核验账户余额，请稍后重试", 503);
-  }
-  if (balance === null || balance <= MINIMUM_LOTTERY_BALANCE) {
-    throw new EmbedError(`账户余额必须大于 ${MINIMUM_LOTTERY_BALANCE} 才能参与抽奖`, 403);
-  }
 }
 
 async function enterInstant(input: LotteryDependencies, campaign: StoredCampaign, entry: LotteryEntry) {
@@ -137,11 +136,19 @@ function selectedInstantPrize(input: LotteryDependencies, campaign: StoredCampai
 
 function withdrawEntry(input: LotteryDependencies, id: string, identity: EmbedIdentity) {
   const campaign = requiredCampaign(input.store, id);
+  assertLotteryCampaignVisible(campaign);
   if (campaign.drawMode === "instant") throw new EmbedError("即时开奖不能撤回抽奖结果", 409);
   assertRegistrationOpen(campaign, input.now());
   const entry = input.store.withdraw(id, identity.sub2apiUserId, input.now().toISOString());
   if (!entry) throw new EmbedError("没有可撤回的抽奖报名", 409);
   return entry;
+}
+
+function setCampaignVisibility(input: LotteryDependencies, id: string, visible: boolean) {
+  if (typeof visible !== "boolean") throw new EmbedError("活动展示状态无效", 400);
+  const campaign = input.store.setCampaignVisibility(id, visible, input.now().toISOString());
+  if (!campaign) throw new EmbedError("抽奖活动不存在", 404);
+  return lotteryCampaignDetail(input.store, campaign);
 }
 
 function cancelCampaign(input: LotteryDependencies, id: string) {
@@ -152,23 +159,23 @@ function cancelCampaign(input: LotteryDependencies, id: string) {
   }
   const cancelled = input.store.setCampaignStatus(id, "cancelled", input.now().toISOString());
   if (!cancelled) throw new EmbedError("活动状态已变化，无法取消", 409);
-  return detail(input.store, cancelled);
+  return lotteryCampaignDetail(input.store, cancelled);
 }
 
 async function drawScheduledCampaign(input: LotteryDependencies, id: string) {
   const campaign = requiredCampaign(input.store, id);
   if (campaign.drawMode !== "scheduled") throw new EmbedError("即时开奖由用户抽奖时自动完成", 409);
-  if (campaign.status === "drawn") return detail(input.store, campaign);
+  if (campaign.status === "drawn") return lotteryCampaignDetail(input.store, campaign);
   if (campaign.status === "cancelled") throw new EmbedError("已取消活动不能开奖", 409);
   if (!isReached(campaign.drawAt, input.now())) throw new EmbedError("尚未到定时开奖时间", 409);
   const timestamp = input.now().toISOString();
   const acquired = campaign.status === "drawing"
     ? input.store.resumeDraw(id, timestamp)
     : input.store.startDraw(id, timestamp);
-  if (!acquired) return detail(input.store, requiredCampaign(input.store, id));
+  if (!acquired) return lotteryCampaignDetail(input.store, requiredCampaign(input.store, id));
   try {
     await completeScheduledDraw(input, id, timestamp);
-    return detail(input.store, requiredCampaign(input.store, id));
+    return lotteryCampaignDetail(input.store, requiredCampaign(input.store, id));
   } catch (error) {
     input.store.recordDrawError(id, errorMessage(error), input.now().toISOString());
     throw error;
@@ -223,40 +230,6 @@ async function processDue(input: LotteryDependencies) {
   }
 }
 
-function detail(store: LotteryStore, campaign: StoredCampaign, identity?: EmbedIdentity): LotteryCampaign {
-  const entries = store.listEntries(campaign.id);
-  const winners = entries.filter((entry) => entry.status === "won");
-  const visible = !identity || campaign.publicWinners
-    ? winners
-    : winners.filter((entry) => entry.sub2apiUserId === identity.sub2apiUserId);
-  return {
-    ...campaign, entryCount: entries.filter((entry) => entry.status !== "withdrawn").length,
-    winnerCount: winners.length,
-    prizeInventory: campaign.prizes.map((prize) => inventoryFor(prize, entries)),
-    currentEntry: identity ? visibleCurrentEntry(campaign,
-      entries.find((entry) => entry.sub2apiUserId === identity.sub2apiUserId) ?? null) : null,
-    winners: visible.map(redactEntry(identity)),
-    lastError: identity ? null : campaign.lastError,
-  };
-}
-
-function inventoryFor(prize: LotteryPrize, entries: readonly LotteryEntry[]) {
-  const awarded = entries.filter((entry) => entry.prizeId === prize.id
-    && (entry.status === "entered" || entry.status === "won")).length;
-  return { prizeId: prize.id, awarded, remaining: Math.max(0, prize.quantity - awarded) };
-}
-
-function visibleCurrentEntry(campaign: StoredCampaign, entry: LotteryEntry | null) {
-  if (!entry || campaign.status !== "drawing" || entry.status !== "entered") return entry;
-  return { ...entry, prizeId: null, prizeName: null, prizeType: null, prizeValue: null };
-}
-
-function redactEntry(identity?: EmbedIdentity) {
-  return (entry: LotteryEntry): LotteryEntry => !identity || identity.sub2apiUserId === entry.sub2apiUserId
-    ? entry
-    : { ...entry, sub2apiUserId: "", redemptionCode: null, rewardCodeId: null };
-}
-
 function newEntry(input: LotteryDependencies, campaignId: string, identity: EmbedIdentity): LotteryEntry {
   const timestamp = input.now().toISOString();
   return {
@@ -300,5 +273,4 @@ type LotteryDependencies = Parameters<typeof createLotteryService>[0] & {
   readonly now: () => Date;
   readonly id: () => string;
   readonly random: (maximum: number) => number;
-  readonly balance: (identity: EmbedIdentity) => Promise<number | null>;
 };
