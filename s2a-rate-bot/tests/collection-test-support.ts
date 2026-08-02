@@ -23,12 +23,15 @@ export function successCollector(): CollectionCollector {
 
 export function successOverview(
   siteId: number,
-  values: Readonly<{ balance?: number; rate?: number }> = {},
+  values: Readonly<{ balance?: number; rate?: number; todayConsume?: number; historyRecharge?: number }> = {},
 ) {
   const balance = values.balance ?? 12.5;
   const rate = values.rate ?? 2;
   return {
-    account: { sourceSiteId: siteId, label: "source@example.com", balance },
+    account: {
+      sourceSiteId: siteId, label: "source@example.com", balance,
+      todayConsume: values.todayConsume ?? 1.25, historyRecharge: values.historyRecharge ?? 30,
+    },
     rates: [{ sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai", rawRate: rate, effectiveRate: rate, collectedAt: new Date() }],
   };
 }

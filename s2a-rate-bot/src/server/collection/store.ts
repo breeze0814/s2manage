@@ -3,16 +3,10 @@ import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, flag, nowIso, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
 import { compareRateSnapshots, type PendingRateChange } from "./rate-changes.ts";
+import { readChanges, readRuns, type CollectionChangesQuery, type CollectionRunRecord, type CollectionRunsQuery } from "./history.ts";
+import { readRateCatalog, readRates, setRateGroupType, setRatePlatform } from "./rate-catalog.ts";
 import type { CollectionOverview, CollectionRateChange, CollectionSiteStored } from "./types.ts";
-
-const DEFAULT_CHANGE_LIMIT = 50;
 const MISSING_BINDINGS_RULE_ERROR = "绑定的采集分组已删除，倍率规则已自动停用";
-
-export type CollectionChangesQuery = {
-  readonly limit?: number;
-  readonly since?: string;
-  readonly afterId?: number;
-};
 
 export type CollectionStore = {
   readonly create: (site: Omit<CollectionSiteStored, "id" | StatusFields>) => CollectionSiteStored;
@@ -24,12 +18,15 @@ export type CollectionStore = {
   readonly recordSuccess: (input: RefreshSuccess) => void;
   readonly recordFailure: (input: RefreshFailure) => void;
   readonly rates: (siteId?: number) => SourceRateSnapshot[];
+  readonly catalog: (siteId?: number) => SourceRateSnapshot[];
   readonly setRatePlatform: (siteId: number, groupId: string, platform: string | null) => SourceRateSnapshot;
+  readonly setRateGroupType: (siteId: number, groupId: string, groupType: string | null) => SourceRateSnapshot;
   readonly changes: (query?: CollectionChangesQuery) => CollectionRateChange[];
+  readonly runs: (query?: CollectionRunsQuery) => CollectionRunRecord[];
   readonly close: () => void;
 };
 
-type StatusFields = "accountLabel" | "balance" | "lastRunAt" | "lastSuccessAt" | "lastStatus" | "lastError" | "consecutiveFailures" | "refreshVersion";
+type StatusFields = "accountLabel" | "balance" | "todayConsume" | "historyRecharge" | "lastRunAt" | "lastSuccessAt" | "lastStatus" | "lastError" | "consecutiveFailures" | "refreshVersion";
 type SiteWrite = Omit<CollectionSiteStored, "id" | StatusFields>;
 export type EncryptedCredentials = { readonly accessTokenEnc?: string; readonly refreshTokenEnc?: string };
 type RefreshSuccess = RefreshIdentity & { readonly overview: CollectionOverview; readonly credentials?: EncryptedCredentials };
@@ -55,8 +52,11 @@ function collectionStore(database: DatabaseSync): CollectionStore {
     recordSuccess: (input) => recordSuccess(database, input),
     recordFailure: (input) => recordFailure(database, input),
     rates: (siteId) => readRates(database, siteId),
+    catalog: (siteId) => readRateCatalog(database, siteId),
     setRatePlatform: (siteId, groupId, platform) => setRatePlatform(database, { siteId, groupId, platform }),
+    setRateGroupType: (siteId, groupId, groupType) => setRateGroupType(database, { siteId, groupId, groupType }),
     changes: (query) => readChanges(database, query),
+    runs: (query) => readRuns(database, query),
     close: () => database.close(),
   };
 }
@@ -64,18 +64,18 @@ function collectionStore(database: DatabaseSync): CollectionStore {
 function createSite(database: DatabaseSync, site: SiteWrite) {
   const timestamp = nowIso();
   const result = database.prepare(`${siteInsertSql()} VALUES (
-    :name, :siteType, :baseUrl, :websiteUrl, :authMode, :username, :newApiUserId, :passwordEnc, :accessTokenEnc,
-    :refreshTokenEnc, :rechargeRatio, :intervalSeconds, :useProxy, :enabled, :createdAt, :updatedAt
+    :name, :remark, :siteType, :baseUrl, :websiteUrl, :authMode, :username, :newApiUserId, :passwordEnc, :accessTokenEnc,
+    :refreshTokenEnc, :rechargeRatio, :balanceAlertThreshold, :intervalSeconds, :useProxy, :enabled, :createdAt, :updatedAt
   )`).run({ ...siteBindings(site, timestamp), createdAt: timestamp });
   return requiredSite(database, Number(result.lastInsertRowid));
 }
 
 function updateSite(database: DatabaseSync, id: number, site: SiteWrite) {
-  const result = database.prepare(`UPDATE collection_sites SET name=:name, site_type=:siteType,
+  const result = database.prepare(`UPDATE collection_sites SET name=:name, remark=:remark, site_type=:siteType,
     base_url=:baseUrl, website_url=:websiteUrl, auth_mode=:authMode, username=:username, new_api_user_id=:newApiUserId,
     password_enc=:passwordEnc,
     access_token_enc=:accessTokenEnc, refresh_token_enc=:refreshTokenEnc,
-    recharge_ratio=:rechargeRatio, interval_seconds=:intervalSeconds, use_proxy=:useProxy,
+    recharge_ratio=:rechargeRatio, balance_alert_threshold=:balanceAlertThreshold, interval_seconds=:intervalSeconds, use_proxy=:useProxy,
     enabled=:enabled, refresh_version=refresh_version+1, updated_at=:updatedAt WHERE id=:id`).run({ ...siteBindings(site, nowIso()), id });
   if (result.changes !== 1) throw new Error(`采集站不存在: ${id}`);
   return requiredSite(database, id);
@@ -83,13 +83,20 @@ function updateSite(database: DatabaseSync, id: number, site: SiteWrite) {
 
 function siteInsertSql() {
   return `INSERT INTO collection_sites (
-    name, site_type, base_url, website_url, auth_mode, username, new_api_user_id, password_enc, access_token_enc,
-    refresh_token_enc, recharge_ratio, interval_seconds, use_proxy, enabled, created_at, updated_at
+    name, remark, site_type, base_url, website_url, auth_mode, username, new_api_user_id, password_enc, access_token_enc,
+    refresh_token_enc, recharge_ratio, balance_alert_threshold, interval_seconds, use_proxy, enabled, created_at, updated_at
   )`;
 }
 
 function siteBindings(site: SiteWrite, timestamp: string) {
-  return { ...site, useProxy: flag(site.useProxy), enabled: flag(site.enabled), updatedAt: timestamp };
+  return {
+    ...site,
+    remark: site.remark ?? "",
+    balanceAlertThreshold: site.balanceAlertThreshold ?? null,
+    useProxy: flag(site.useProxy),
+    enabled: flag(site.enabled),
+    updatedAt: timestamp,
+  };
 }
 
 function readSite(database: DatabaseSync, id: number) {
@@ -125,10 +132,12 @@ function recordSuccess(database: DatabaseSync, input: RefreshSuccess) {
     assertCurrentRefresh(database, input.siteId, input.refreshVersion);
     const changes = compareRateSnapshots(readRates(database, input.siteId), input.overview.rates);
     database.prepare(`UPDATE collection_sites SET account_label=:label, balance=:balance,
+      today_consume=:todayConsume, history_recharge=:historyRecharge,
       last_run_at=:finishedAt, last_success_at=:finishedAt, last_status='success', last_error=NULL,
       consecutive_failures=0, access_token_enc=COALESCE(:accessTokenEnc, access_token_enc),
       refresh_token_enc=COALESCE(:refreshTokenEnc, refresh_token_enc), updated_at=:finishedAt
       WHERE id=:siteId`).run({ siteId: input.siteId, label: input.overview.account.label, balance: input.overview.account.balance,
+      todayConsume: input.overview.account.todayConsume, historyRecharge: input.overview.account.historyRecharge,
       accessTokenEnc: input.credentials?.accessTokenEnc ?? null, refreshTokenEnc: input.credentials?.refreshTokenEnc ?? null, finishedAt });
     const runId = insertRun(database, { siteId: input.siteId, status: "success", error: null, groupCount: input.overview.rates.length, startedAt: input.startedAt, finishedAt });
     insertChanges(database, { runId, siteId: input.siteId, changes, collectedAt: finishedAt });
@@ -197,62 +206,16 @@ function insertChanges(database: DatabaseSync, input: {
   }
 }
 
-function readRates(database: DatabaseSync, siteId?: number): SourceRateSnapshot[] {
-  const sql = `SELECT rates.*, overrides.platform AS platform_override
-    FROM collection_group_rates AS rates
-    LEFT JOIN collection_group_platform_overrides AS overrides
-      ON overrides.site_id = rates.site_id AND overrides.group_id = rates.group_id
-    ${siteId ? "WHERE rates.site_id = ?" : ""} ORDER BY rates.site_id, rates.group_id`;
-  const rows = (siteId ? database.prepare(sql).all(siteId) : database.prepare(sql).all()) as Record<string, unknown>[];
-  return rows.map((row) => ({ sourceSiteId: Number(row.site_id), groupId: String(row.group_id), groupName: String(row.group_name), platform: row.platform_override ? String(row.platform_override) : row.platform ? String(row.platform) : undefined, platformOverride: nullableText(row.platform_override), rawRate: row.raw_rate === null ? null : Number(row.raw_rate), effectiveRate: Number(row.effective_rate), collectedAt: new Date(String(row.collected_at)) }));
-}
-
-function setRatePlatform(database: DatabaseSync, input: Readonly<{ siteId: number; groupId: string; platform: string | null }>) {
-  const exists = database.prepare("SELECT 1 FROM collection_group_rates WHERE site_id = ? AND group_id = ?").get(input.siteId, input.groupId);
-  if (!exists) throw new Error(`采集分组不存在: ${input.siteId}:${input.groupId}`);
-  if (input.platform) {
-    database.prepare(`INSERT INTO collection_group_platform_overrides (site_id, group_id, platform, updated_at)
-      VALUES (?, ?, ?, ?) ON CONFLICT(site_id, group_id) DO UPDATE SET platform=excluded.platform, updated_at=excluded.updated_at`).run(input.siteId, input.groupId, input.platform, nowIso());
-  } else {
-    database.prepare("DELETE FROM collection_group_platform_overrides WHERE site_id = ? AND group_id = ?").run(input.siteId, input.groupId);
-  }
-  return readRates(database, input.siteId).find((rate) => rate.groupId === input.groupId)!;
-}
-
-function readChanges(database: DatabaseSync, query: CollectionChangesQuery = {}): CollectionRateChange[] {
-  const limit = query.limit ?? DEFAULT_CHANGE_LIMIT;
-  const order = query.afterId === undefined ? "changes.collected_at DESC, changes.id DESC" : "changes.id ASC";
-  const rows = database.prepare(`SELECT changes.*, sites.name AS site_name
-    FROM collection_rate_changes AS changes
-    JOIN collection_sites AS sites ON sites.id = changes.site_id
-    WHERE (:since IS NULL OR changes.collected_at >= :since)
-      AND (:afterId IS NULL OR changes.id > :afterId)
-    ORDER BY ${order} LIMIT :limit`).all({
-      since: query.since ?? null,
-      afterId: query.afterId ?? null,
-      limit,
-    }) as Record<string, unknown>[];
-  return rows.map(mapChange);
-}
-
-function mapChange(row: Record<string, unknown>): CollectionRateChange {
-  return {
-    id: Number(row.id), runId: Number(row.run_id), sourceSiteId: Number(row.site_id),
-    sourceSiteName: String(row.site_name), groupId: String(row.group_id), groupName: String(row.group_name),
-    platform: nullableText(row.platform), changeType: String(row.change_type) as CollectionRateChange["changeType"],
-    oldRate: nullableNumber(row.old_rate), newRate: nullableNumber(row.new_rate), collectedAt: String(row.collected_at),
-  };
-}
-
 function mapSite(row: Record<string, unknown>): CollectionSiteStored {
   return {
-    id: Number(row.id), name: String(row.name), siteType: String(row.site_type) as CollectionSiteStored["siteType"],
+    id: Number(row.id), name: String(row.name), remark: String(row.remark ?? ""), siteType: String(row.site_type) as CollectionSiteStored["siteType"],
     baseUrl: String(row.base_url), websiteUrl: String(row.website_url ?? ""),
     authMode: String(row.auth_mode) as CollectionSiteStored["authMode"], username: String(row.username),
     newApiUserId: String(row.new_api_user_id ?? ""),
     passwordEnc: String(row.password_enc), accessTokenEnc: String(row.access_token_enc), refreshTokenEnc: String(row.refresh_token_enc),
-    rechargeRatio: Number(row.recharge_ratio), intervalSeconds: Number(row.interval_seconds), useProxy: Number(row.use_proxy) === 1,
+    rechargeRatio: Number(row.recharge_ratio), balanceAlertThreshold: nullableNumber(row.balance_alert_threshold), intervalSeconds: Number(row.interval_seconds), useProxy: Number(row.use_proxy) === 1,
     enabled: Number(row.enabled) === 1, accountLabel: nullableText(row.account_label), balance: nullableNumber(row.balance),
+    todayConsume: nullableNumber(row.today_consume), historyRecharge: nullableNumber(row.history_recharge),
     lastRunAt: nullableText(row.last_run_at), lastSuccessAt: nullableText(row.last_success_at),
     lastStatus: nullableText(row.last_status) as CollectionSiteStored["lastStatus"], lastError: nullableText(row.last_error),
     consecutiveFailures: Number(row.consecutive_failures), refreshVersion: Number(row.refresh_version),

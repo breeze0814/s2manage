@@ -8,10 +8,11 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuPortal, Co
 import { Tag } from "../ui/tag";
 import type { SourceSiteView } from "./types";
 
-export function SourceSiteTable({ sites, selectedSiteId, pendingId, onSelect, onRefresh, onEdit, onDelete }: Readonly<{
+export function SourceSiteTable({ sites, selectedSiteId, pendingId, pendingIds = new Set(), onSelect, onRefresh, onEdit, onDelete }: Readonly<{
   sites: readonly SourceSiteView[];
   selectedSiteId: number | null;
   pendingId: number | null;
+  pendingIds?: ReadonlySet<number>;
   onSelect: (siteId: number) => void;
   onRefresh: (site: SourceSiteView) => void;
   onEdit: (site: SourceSiteView) => void;
@@ -27,7 +28,7 @@ export function SourceSiteTable({ sites, selectedSiteId, pendingId, onSelect, on
             key={site.id}
             site={site}
             selected={selectedSiteId === site.id}
-            pending={pendingId === site.id}
+            pending={pendingId === site.id || pendingIds.has(site.id)}
             onSelect={onSelect}
             onRefresh={onRefresh}
             onEdit={onEdit}
@@ -76,14 +77,8 @@ function SourceCard(props: SourceActions & { site: SourceSiteView; selected: boo
               </div>
               <p className="mt-1 truncate text-xs text-muted" title={site.baseUrl}>{site.baseUrl}</p>
             </div>
-            <div className="shrink-0 text-right">
-              <p className="text-xs text-muted">余额</p>
-              <p className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-base font-semibold tabular-nums text-balance-value">
-                <span aria-hidden="true" className="size-1.5 rounded-full bg-balance-value" />
-                {formatBalance(site.balance)}
-              </p>
-            </div>
           </div>
+          <SiteMetrics site={site} />
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
             <SiteMeta site={site} />
             <CardActions site={site} pending={props.pending} onRefresh={props.onRefresh} onEdit={props.onEdit} onDelete={props.onDelete} />
@@ -93,6 +88,21 @@ function SourceCard(props: SourceActions & { site: SourceSiteView; selected: boo
       <SourceCardMenu {...props} />
     </ContextMenu>
   );
+}
+
+function SiteMetrics({ site }: Readonly<{ site: SourceSiteView }>) {
+  return (
+    <dl className="grid grid-cols-3 gap-3 border-t border-border pt-3 text-center">
+      <SiteMetric label="余额" value={site.balance} className="text-balance-value" />
+      <SiteMetric label="今日消费" value={site.todayConsume} className={site.todayConsume && site.todayConsume > 0 ? "text-warning" : "text-muted"} />
+      <SiteMetric label="历史充值" value={site.historyRecharge} className="text-foreground" />
+    </dl>
+  );
+}
+
+function SiteMetric({ label, value, className }: Readonly<{ label: string; value: number | null; className: string }>) {
+  const display = formatMetric(value);
+  return <div className="min-w-0"><dt className="text-xs text-muted">{label}</dt><dd title={display} className={`mt-1 truncate font-mono text-sm font-semibold tabular-nums ${className}`}>{display}</dd></div>;
 }
 
 function CardActions({
@@ -154,6 +164,8 @@ function SiteMeta({ site }: Readonly<{ site: SourceSiteView }>) {
     <div className="flex min-w-0 flex-wrap gap-1.5">
       <Tag tone="rate" className="font-mono tabular-nums">充值 ×{site.rechargeRatio}</Tag>
       {site.useProxy ? <Tag tone="info">使用代理</Tag> : null}
+      {site.balanceAlertThreshold !== null && site.balance !== null && site.balance <= site.balanceAlertThreshold ? <Tag tone="danger">余额低于阈值</Tag> : null}
+      {site.remark ? <Tag title={site.remark}><span className="max-w-40 truncate">{site.remark}</span></Tag> : null}
     </div>
   );
 }
@@ -207,8 +219,8 @@ function Status({ site }: Readonly<{ site: SourceSiteView }>) {
   return <Tag title={site.lastError ?? undefined} tone={tone}>{text}</Tag>;
 }
 
-function formatBalance(value: number | null) {
-  return value === null ? "-" : String(value);
+function formatMetric(value: number | null) {
+  return value === null ? "-" : Number(value.toFixed(4)).toLocaleString("zh-CN", { maximumFractionDigits: 4 });
 }
 
 function selectWithKeyboard(event: React.KeyboardEvent, siteId: number, onSelect: (siteId: number) => void) {

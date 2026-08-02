@@ -2,34 +2,57 @@ import { newApiAuthHeaders, resolveNewApiAccessToken, resolveSub2ApiAccessToken,
 import { requestJson } from "./http-client.ts";
 
 const NEW_API_QUOTA_PER_UNIT = 500_000;
+const NEW_API_USAGE_LOG_TYPE = 2;
+const MILLISECONDS_PER_SECOND = 1_000;
 
 export type SourceAccountSnapshot = {
   readonly sourceSiteId: number;
   readonly label: string;
   readonly balance: number | null;
+  readonly todayConsume: number | null;
+  readonly historyRecharge: number | null;
 };
 
 type JsonRecord = Record<string, unknown>;
 
 export async function getSub2ApiSourceAccount(input: SourceRateRequest): Promise<SourceAccountSnapshot> {
   const accessToken = await resolveSub2ApiAccessToken(input);
-  const payload = await requestAccount(apiV1Url(input.baseUrl, "/auth/me"), accessToken, input);
+  const [payload, usagePayload] = await Promise.all([
+    requestAccount(apiV1Url(input.baseUrl, "/auth/me"), accessToken, input),
+    requestAccount(apiV1Url(input.baseUrl, "/usage/dashboard/stats"), accessToken, input),
+  ]);
   const record = expectCodeZeroRecord(payload, "获取账户信息失败");
+  const usage = expectCodeZeroRecord(usagePayload, "获取账户消费指标失败");
+  const balance = finiteNumber(record.balance, "账户余额");
   return {
     sourceSiteId: input.sourceSiteId,
     label: stringValue(record.email || record.username || record.id || "Sub2API"),
-    balance: finiteNumber(record.balance, "账户余额"),
+    balance,
+    todayConsume: firstFinite(usage, ["today_actual_cost", "todayActualCost"]),
+    historyRecharge: sub2ApiHistoryRecharge(record, usage, balance),
   };
 }
 
 export async function getNewApiSourceAccount(input: SourceRateRequest): Promise<SourceAccountSnapshot> {
   const accessToken = await resolveNewApiAccessToken(input);
-  const account = await requestNewApiAccount(input, accessToken);
+  const [account, todayConsumeQuota] = await Promise.all([
+    requestNewApiAccount(input, accessToken),
+    requestNewApiTodayConsume(input, accessToken),
+  ]);
   return {
     sourceSiteId: input.sourceSiteId,
     label: account.label,
     balance: account.quota / NEW_API_QUOTA_PER_UNIT,
+    todayConsume: todayConsumeQuota === null ? null : todayConsumeQuota / NEW_API_QUOTA_PER_UNIT,
+    historyRecharge: account.historyQuota / NEW_API_QUOTA_PER_UNIT,
   };
+}
+
+function sub2ApiHistoryRecharge(account: JsonRecord, usage: JsonRecord, balance: number | null) {
+  const total = firstFinite(account, ["total_recharged", "totalRecharged"]);
+  if (total !== null && total !== 0) return total;
+  const consumed = firstFinite(usage, ["total_actual_cost", "totalActualCost"]);
+  return consumed !== null && balance !== null ? consumed + balance : total;
 }
 
 function requestAccount(url: string, accessToken: string, input: SourceRateRequest) {
@@ -102,13 +125,59 @@ async function requestNewApiAccount(input: SourceRateRequest, accessToken: strin
   throw new Error(`获取 New API 余额失败：${failures.join("；")}`);
 }
 
+async function requestNewApiTodayConsume(input: SourceRateRequest, accessToken: string) {
+  const range = todayUnixRange();
+  const payload = await requestJson({
+    url: `${trimBaseUrl(input.baseUrl)}/api/log/self/stat?type=${NEW_API_USAGE_LOG_TYPE}&start_timestamp=${range.start}&end_timestamp=${range.end}`,
+    method: "GET", headers: newApiAuthHeaders(accessToken, input.newApiUserId),
+    timeoutMs: input.timeoutMs, proxyUrl: input.proxyUrl,
+  });
+  const record = asRecord(payload);
+  if (record.success === false) throw new Error(stringValue(record.message) || "获取 New API 今日消费失败");
+  if (!record.data || typeof record.data !== "object" || Array.isArray(record.data)) {
+    throw new Error("获取 New API 今日消费失败：响应缺少 data 对象");
+  }
+  return firstFinite(record.data as JsonRecord, ["quota", "used_quota", "usedQuota"]);
+}
+
 function parseNewApiAccount(payload: unknown) {
   const record = asRecord(payload);
   if (record.success === false) throw new Error(stringValue(record.message) || "接口返回失败");
   const data = asRecord(record.data);
   const quota = newApiRemainingQuota(data);
   if (quota === null) return null;
-  return { label: stringValue(data.username || data.email || data.id || "NewAPI"), quota };
+  return {
+    label: stringValue(data.username || data.email || data.id || "NewAPI"),
+    quota,
+    historyQuota: newApiHistoryQuota(data, quota),
+  };
+}
+
+function newApiHistoryQuota(data: JsonRecord, remaining: number) {
+  const granted = firstFinite(data, ["total", "total_quota", "totalQuota", "total_granted", "totalGranted"]);
+  if (granted !== null) return granted;
+  const used = firstFinite(data, ["used_quota", "usedQuota", "used"]);
+  if (used !== null) return remaining + used;
+  const subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : Array.isArray(data.all_subscriptions) ? data.all_subscriptions : [];
+  const totals = subscriptions.map(subscriptionGranted).filter((value): value is number => value !== null);
+  return totals.length ? totals.reduce((total, value) => total + value, 0) : remaining;
+}
+
+function subscriptionGranted(value: unknown) {
+  const row = asRecord(value);
+  const subscription = Object.keys(asRecord(row.subscription)).length ? asRecord(row.subscription) : row;
+  const granted = firstFinite(subscription, ["amount_total", "total_amount", "totalAmount", "amountTotal", "total_quota", "totalQuota"]);
+  if (granted !== null) return granted;
+  const remaining = firstFinite(subscription, ["amount_remaining", "remaining_amount", "amountRemaining", "remainingAmount", "remain_quota", "remaining_quota", "remainingQuota", "balance", "remaining"]);
+  const used = firstFinite(subscription, ["amount_used", "used_amount", "amountUsed", "usedAmount", "used_quota", "usedQuota", "used"]);
+  return remaining !== null && used !== null ? remaining + used : null;
+}
+
+function todayUnixRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - 1;
+  return { start: Math.floor(start / MILLISECONDS_PER_SECOND), end: Math.floor(end / MILLISECONDS_PER_SECOND) };
 }
 
 function apiV1Url(baseUrl: string, path: string) {

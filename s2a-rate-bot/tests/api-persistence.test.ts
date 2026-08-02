@@ -12,6 +12,9 @@ test("source account collection rejects invalid balance data", async () => {
     if (request.url === "/api/v1/auth/me") {
       return json(response, { code: 0, data: { email: "source@example.com", balance: "invalid" } });
     }
+    if (request.url === "/api/v1/usage/dashboard/stats") {
+      return json(response, { code: 0, data: { today_actual_cost: 1 } });
+    }
     return json(response, { code: 1, message: "not found" }, 404);
   }, async (baseUrl) => {
     await assert.rejects(getSub2ApiSourceAccount(sourceRequest(baseUrl)), /账户余额不是有效数字/);

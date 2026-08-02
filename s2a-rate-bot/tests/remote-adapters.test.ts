@@ -56,7 +56,11 @@ test("getSub2ApiSourceAccount reads source station balance", async () => {
   await withServer((request, response) => {
     assert.equal(request.headers.authorization, "Bearer token-a");
     if (request.method === "GET" && request.url === "/api/v1/auth/me") {
-      json(response, { code: 0, data: { email: "owner@example.com", balance: 123.45 } });
+      json(response, { code: 0, data: { email: "owner@example.com", balance: 123.45, total_recharged: 200 } });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v1/usage/dashboard/stats") {
+      json(response, { code: 0, data: { today_actual_cost: 4.5, total_actual_cost: 76.55 } });
       return;
     }
     json(response, { message: "not found" }, 404);
@@ -73,6 +77,8 @@ test("getSub2ApiSourceAccount reads source station balance", async () => {
       sourceSiteId: 7,
       label: "owner@example.com",
       balance: 123.45,
+      todayConsume: 4.5,
+      historyRecharge: 200,
     });
   });
 });
@@ -225,7 +231,11 @@ test("getNewApiSourceAccount reads NewAPI quota as balance", async () => {
   await withServer((request, response) => {
     assert.equal(request.headers.authorization, "Bearer new-token");
     if (request.method === "GET" && request.url === "/api/user/self") {
-      json(response, { success: true, data: { username: "new-user", quota: 1000000 } });
+      json(response, { success: true, data: { username: "new-user", quota: 1000000, used_quota: 500000 } });
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/api/log/self/stat?")) {
+      json(response, { success: true, data: { quota: 250000 } });
       return;
     }
     json(response, { message: "not found" }, 404);
@@ -242,6 +252,8 @@ test("getNewApiSourceAccount reads NewAPI quota as balance", async () => {
       sourceSiteId: 9,
       label: "new-user",
       balance: 2,
+      todayConsume: 0.5,
+      historyRecharge: 3,
     });
   });
 });

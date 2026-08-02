@@ -1,10 +1,12 @@
 import { z } from "zod";
 import type { SecretCipher } from "../crypto.ts";
-import { CollectionRefreshSupersededError, type CollectionChangesQuery, type CollectionStore } from "./store.ts";
+import { CollectionRefreshSupersededError, type CollectionStore } from "./store.ts";
+import type { CollectionChangesQuery, CollectionRunsQuery } from "./history.ts";
 import type { CollectionCollector, CollectionRequestOptions, CollectionSiteInput, CollectionSiteRuntime, CollectionSiteStored, CollectionSiteView } from "./types.ts";
 
 export const collectionSiteSchema = z.object({
   name: z.string().trim().min(1, "采集站名称不能为空"),
+  remark: z.string().trim().max(200, "备注不能超过 200 个字符").default(""),
   siteType: z.enum(["sub2api", "newapi"]),
   baseUrl: z.string().trim().url("采集站地址无效").transform((value) => value.replace(/\/+$/, "")),
   websiteUrl: z.string().trim().default("").refine(isOptionalHttpUrl, "采集站官网必须是 HTTP 或 HTTPS 地址"),
@@ -15,6 +17,7 @@ export const collectionSiteSchema = z.object({
   accessToken: z.string().trim().default(""),
   refreshToken: z.string().trim().default(""),
   rechargeRatio: z.number().finite().positive("充值倍率必须大于 0"),
+  balanceAlertThreshold: z.number().finite().nonnegative("余额告警阈值不能小于 0").nullable().default(null),
   intervalSeconds: z.number().int().positive("采集间隔必须是正整数"),
   useProxy: z.boolean(),
   enabled: z.boolean(),
@@ -26,11 +29,21 @@ export type CollectionService = {
   readonly delete: (id: number) => Promise<void>;
   readonly list: () => Promise<CollectionSiteView[]>;
   readonly rates: (siteId?: number) => Promise<ReturnType<CollectionStore["rates"]>>;
+  readonly catalog: (siteId?: number) => Promise<ReturnType<CollectionStore["catalog"]>>;
   readonly setRatePlatform: (siteId: number, groupId: string, platform: unknown) => Promise<ReturnType<CollectionStore["setRatePlatform"]>>;
+  readonly setRateGroupType: (siteId: number, groupId: string, groupType: unknown) => Promise<ReturnType<CollectionStore["setRateGroupType"]>>;
+  readonly runtimeSite: (id: number) => Promise<CollectionSiteRuntime>;
   readonly changes: (query?: CollectionChangesQuery) => Promise<ReturnType<CollectionStore["changes"]>>;
+  readonly runs: (query?: CollectionRunsQuery) => Promise<ReturnType<CollectionStore["runs"]>>;
   readonly refresh: (id: number) => Promise<CollectionSiteView>;
   readonly refreshAll: () => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
+  readonly refreshAllWithProgress: (onProgress: (event: CollectionRefreshProgressEvent) => void) => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
 };
+
+export type CollectionRefreshProgressEvent =
+  | { readonly type: "started"; readonly id: number; readonly name: string; readonly total: number }
+  | { readonly type: "finished"; readonly id: number; readonly name: string; readonly completed: number; readonly total: number; readonly ok: boolean; readonly error?: string }
+  | { readonly type: "complete"; readonly completed: number; readonly total: number };
 
 export function createCollectionService(input: {
   readonly store: CollectionStore;
@@ -44,14 +57,20 @@ export function createCollectionService(input: {
     delete: async (id) => input.store.delete(id),
     list: async () => input.store.list().map((site) => siteView(site, input.cipher)),
     rates: async (siteId) => input.store.rates(siteId),
+    catalog: async (siteId) => input.store.catalog(siteId),
     setRatePlatform: async (siteId, groupId, platform) => input.store.setRatePlatform(siteId, groupId, ratePlatformSchema.parse(platform)),
+    setRateGroupType: async (siteId, groupId, groupType) => input.store.setRateGroupType(siteId, groupId, rateGroupTypeSchema.parse(groupType)),
+    runtimeSite: async (id) => runtimeSite(requiredSite(input.store, id), input.cipher),
     changes: async (query) => input.store.changes(query),
+    runs: async (query) => input.store.runs(query),
     refresh: (id) => refreshSite(input, id),
     refreshAll: () => refreshAllSites(input),
+    refreshAllWithProgress: (onProgress) => refreshAllSites(input, onProgress),
   };
 }
 
 const ratePlatformSchema = z.enum(["openai", "anthropic", "gemini", "new-api"]).nullable();
+const rateGroupTypeSchema = z.enum(["openai", "anthropic", "gemini", "antigravity"]).nullable();
 
 async function createSite(input: CollectionDependencies, raw: unknown) {
   const site = collectionSiteSchema.parse(raw);
@@ -121,26 +140,36 @@ function encryptedCredentials(overview: Awaited<ReturnType<CollectionCollector["
   };
 }
 
-async function refreshAllSites(input: CollectionDependencies) {
+async function refreshAllSites(input: CollectionDependencies, onProgress?: (event: CollectionRefreshProgressEvent) => void) {
   const sites = input.store.list().filter((site) => site.enabled);
-  return Promise.all(sites.map(async (site) => {
+  let completed = 0;
+  const results = await Promise.all(sites.map(async (site) => {
+    onProgress?.({ type: "started", id: site.id, name: site.name, total: sites.length });
     try {
       await refreshSite(input, site.id);
-      return { id: site.id, ok: true };
+      const result = { id: site.id, ok: true } as const;
+      completed += 1;
+      onProgress?.({ type: "finished", id: site.id, name: site.name, completed, total: sites.length, ok: true });
+      return result;
     } catch (error) {
-      return { id: site.id, ok: false, error: error instanceof Error ? error.message : String(error) };
+      const message = error instanceof Error ? error.message : String(error);
+      completed += 1;
+      onProgress?.({ type: "finished", id: site.id, name: site.name, completed, total: sites.length, ok: false, error: message });
+      return { id: site.id, ok: false, error: message };
     }
   }));
+  onProgress?.({ type: "complete", completed, total: sites.length });
+  return results;
 }
 
 function encryptedSite(site: CollectionSiteInput, cipher: SecretCipher, current?: CollectionSiteStored) {
   return {
-    name: site.name, siteType: site.siteType, baseUrl: site.baseUrl, websiteUrl: site.websiteUrl, authMode: site.authMode,
+    name: site.name, remark: site.remark ?? "", siteType: site.siteType, baseUrl: site.baseUrl, websiteUrl: site.websiteUrl, authMode: site.authMode,
     username: site.username, newApiUserId: site.siteType === "newapi" ? site.newApiUserId : "",
     passwordEnc: encryptedValue(site.password, current?.passwordEnc, cipher),
     accessTokenEnc: encryptedValue(site.accessToken, current?.accessTokenEnc, cipher),
     refreshTokenEnc: encryptedValue(site.refreshToken, current?.refreshTokenEnc, cipher),
-    rechargeRatio: site.rechargeRatio, intervalSeconds: site.intervalSeconds,
+    rechargeRatio: site.rechargeRatio, balanceAlertThreshold: site.balanceAlertThreshold ?? null, intervalSeconds: site.intervalSeconds,
     useProxy: site.useProxy, enabled: site.enabled,
   };
 }

@@ -6,7 +6,9 @@ import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createSqliteCollectionStore } from "../src/server/collection/store.ts";
 import { createSqliteWorkerRunStore } from "../src/server/worker/store.ts";
+import { createSqliteConnectionStore } from "../src/server/connections/store.ts";
 import { createSqliteMaintenance } from "../src/storage/sqlite-maintenance.ts";
+import { insertActiveConnection } from "./real-connection-test-support.ts";
 
 const NOW = new Date("2026-07-14T12:00:00.000Z");
 const OLD_TIMESTAMP = "2026-06-01T00:00:00.000Z";
@@ -20,11 +22,17 @@ test("scheduled SQLite maintenance removes expired history and keeps recent reco
     seedCollectionHistory(databaseUrl);
     seedWorkerHistory(databaseUrl);
     seedAccountTestHistory(databasePath);
+    seedConnectionEvents(databaseUrl, databasePath);
     ageFirstHistoryRecords(databasePath);
 
     const maintenance = createSqliteMaintenance(databaseUrl);
     const result = maintenance.runIfDue(NOW);
-    assert.deepEqual(result, { collectionRuns: 1, workerRuns: 1, accountTestResults: 1, cutoff: "2026-07-12T12:00:00.000Z" });
+    assert.deepEqual(result, {
+      collectionRuns: 1, workerRuns: 1, accountTestResults: 1,
+      healthEvents: 1, lifecycleEvents: 1,
+      cutoff: "2026-07-12T12:00:00.000Z",
+      eventCutoff: "2026-06-14T12:00:00.000Z",
+    });
     assert.equal(maintenance.runIfDue(NOW), null);
     maintenance.close();
 
@@ -33,6 +41,8 @@ test("scheduled SQLite maintenance removes expired history and keeps recent reco
     assert.equal(count(database, "collection_rate_changes"), 1);
     assert.equal(count(database, "worker_runs"), 1);
     assert.equal(count(database, "target_account_test_results"), 1);
+    assert.equal(count(database, "connection_health_events"), 1);
+    assert.equal(count(database, "connection_lifecycle_events"), 1);
     assert.equal(count(database, "collection_sites"), 1);
     assert.equal(count(database, "collection_group_rates"), 1);
     database.close();
@@ -47,6 +57,23 @@ function seedCollectionHistory(databaseUrl: string) {
   store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 1), startedAt: OLD_TIMESTAMP });
   store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 2), startedAt: NOW.toISOString() });
   store.close();
+}
+
+function seedConnectionEvents(databaseUrl: string, databasePath: string) {
+  const connections = createSqliteConnectionStore(databaseUrl);
+  insertActiveConnection(connections, 1);
+  connections.close();
+  const database = new DatabaseSync(databasePath);
+  for (const timestamp of [OLD_TIMESTAMP, RECENT_TIMESTAMP]) {
+    database.prepare(`INSERT INTO connection_health_events
+      (connection_id, event_type, result, message, created_at)
+      VALUES (?, 'policy', 'info', 'event', ?)`).run("11111111-1111-4111-8111-111111111111", timestamp);
+    database.prepare(`INSERT INTO connection_lifecycle_events
+      (connection_id, action, stage, result, message, created_at)
+      VALUES (?, 'provision', 'complete', 'success', 'event', ?)`)
+      .run("11111111-1111-4111-8111-111111111111", timestamp);
+  }
+  database.close();
 }
 
 function seedAccountTestHistory(databasePath: string) {
@@ -89,7 +116,7 @@ function siteInput() {
 }
 
 function overview(siteId: number, rate: number) {
-  return { account: { sourceSiteId: siteId, label: "user", balance: 1 }, rates: [
+  return { account: { sourceSiteId: siteId, label: "user", balance: 1, todayConsume: 0.5, historyRecharge: 10 }, rates: [
     { sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai", rawRate: rate, effectiveRate: rate, collectedAt: NOW },
   ] };
 }

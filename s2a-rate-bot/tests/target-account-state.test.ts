@@ -94,6 +94,7 @@ async function withAccountService(client: TargetAccountClient, task: (context: A
   const store = createSqliteTargetAccountStore(`file:${databasePath}`);
   const service = createTargetAccountService({
     client, store, sourceRates: async () => [sourceRate()], testConcurrency: async () => 2,
+    scheduleOwnership: writableScheduleOwnership(),
   });
   try { await task({ service }); }
   finally { store.close(); await rm(directory, { recursive: true, force: true }); }
@@ -117,6 +118,10 @@ function defaultClient(
   setSchedulable: TargetAccountClient["setSchedulable"] = async () => {},
 ) {
   return { listAccounts: async () => [account(9), account(10)], testChannel, setSchedulable };
+}
+
+function writableScheduleOwnership() {
+  return { runWritable: async <T>(input: Readonly<{ task: () => Promise<T> }>) => input.task() };
 }
 
 function account(id: number) { return { id, name: `Account ${id}`, platform: "openai", status: "active", schedulable: true, rateMultiplier: 1, priority: id, groupIds: [7] }; }

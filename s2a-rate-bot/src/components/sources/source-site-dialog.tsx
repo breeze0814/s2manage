@@ -19,6 +19,7 @@ const SITE_TYPE_OPTIONS = [
 
 const EMPTY_FORM: SourceSiteForm = {
   name: "",
+  remark: "",
   siteType: "sub2api",
   baseUrl: "",
   websiteUrl: "",
@@ -29,6 +30,7 @@ const EMPTY_FORM: SourceSiteForm = {
   accessToken: "",
   refreshToken: "",
   rechargeRatio: "1",
+  balanceAlertThreshold: "",
   intervalSeconds: "600",
   useProxy: false,
   enabled: true,
@@ -118,6 +120,7 @@ function SiteMainFields({ form, update }: Readonly<{ form: SourceSiteForm; updat
       <Field label="接口地址"><TextControl type="url" value={form.baseUrl} onChange={(value) => update("baseUrl", value)} placeholder="https://api.example.com" /></Field>
       <Field label="官网地址"><TextControl type="url" required={false} value={form.websiteUrl} onChange={(value) => update("websiteUrl", value)} placeholder="https://www.example.com" /></Field>
     </div>
+    <Field label="备注" hint="用于标记用途或维护信息，最多 200 个字符"><TextControl required={false} maxLength={200} value={form.remark} onChange={(value) => update("remark", value)} placeholder="例如：主用计费站" /></Field>
     {form.siteType === "newapi" ? <Field label="New-Api-User" hint="部分 New API 接口要求填写当前用户 ID，例如 4465。">
       <TextControl value={form.newApiUserId} onChange={(value) => update("newApiUserId", value)} placeholder="4465" />
     </Field> : null}
@@ -129,6 +132,7 @@ function SiteMainFields({ form, update }: Readonly<{ form: SourceSiteForm; updat
         <Toggle label="使用全局代理" checked={form.useProxy} onChange={(value) => update("useProxy", value)} />
         <Toggle label="启用采集" checked={form.enabled} onChange={(value) => update("enabled", value)} />
       </div>
+      <div className="mt-3 max-w-xs"><Field label="余额告警阈值" hint="留空表示不告警"><CompactNumberInput min="0" step="any" suffix="余额" value={form.balanceAlertThreshold} onChange={(value) => update("balanceAlertThreshold", value)} /></Field></div>
     </div>
   </fieldset>;
 }
@@ -185,6 +189,7 @@ function TextControl({
   type?: string;
   placeholder?: string;
   required?: boolean;
+  maxLength?: number;
 }>) {
   return <Input required={input.type !== "password"} {...input} value={value} onChange={(event) => onChange(event.target.value)} />;
 }
@@ -221,6 +226,7 @@ function updateSiteType(siteType: SourceSiteForm["siteType"], update: UpdateForm
 function formFromSite(site: SourceSiteView): SourceSiteForm {
   return {
     name: site.name,
+    remark: site.remark,
     siteType: site.siteType,
     baseUrl: site.baseUrl,
     websiteUrl: site.websiteUrl,
@@ -231,6 +237,7 @@ function formFromSite(site: SourceSiteView): SourceSiteForm {
     accessToken: "",
     refreshToken: "",
     rechargeRatio: String(site.rechargeRatio),
+    balanceAlertThreshold: site.balanceAlertThreshold === null ? "" : String(site.balanceAlertThreshold),
     intervalSeconds: String(site.intervalSeconds),
     useProxy: site.useProxy,
     enabled: site.enabled,

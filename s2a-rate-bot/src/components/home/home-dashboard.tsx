@@ -8,7 +8,7 @@ import { Button } from "../ui/button";
 import { Tag } from "../ui/tag";
 import { RateChangePanel, type RateChange } from "./rate-change-panel";
 
-type Site = { readonly id: number; readonly name: string; readonly balance: number | null; readonly enabled: boolean; readonly lastStatus: string | null; readonly lastSuccessAt: string | null };
+type Site = { readonly id: number; readonly name: string; readonly balance: number | null; readonly todayConsume: number | null; readonly historyRecharge: number | null; readonly balanceAlertThreshold: number | null; readonly enabled: boolean; readonly lastStatus: string | null; readonly lastSuccessAt: string | null };
 type Group = { readonly id: number; readonly name: string; readonly platform?: string | null; readonly rule: { readonly enabled: boolean }; readonly bindings: readonly unknown[] };
 type Rate = { readonly sourceSiteId: number; readonly groupId: string; readonly effectiveRate: number };
 type WorkerRun = { readonly status: string; readonly collectedSources: number; readonly failedSources: number; readonly appliedGroups: number; readonly failedGroups: number; readonly startedAt: string; readonly finishedAt: string | null };
@@ -53,13 +53,15 @@ function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
   const enabledSites = data.sites.filter((site) => site.enabled).length;
   const enabledRules = data.groups.filter((group) => group.rule.enabled).length;
   const failures = data.sites.filter((site) => site.lastStatus === "failed").length;
+  const lowBalanceSites = data.sites.filter((site) => site.balance !== null && site.balanceAlertThreshold !== null && site.balance <= site.balanceAlertThreshold);
   const totalBalance = data.sites.reduce((total, site) => total + (site.balance ?? 0), 0);
+  const totalTodayConsume = data.sites.reduce((total, site) => total + (site.todayConsume ?? 0), 0);
   return (
     <>
-      <AlertBanner data={data} failedSites={failures} />
+      <AlertBanner data={data} failedSites={failures} lowBalanceSites={lowBalanceSites.length} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric href="/sources" icon={<Database />} label="采集站" value={data.sites.length} detail={`启用 ${enabledSites}`} tone="blue" />
-        <Metric href="/sources#source-sites" icon={<WalletCards />} label="采集站总余额" value={formatBalance(totalBalance)} valueClassName="text-balance-value" detail={`${data.sites.filter((site) => site.balance !== null).length} 个站点已采集`} tone="emerald" />
+        <Metric href="/sources#source-sites" icon={<WalletCards />} label="采集站总余额" value={formatBalance(totalBalance)} valueClassName="text-balance-value" detail={`今日消费 ${formatBalance(totalTodayConsume)}`} tone="emerald" />
         <Metric href="/groups" icon={<Layers3 />} label="目标分组" value={data.groups.length} detail={`启用规则 ${enabledRules}`} tone="violet" />
         <Metric href={failures ? "/logs" : "/sources"} icon={<Activity />} label="倍率快照" value={data.rates.length} detail={failures ? `${failures} 个站点异常` : "全部站点正常"} tone={failures ? "red" : "amber"} />
       </div>
@@ -74,10 +76,11 @@ function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
   );
 }
 
-function AlertBanner({ data, failedSites }: Readonly<{ data: DashboardData; failedSites: number }>) {
+function AlertBanner({ data, failedSites, lowBalanceSites }: Readonly<{ data: DashboardData; failedSites: number; lowBalanceSites: number }>) {
   const items: { readonly href: string; readonly text: string }[] = [];
   if (!data.workerConnected) items.push({ href: "/settings", text: "Worker 未连接，自动采集与应用可能已停止" });
   if (failedSites > 0) items.push({ href: "/sources", text: `${failedSites} 个采集站最近一次运行失败` });
+  if (lowBalanceSites > 0) items.push({ href: "/sources", text: `${lowBalanceSites} 个采集站余额低于告警阈值` });
   if (data.run?.status === "failed" || data.run?.status === "partial") {
     items.push({ href: "/logs", text: `Worker 最近运行状态为 ${data.run.status}` });
   }

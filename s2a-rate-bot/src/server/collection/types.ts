@@ -7,6 +7,7 @@ export type CollectionAuthMode = "password" | "manual_token";
 
 export type CollectionSiteInput = {
   readonly name: string;
+  readonly remark?: string;
   readonly siteType: CollectionSiteType;
   readonly baseUrl: string;
   readonly websiteUrl: string;
@@ -17,6 +18,7 @@ export type CollectionSiteInput = {
   readonly accessToken: string;
   readonly refreshToken: string;
   readonly rechargeRatio: number;
+  readonly balanceAlertThreshold?: number | null;
   readonly intervalSeconds: number;
   readonly useProxy: boolean;
   readonly enabled: boolean;
@@ -29,6 +31,8 @@ export type CollectionSiteStored = Omit<CollectionSiteInput, "password" | "acces
   readonly refreshTokenEnc: string;
   readonly accountLabel: string | null;
   readonly balance: number | null;
+  readonly todayConsume: number | null;
+  readonly historyRecharge: number | null;
   readonly lastRunAt: string | null;
   readonly lastSuccessAt: string | null;
   readonly lastStatus: "success" | "failed" | null;

@@ -83,6 +83,8 @@ test("successful refresh persists balance, rates, and a success run", async () =
     assert.equal(refreshed.lastStatus, "success");
     assert.equal(refreshed.accountLabel, "source@example.com");
     assert.equal(refreshed.balance, 12.5);
+    assert.equal(refreshed.todayConsume, 1.25);
+    assert.equal(refreshed.historyRecharge, 30);
     assert.equal(refreshed.consecutiveFailures, 0);
     assert.deepEqual(rates.map((rate: { groupId: string; effectiveRate: number }) => [rate.groupId, rate.effectiveRate]), [["vip", 2]]);
   });
@@ -137,7 +139,7 @@ test("successful refresh records added updated and deleted group rates", async (
       const rates = collection === 1
         ? [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2 }), sourceRate({ siteId: site.id, groupId: "legacy", groupName: "Legacy", effectiveRate: 3 })]
         : [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2.5 }), sourceRate({ siteId: site.id, groupId: "new", groupName: "New", effectiveRate: 1.2 })];
-      return { account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5 }, rates };
+      return { account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5, todayConsume: 1, historyRecharge: 20 }, rates };
     },
   };
   await withCollection(collector, async ({ service, databasePath }) => {
@@ -167,7 +169,7 @@ test("successful refresh removes bindings for deleted source groups", async () =
   let collection = 0;
   const collector = {
     collect: async ({ site }: { site: { id: number } }) => ({
-      account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5 },
+      account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5, todayConsume: 1, historyRecharge: 20 },
       rates: ++collection === 1
         ? [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2 }), sourceRate({ siteId: site.id, groupId: "legacy", groupName: "Legacy", effectiveRate: 3 })]
         : [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2.5 })],
@@ -285,9 +287,11 @@ test("refresh all reports each enabled site result without hiding failures", asy
     await service.create(sourceInput({ name: "New API", siteType: "newapi", authMode: "manual_token", accessToken: "token" }));
     await service.create(sourceInput({ name: "Disabled", enabled: false }));
 
-    const results = await service.refreshAll();
+    const progress: Array<{ type: string }> = [];
+    const results = await service.refreshAllWithProgress((event) => progress.push(event));
 
     assert.deepEqual(results.map((result: { ok: boolean }) => result.ok), [true, false]);
     assert.match(results[1].error ?? "", /newapi failed/);
+    assert.equal(progress.at(-1)?.type, "complete");
   });
 });

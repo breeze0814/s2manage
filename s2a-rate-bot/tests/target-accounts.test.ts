@@ -69,6 +69,7 @@ test("account service reads SQLite until an explicit remote refresh", async () =
     const store = storeModule.createSqliteTargetAccountStore(`file:${join(directory, "app.db")}`);
     const service = serviceModule.createTargetAccountService({
       client: await accountClient(baseUrl), store, sourceRates: async () => [], testConcurrency: async () => 2,
+      scheduleOwnership: { runWritable: async <T>(input: Readonly<{ task: () => Promise<T> }>) => input.task() },
     });
     try {
       assert.deepEqual(await service.list(), []);

@@ -191,7 +191,7 @@ async function runScheduled(input: WorkerDependencies) {
     await input.scheduled.run();
     return [];
   } catch (error) {
-    return [`抽奖定时任务: ${errorMessage(error)}`];
+    return [`后台定时任务: ${errorMessage(error)}`];
   }
 }
 

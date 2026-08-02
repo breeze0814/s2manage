@@ -3,12 +3,13 @@ import { getRuntimeCollectionService } from "../collection/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createSub2TargetAccountClient } from "./client.ts";
 import { createTargetAccountService, type TargetAccountService } from "./service.ts";
+import { createSqliteTargetScheduleOwnership } from "./schedule-ownership.ts";
 import { createSqliteTargetAccountStore } from "./store.ts";
 import type { TargetAccountClient } from "./types.ts";
 
 const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 // Increment when the cached service contract or its dependencies change.
-const TARGET_ACCOUNT_RUNTIME_VERSION = 2;
+const TARGET_ACCOUNT_RUNTIME_VERSION = 3;
 
 type TargetAccountRuntime = Readonly<{
   version: number;
@@ -31,16 +32,26 @@ export function getRuntimeTargetAccountService(env: NodeJS.ProcessEnv = process.
 }
 
 function buildTargetAccountRuntime(env: NodeJS.ProcessEnv): TargetAccountRuntime {
+  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
   const settings = getRuntimeSettingsService(env);
   const collection = getRuntimeCollectionService(env);
-  const store = createSqliteTargetAccountStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
+  const store = createSqliteTargetAccountStore(databaseUrl);
+  const scheduleOwnership = createSqliteTargetScheduleOwnership(databaseUrl);
   const service = createTargetAccountService({
     client: dynamicClient(settings),
     store,
     sourceRates: () => collection.rates(),
     testConcurrency: async () => (await settings.get()).worker.concurrency,
+    scheduleOwnership,
   });
-  return { version: TARGET_ACCOUNT_RUNTIME_VERSION, service, dispose: store.close };
+  return {
+    version: TARGET_ACCOUNT_RUNTIME_VERSION,
+    service,
+    dispose: () => {
+      scheduleOwnership.close();
+      store.close();
+    },
+  };
 }
 
 function isRuntimeCache(cache: TargetAccountRuntimeCache | undefined): cache is TargetAccountRuntime {

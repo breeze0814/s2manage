@@ -7,6 +7,8 @@ import { writeWorkerLog } from "../logging/business-logger.ts";
 import { createSqliteMaintenance } from "../../storage/sqlite-maintenance.ts";
 import { getRuntimeTelegramNotificationService } from "../telegram/runtime.ts";
 import { getRuntimeEmbedServices } from "../embeds/runtime.ts";
+import { createConnectionHealthRuntime } from "../connection-health/runtime.ts";
+import { createConnectionRuntime } from "../connections/runtime.ts";
 
 const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 type RuntimeWorkerService = ReturnType<typeof buildRuntimeWorkerService>;
@@ -28,21 +30,41 @@ function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
   const maintenance = createSqliteMaintenance(databaseUrl);
   const notifications = getRuntimeTelegramNotificationService(env);
   const embeds = getRuntimeEmbedServices(env);
+  const connectionHealth = createConnectionHealthRuntime(env);
+  const connections = createConnectionRuntime(env);
   const worker = createWorkerService({
     settings: async () => workerSettings(await settings.get()),
     collection,
     targetGroups,
     notifications,
-    scheduled: { run: async () => { await embeds.lottery.processDue(); } },
+    scheduled: { run: () => runScheduledTasks([
+      () => embeds.lottery.processDue(),
+      () => connections.service.reconcile(),
+    ]) },
     runs,
     now: () => new Date(),
   });
   return {
     ...worker,
     runCycle: async () => runMaintainedCycle(worker.runCycle, maintenance),
+    runHealthCycle: () => connectionHealth.service.runDue(),
+    nextHealthDueAt: () => connectionHealth.service.nextDueAt(),
     intervalSeconds: async () => (await settings.get()).worker.intervalSeconds,
-    close: () => { embeds.close(); notifications.close(); maintenance.close(); runs.close(); },
+    close: () => {
+      connections.close();
+      connectionHealth.close();
+      embeds.close();
+      notifications.close();
+      maintenance.close();
+      runs.close();
+    },
   };
+}
+
+async function runScheduledTasks(tasks: readonly (() => Promise<unknown>)[]) {
+  const results = await Promise.allSettled(tasks.map((task) => task()));
+  const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason);
+  if (errors.length) throw new AggregateError(errors, "后台定时任务执行失败");
 }
 
 async function runMaintainedCycle(

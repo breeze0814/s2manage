@@ -2,12 +2,14 @@ import { z } from "zod";
 import { TARGET_RULE_VERSION } from "../../core/rule-version.ts";
 import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
 import { resolveRateUpdate } from "../../core/rate-rule.ts";
-import type { TargetGroupStore } from "./store.ts";
+import type { TargetGroupStore, TargetRuleUpdate } from "./store.ts";
 import type { RuleParameters, SourceBinding, TargetGroup, TargetGroupClient, TargetRule } from "./types.ts";
 import { ruleParametersSchema } from "./rule-parameters.ts";
 
 const STALE_SOURCE_BINDING_ERROR = "已删除的采集源分组已自动取消绑定";
+const SOURCE_BINDING_REMOVED_ERROR = "采集源分组取消关联，倍率规则已自动停用";
 const bindingSchema = z.object({ sourceSiteId: z.number().int().positive(), sourceGroupId: z.string().trim().min(1) });
+const sourceBindingsSchema = bindingSchema.extend({ targetGroupIds: z.array(z.number().int().positive()) });
 export const targetRuleSchema = z.object({
   enabled: z.boolean(),
   ruleVersion: z.number().int().refine((value) => value === TARGET_RULE_VERSION, "不支持的倍率规则版本"),
@@ -28,6 +30,7 @@ export type TargetGroupService = {
   readonly refreshAll: () => Promise<TargetGroupView[]>;
   readonly refresh: (groupId: number) => Promise<TargetGroupView | null>;
   readonly saveRule: (groupId: number, input: unknown) => Promise<TargetGroupView>;
+  readonly saveSourceBindings: (input: unknown) => Promise<TargetGroupView[]>;
   readonly preview: (groupId: number) => Promise<ReturnType<typeof resolveRateUpdate>>;
   readonly apply: (groupId: number) => Promise<ReturnType<typeof resolveRateUpdate>>;
 };
@@ -42,6 +45,7 @@ export function createTargetGroupService(input: {
     refreshAll: () => refreshAllGroups(input),
     refresh: (groupId) => refreshGroup(input, groupId),
     saveRule: (groupId, raw) => saveRule(input, groupId, raw),
+    saveSourceBindings: (raw) => saveSourceBindings(input, raw),
     preview: (groupId) => previewRule(input, groupId),
     apply: (groupId) => applyRule(input, groupId),
   };
@@ -83,6 +87,48 @@ async function saveRule(input: TargetDependencies, groupId: number, raw: unknown
   };
   input.store.saveRule(rule, reconciliation.bindings);
   return groupView(input.store, group);
+}
+
+async function saveSourceBindings(input: TargetDependencies, raw: unknown) {
+  const parsed = sourceBindingsSchema.parse(raw);
+  const source = (await input.sourceRates()).find((rate) => rate.sourceSiteId === parsed.sourceSiteId && rate.groupId === parsed.sourceGroupId);
+  if (!source) throw new Error(`采集分组不存在: ${bindingKey(parsed)}`);
+  const groups = input.store.listGroups();
+  const selected = new Set(parsed.targetGroupIds);
+  validateTargetSelection(groups, selected, source.groupType ?? source.platform);
+  const updates = groups
+    .map((group) => sourceBindingUpdate(input.store, group, parsed, selected.has(group.id)))
+    .filter((update): update is TargetRuleUpdate => update !== null);
+  input.store.saveRules(updates);
+  return listGroups(input);
+}
+
+function sourceBindingUpdate(
+  store: TargetGroupStore,
+  group: TargetGroup,
+  source: SourceBinding,
+  selected: boolean,
+): TargetRuleUpdate | null {
+  const current = store.bindings(group.id);
+  const hasBinding = current.some((binding) => bindingKey(binding) === bindingKey(source));
+  if (selected === hasBinding) return null;
+  const bindings = selected ? dedupeBindings([...current, source]) : current.filter((binding) => bindingKey(binding) !== bindingKey(source));
+  const rule = store.getRule(group.id) ?? defaultRule(group);
+  const disabled = rule.enabled && bindings.length === 0;
+  const priorError = rule.lastError === SOURCE_BINDING_REMOVED_ERROR ? null : rule.lastError;
+  return { rule: { ...rule, enabled: disabled ? false : rule.enabled, lastError: disabled ? SOURCE_BINDING_REMOVED_ERROR : priorError }, bindings };
+}
+
+function validateTargetSelection(groups: readonly TargetGroup[], selected: ReadonlySet<number>, sourcePlatform?: string) {
+  const byId = new Map(groups.map((group) => [group.id, group]));
+  const missing = [...selected].find((groupId) => !byId.has(groupId));
+  if (missing !== undefined) throw new Error(`目标分组不存在: ${missing}`);
+  const incompatible = [...selected].map((groupId) => byId.get(groupId)!).find((group) => !samePlatform(group.platform, sourcePlatform));
+  if (incompatible) throw new Error(`目标分组平台不匹配: ${incompatible.name}`);
+}
+
+function samePlatform(left?: string | null, right?: string | null) {
+  return Boolean(left && right && left.trim().toLowerCase() === right.trim().toLowerCase());
 }
 
 async function previewRule(input: TargetDependencies, groupId: number) {

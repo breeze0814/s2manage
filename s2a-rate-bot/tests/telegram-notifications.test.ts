@@ -104,7 +104,7 @@ function sourceSite() {
   return { id: 1, name: "Source", siteType: "sub2api" as const, baseUrl: "https://source.example.com",
     websiteUrl: "", authMode: "password" as const, username: "source", newApiUserId: "",
     rechargeRatio: 1, intervalSeconds: 600, useProxy: false, enabled: true,
-    accountLabel: "source@example.com", balance: 12.5, lastRunAt: NOW.toISOString(),
+    accountLabel: "source@example.com", balance: 12.5, todayConsume: 1.25, historyRecharge: 30, lastRunAt: NOW.toISOString(),
     lastSuccessAt: NOW.toISOString(), lastStatus: "success" as const, lastError: null,
     consecutiveFailures: 0, refreshVersion: 1, hasPassword: true, hasAccessToken: false, hasRefreshToken: false };
 }

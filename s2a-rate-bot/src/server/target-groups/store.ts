@@ -15,9 +15,15 @@ export type TargetGroupStore = {
   readonly listRules: () => TargetRule[];
   readonly bindings: (groupId: number) => SourceBinding[];
   readonly saveRule: (rule: TargetRule, bindings: readonly SourceBinding[]) => void;
+  readonly saveRules: (updates: readonly TargetRuleUpdate[]) => void;
   readonly recordApplied: (groupId: number, fromRate: number | null, toRate: number) => void;
   readonly recordError: (groupId: number, error: string) => void;
   readonly close: () => void;
+};
+
+export type TargetRuleUpdate = {
+  readonly rule: TargetRule;
+  readonly bindings: readonly SourceBinding[];
 };
 
 export function createSqliteTargetGroupStore(databaseUrl: string): TargetGroupStore {
@@ -39,6 +45,7 @@ function targetGroupStore(database: DatabaseSync): TargetGroupStore {
     listRules: () => listRules(database),
     bindings: (groupId) => readBindings(database, groupId),
     saveRule: (rule, bindings) => saveRule(database, rule, bindings),
+    saveRules: (updates) => saveRules(database, updates),
     recordApplied: (groupId, fromRate, toRate) => recordApplied(database, { groupId, fromRate, toRate }),
     recordError: (groupId, error) => recordError(database, groupId, error),
     close: () => database.close(),
@@ -103,19 +110,27 @@ function readBindings(database: DatabaseSync, groupId: number): SourceBinding[] 
 }
 
 function saveRule(database: DatabaseSync, rule: TargetRule, bindings: readonly SourceBinding[]) {
+  saveRules(database, [{ rule, bindings }]);
+}
+
+function saveRules(database: DatabaseSync, updates: readonly TargetRuleUpdate[]) {
   transaction(database, () => {
-    database.prepare(`INSERT INTO target_group_rules (
+    for (const update of updates) writeRule(database, update);
+  });
+}
+
+function writeRule(database: DatabaseSync, update: TargetRuleUpdate) {
+  database.prepare(`INSERT INTO target_group_rules (
       group_id, group_name, enabled, rule_version, rule_type, parameters_json, current_rate,
       last_applied_from_rate, last_applied_to_rate, last_applied_at, last_error, updated_at)
       VALUES (:groupId, :groupName, :enabled, :ruleVersion, :ruleType, :parameters, :currentRate,
       :lastAppliedFromRate, :lastAppliedToRate, :lastAppliedAt, :lastError, :updatedAt)
       ON CONFLICT(group_id) DO UPDATE SET group_name=excluded.group_name, enabled=excluded.enabled,
       rule_version=excluded.rule_version, rule_type=excluded.rule_type, parameters_json=excluded.parameters_json,
-      current_rate=excluded.current_rate, last_error=excluded.last_error, updated_at=excluded.updated_at`).run(ruleBindings(rule));
-    database.prepare("DELETE FROM target_group_bindings WHERE group_id = ?").run(rule.targetGroupId);
-    const statement = database.prepare("INSERT INTO target_group_bindings VALUES (?, ?, ?)");
-    for (const binding of bindings) statement.run(rule.targetGroupId, binding.sourceSiteId, binding.sourceGroupId);
-  });
+      current_rate=excluded.current_rate, last_error=excluded.last_error, updated_at=excluded.updated_at`).run(ruleBindings(update.rule));
+  database.prepare("DELETE FROM target_group_bindings WHERE group_id = ?").run(update.rule.targetGroupId);
+  const statement = database.prepare("INSERT INTO target_group_bindings VALUES (?, ?, ?)");
+  for (const binding of update.bindings) statement.run(update.rule.targetGroupId, binding.sourceSiteId, binding.sourceGroupId);
 }
 
 function ruleBindings(rule: TargetRule) {

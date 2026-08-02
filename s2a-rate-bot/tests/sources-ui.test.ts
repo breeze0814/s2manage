@@ -20,7 +20,7 @@ test("source dashboard distinguishes remote collection from local page reload", 
   assert.match(dashboard, /text="刷新全部"/);
   assert.doesNotMatch(dashboard, /function Metric/);
   assert.doesNotMatch(dashboard, /<Metric label=/);
-  assert.match(dashboard, /\/api\/sources\/refresh-all/);
+  assert.match(dashboard, /\/api\/sources\/refresh-stream/);
   assert.match(dashboard, /\/api\/sources\/rates/);
 });
 
@@ -144,6 +144,8 @@ test("aggregated source rate table combines group and site in one column", () =>
   assert.match(table, /PlatformAction/);
   assert.match(table, /RateToolbar/);
   assert.match(table, /aria-label="倍率筛选与排序"/);
+  assert.match(table, /ariaLabel="平台筛选"/);
+  assert.match(table, /rateStatusOptions/);
   assert.match(table, /<TableHead className="sticky-action-header">操作<\/TableHead>/);
   assert.match(table, /<TableCell className="sticky-action-cell">/);
   assert.match(table, /PLATFORM_OPTIONS/);
@@ -162,4 +164,28 @@ test("source page mounts the dashboard and rates API exists", () => {
   const page = source("src/app/sources/page.tsx");
   assert.match(page, /SourcesDashboard/);
   source("src/app/api/sources/rates/route.ts");
+});
+
+test("source operations expose persisted history and balance alerts without site tabs", () => {
+  const dashboard = source("src/components/sources/sources-dashboard.tsx");
+  const history = source("src/components/sources/source-history-dialog.tsx");
+  const dialog = source("src/components/sources/source-site-dialog.tsx");
+  const table = source("src/components/sources/source-site-table.tsx");
+  const binding = source("src/components/sources/source-binding-dialog.tsx");
+
+  assert.match(dashboard, /SourceRateHistoryDialog/);
+  assert.match(dashboard, /SourceCollectionRunsDialog/);
+  assert.match(history, /\/api\/sources\/changes/);
+  assert.match(history, /\/api\/sources\/runs/);
+  assert.match(history, /倍率变化历史/);
+  assert.match(history, /采集运行记录/);
+  assert.match(dialog, /余额告警阈值/);
+  assert.match(dialog, /form\.remark/);
+  assert.match(table, /余额低于阈值/);
+  assert.match(table, /今日消费/);
+  assert.match(table, /历史充值/);
+  assert.match(binding, /\/api\/sources\/rates\/bindings/);
+  assert.match(binding, /管理目标分组关联/);
+  assert.match(binding, /平台不匹配/);
+  assert.doesNotMatch(dashboard, /Tabs|TabList|TabTrigger/);
 });

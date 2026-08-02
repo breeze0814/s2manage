@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { SourceRateSnapshot } from "../../adapters/source-rates.ts";
 import { mapConcurrent } from "../concurrency.ts";
 import type { TargetAccountStore } from "./store.ts";
+import type { TargetScheduleOwnership } from "./schedule-ownership.ts";
 import type { TargetAccountBinding, TargetAccountClient, TargetAccountTestExecution, TargetAccountTestState, TargetAccountView } from "./types.ts";
 
 const accountIdSchema = z.number().int().positive();
@@ -44,7 +45,14 @@ async function saveBinding(input: AccountDependencies, rawAccountId: number, raw
   if (binding && !bindingExists(binding, await input.sourceRates())) {
     throw new Error(`采集分组不存在: ${binding.sourceSiteId}:${binding.sourceGroupId}`);
   }
-  input.store.saveBinding(accountId, binding);
+  if (binding?.autoManageSchedulable) {
+    await input.scheduleOwnership.runWritable({
+      accountId,
+      task: async () => input.store.saveBinding(accountId, binding),
+    });
+  } else {
+    input.store.saveBinding(accountId, binding);
+  }
   return requireAccount(input.store, accountId);
 }
 
@@ -90,8 +98,13 @@ async function executeChannelTest(input: AccountDependencies, account: TargetAcc
 }
 
 async function applySchedulable(input: AccountDependencies, accountId: number, schedulable: boolean) {
-  await input.client.setSchedulable(accountId, schedulable);
-  input.store.updateSchedulable(accountId, schedulable);
+  await input.scheduleOwnership.runWritable({
+    accountId,
+    task: async () => {
+      await input.client.setSchedulable(accountId, schedulable);
+      input.store.updateSchedulable(accountId, schedulable);
+    },
+  });
 }
 
 function testSummary(executions: readonly TargetAccountTestExecution[]) {
@@ -120,4 +133,5 @@ type AccountDependencies = {
   readonly store: TargetAccountStore;
   readonly sourceRates: () => Promise<readonly SourceRateSnapshot[]>;
   readonly testConcurrency: () => Promise<number>;
+  readonly scheduleOwnership: Pick<TargetScheduleOwnership, "runWritable">;
 };

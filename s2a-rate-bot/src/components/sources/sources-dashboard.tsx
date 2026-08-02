@@ -1,23 +1,31 @@
 "use client";
 
-import { ChevronDown, Loader2, Plus, RefreshCw } from "lucide-react";
+import { ChevronDown, History, Loader2, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../ui/button";
+import { ConnectionCreateDialog } from "../connections/connection-create-dialog";
+import { SourceBindingDialog } from "./source-binding-dialog";
 import { SourceRatesTable } from "./source-rates-table";
 import { SourceSiteDialog } from "./source-site-dialog";
 import { SourceSiteTable } from "./source-site-table";
+import { SourceCollectionRunsDialog, SourceRateHistoryDialog } from "./source-history-dialog";
+import type { SourceRateHistoryTarget } from "./types";
 import { useSourcesDashboard } from "./use-sources-dashboard";
 
 export function SourcesDashboard() {
   const view = useSourcesDashboard();
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
   const [sitesExpanded, setSitesExpanded] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<SourceRateHistoryTarget | null>(null);
+  const [bindingTarget, setBindingTarget] = useState<SourceRateHistoryTarget | null>(null);
+  const [connectionTarget, setConnectionTarget] = useState<SourceRateHistoryTarget | null>(null);
+  const [runsOpen, setRunsOpen] = useState(false);
   if (view.loading) return <LoadingDashboard />;
   const selectedSite = view.sites.find((site) => site.id === selectedSiteId);
   const activeSiteId = selectedSite?.id ?? null;
   return (
     <section className="page-stack">
-      <DashboardHeader actions={<SourceActions bulkPending={view.bulkPending} onCreate={() => view.openDialog(null)} onRefreshAll={view.refreshAll} />} />
+      <DashboardHeader actions={<SourceActions bulkPending={view.bulkPending} bulkProgress={view.bulkProgress} onCreate={() => view.openDialog(null)} onRefreshAll={view.refreshAll} onShowRuns={() => setRunsOpen(true)} />} />
       <div data-source-split-layout className="source-split">
         <section className="source-side-rail min-w-0" aria-labelledby="source-sites-title" id="source-sites">
           <div className="mb-3 flex min-h-10 items-start justify-between gap-4">
@@ -41,6 +49,7 @@ export function SourcesDashboard() {
                   sites={view.sites}
                   selectedSiteId={activeSiteId}
                   pendingId={view.pendingId}
+                  pendingIds={view.pendingSiteIds}
                   onSelect={(siteId) => {
                     setSelectedSiteId(siteId);
                     setSitesExpanded(false);
@@ -58,6 +67,7 @@ export function SourcesDashboard() {
               sites={view.sites}
               selectedSiteId={activeSiteId}
               pendingId={view.pendingId}
+              pendingIds={view.pendingSiteIds}
               onSelect={setSelectedSiteId}
               onRefresh={view.refreshSite}
               onEdit={view.openDialog}
@@ -70,13 +80,29 @@ export function SourcesDashboard() {
           sites={view.sites}
           selectedSiteId={activeSiteId}
           platformPending={view.platformPending}
+          groupTypePending={view.groupTypePending}
           search={view.search}
           onSearch={view.setSearch}
           onPlatformChange={view.setRatePlatform}
+          onGroupTypeChange={view.setRateGroupType}
+          onBindings={setBindingTarget}
+          onConnect={setConnectionTarget}
+          onHistory={setHistoryTarget}
           onShowAll={() => setSelectedSiteId(null)}
         />
       </div>
       <SourceSiteDialog open={view.dialog.open} site={view.dialog.site} pending={view.dialogPending} onOpenChange={view.setDialogOpen} onSave={view.saveSite} />
+      <SourceRateHistoryDialog target={historyTarget} onOpenChange={setHistoryTarget} />
+      <SourceBindingDialog target={bindingTarget} onOpenChange={setBindingTarget} onSaved={view.setRateMappingStatus} />
+      <ConnectionCreateDialog
+        open={connectionTarget !== null}
+        preset={connectionTarget ? { siteId: connectionTarget.siteId, groupId: connectionTarget.groupId, groupType: connectionTarget.groupType ?? connectionTarget.platform } : null}
+        onOpenChange={(open) => { if (!open) setConnectionTarget(null); }}
+        onCreated={(connection) => {
+          if (connectionTarget) view.setRateConnectionStatus(connectionTarget, connection);
+        }}
+      />
+      <SourceCollectionRunsDialog open={runsOpen} siteId={activeSiteId} onOpenChange={setRunsOpen} />
     </section>
   );
 }
@@ -125,20 +151,21 @@ function DashboardHeader({ actions }: Readonly<{ actions: React.ReactNode }>) {
   );
 }
 
-function SourceActions({ bulkPending, onCreate, onRefreshAll }: Readonly<{ bulkPending: boolean; onCreate: () => void; onRefreshAll: () => void }>) {
+function SourceActions({ bulkPending, bulkProgress, onCreate, onRefreshAll, onShowRuns }: Readonly<{ bulkPending: boolean; bulkProgress: { readonly completed: number; readonly total: number } | null; onCreate: () => void; onRefreshAll: () => void; onShowRuns: () => void }>) {
   return (
     <div className="page-actions">
       <Action primary icon={<Plus className="size-3.5" />} label="添加采集站" text="添加站点" onClick={onCreate} />
-      <Action icon={bulkPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} label="重新请求全部远端" text="刷新全部" onClick={onRefreshAll} disabled={bulkPending} />
+      <Action icon={<History className="size-3.5" />} label="查看采集记录" text="采集记录" onClick={onShowRuns} />
+      <Action icon={bulkPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} label="重新请求全部远端" text="刷新全部" activeText={bulkProgress && bulkProgress.total > 0 ? `刷新 ${bulkProgress.completed}/${bulkProgress.total}` : undefined} onClick={onRefreshAll} disabled={bulkPending} />
     </div>
   );
 }
 
-function Action({ icon, label, text, primary, ...button }: Readonly<{ icon: React.ReactNode; label: string; text: string; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>>) {
+function Action({ icon, label, text, activeText, primary, ...button }: Readonly<{ icon: React.ReactNode; label: string; text: string; activeText?: string; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>>) {
   return (
     <Button type="button" variant={primary ? "default" : "secondary"} aria-label={label} title={label} {...button}>
       {icon}
-      {text}
+      {activeText ?? text}
     </Button>
   );
 }

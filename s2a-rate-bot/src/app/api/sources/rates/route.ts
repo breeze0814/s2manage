@@ -11,9 +11,11 @@ export async function GET(request: NextRequest) {
   try {
     await requireAuthenticatedRequest(request);
     const rawSiteId = request.nextUrl.searchParams.get("siteId");
+    const catalog = request.nextUrl.searchParams.get("catalog") === "true";
     const siteId = rawSiteId ? Number(rawSiteId) : undefined;
     if (siteId !== undefined && (!Number.isInteger(siteId) || siteId <= 0)) throw new Error("采集站 ID 无效");
-    return NextResponse.json({ rates: await getRuntimeCollectionService().rates(siteId) });
+    const service = getRuntimeCollectionService();
+    return NextResponse.json({ rates: await (catalog ? service.catalog(siteId) : service.rates(siteId)) });
   } catch (error) {
     return collectionError(error);
   }
@@ -22,12 +24,15 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     await requireAuthenticatedRequest(request);
-    const body = await readJsonObject(request) as { siteId?: unknown; groupId?: unknown; platform?: unknown };
+    const body = await readJsonObject(request) as { siteId?: unknown; groupId?: unknown; platform?: unknown; groupType?: unknown };
     const siteId = Number(body.siteId);
     const groupId = typeof body.groupId === "string" ? body.groupId.trim() : "";
     if (!Number.isInteger(siteId) || siteId <= 0) throw new Error("采集站 ID 无效");
     if (!groupId) throw new Error("采集分组 ID 无效");
-    const rate = await getRuntimeCollectionService().setRatePlatform(siteId, groupId, body.platform ?? null);
+    const service = getRuntimeCollectionService();
+    const rate = Object.hasOwn(body, "groupType")
+      ? await service.setRateGroupType(siteId, groupId, body.groupType ?? null)
+      : await service.setRatePlatform(siteId, groupId, body.platform ?? null);
     return NextResponse.json({ rate });
   } catch (error) {
     return collectionError(error);

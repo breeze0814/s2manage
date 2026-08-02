@@ -200,6 +200,29 @@ test("save removes missing bindings and disables a rule when none remain", async
   });
 });
 
+test("source rate bindings update target groups without replacing rule settings", async () => {
+  await withTargetService(async ({ service }) => {
+    await service.refreshAll();
+    const vipBinding = { sourceSiteId: 1, sourceGroupId: "vip" };
+    await service.saveRule(7, { ...ruleInput(), bindings: [vipBinding] });
+
+    const [removed] = await service.saveSourceBindings({ ...vipBinding, targetGroupIds: [] });
+    assert.deepEqual(removed.bindings, []);
+    assert.equal(removed.rule.enabled, false);
+    assert.equal(removed.rule.ruleType, "average");
+    assert.match(removed.rule.lastError ?? "", /自动停用/);
+
+    const [restored] = await service.saveSourceBindings({ ...vipBinding, targetGroupIds: [7] });
+    assert.deepEqual(restored.bindings, [vipBinding]);
+    assert.equal(restored.rule.enabled, false, "adding a binding must not implicitly enable its rule");
+    assert.equal(restored.rule.lastError, null);
+    await assert.rejects(
+      service.saveSourceBindings({ sourceSiteId: 1, sourceGroupId: "missing", targetGroupIds: [7] }),
+      /采集分组不存在/,
+    );
+  });
+});
+
 test("version one fixed offsets migrate explicitly to version two adjustments", async () => {
   await withTargetService(async ({ service, databaseUrl }) => {
     await service.refreshAll();

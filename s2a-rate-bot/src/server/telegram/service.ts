@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { TelegramBotClient, TelegramMessageInput } from "../../adapters/telegram-bot.ts";
-import type { CollectionChangesQuery } from "../collection/store.ts";
+import type { CollectionChangesQuery } from "../collection/history.ts";
 import type { CollectionRateChange, CollectionSiteView } from "../collection/types.ts";
 import type { TelegramStateStore } from "./state-store.ts";
 

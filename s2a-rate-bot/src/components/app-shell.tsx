@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleDot, Database, Home, Layers3, PanelsTopLeft, ScrollText, UsersRound, type LucideIcon } from "lucide-react";
+import { Cable, CircleDot, Database, Home, Layers3, PanelsTopLeft, ScrollText, UsersRound, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -11,6 +11,7 @@ const NAVIGATION = [
   { href: "/", label: "概览", icon: Home },
   { href: "/groups", label: "分组倍率", icon: Layers3 },
   { href: "/sources", label: "倍率采集", icon: Database },
+  { href: "/connections", label: "对接治理", icon: Cable },
   { href: "/accounts", label: "账号调度", icon: UsersRound },
   { href: "/tickets", label: "互动运营", icon: PanelsTopLeft, matches: ["/tickets", "/leaderboard", "/lottery"] },
   { href: "/logs", label: "系统日志", icon: ScrollText },

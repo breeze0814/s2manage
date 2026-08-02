@@ -72,8 +72,9 @@ function accountBindings(account: TargetAccount) {
 }
 
 function updateSchedulable(database: DatabaseSync, accountId: number, schedulable: boolean) {
-  database.prepare("UPDATE target_account_snapshots SET schedulable = ?, updated_at = ? WHERE account_id = ?")
+  const result = database.prepare("UPDATE target_account_snapshots SET schedulable = ?, updated_at = ? WHERE account_id = ?")
     .run(schedulable ? 1 : 0, nowIso(), accountId);
+  if (Number(result.changes) !== 1) throw new Error(`目标账号本地快照不存在: ${accountId}`);
 }
 
 function saveBinding(database: DatabaseSync, accountId: number, binding: TargetAccountBinding | null) {

@@ -1,17 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
+import { CONNECTION_SCHEMA_VERSION, ensureConnectionSchema } from "./sqlite-connection-schema.ts";
 import { EMBED_SCHEMA_VERSION, ensureEmbedSchema } from "./sqlite-embed-schema.ts";
 import { ensureTargetRuleSchema } from "./sqlite-target-rule-schema.ts";
 import { ensureTelegramSchema, TELEGRAM_SCHEMA_VERSION } from "./sqlite-telegram-schema.ts";
 
 const MINIMUM_PARAMETER_SCHEMA_VERSION = 9;
 const LOCAL_SNAPSHOT_SCHEMA_VERSION = 10;
-const RATE_CHANGE_SCHEMA_VERSION = 11;
-const NEW_API_USER_SCHEMA_VERSION = 12;
-const RATE_PLATFORM_SCHEMA_VERSION = 13;
-const REFRESH_VERSION_SCHEMA_VERSION = 14;
-const COLLECTION_SITE_WEBSITE_SCHEMA_VERSION = 17;
-const ACCOUNT_SCHEDULING_SCHEMA_VERSION = 18;
-const SCHEMA_VERSION = Math.max(TELEGRAM_SCHEMA_VERSION, EMBED_SCHEMA_VERSION);
+const SCHEMA_VERSION = Math.max(TELEGRAM_SCHEMA_VERSION, EMBED_SCHEMA_VERSION, CONNECTION_SCHEMA_VERSION);
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -49,6 +44,7 @@ const CREATE_TABLES = [
   `CREATE TABLE IF NOT EXISTS collection_sites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    remark TEXT NOT NULL DEFAULT '',
     site_type TEXT NOT NULL,
     base_url TEXT NOT NULL,
     website_url TEXT NOT NULL DEFAULT '',
@@ -64,6 +60,9 @@ const CREATE_TABLES = [
     enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
     account_label TEXT,
     balance REAL,
+    today_consume REAL,
+    history_recharge REAL,
+    balance_alert_threshold REAL,
     last_run_at TEXT,
     last_success_at TEXT,
     last_status TEXT,
@@ -200,6 +199,7 @@ export function initializeSqliteSchema(database: DatabaseSync) {
   const previousVersion = schemaVersion(database);
   if (previousVersion < SCHEMA_VERSION) dropLegacyTables(database);
   for (const statement of CREATE_TABLES.slice(1)) database.exec(statement);
+  ensureConnectionSchema(database);
   migrateSchema(database, previousVersion);
   database.prepare(`
     INSERT INTO schema_meta (key, value)
@@ -214,6 +214,8 @@ function migrateSchema(database: DatabaseSync, previousVersion: number) {
   ensureNewApiUserId(database);
   ensureRefreshVersion(database);
   ensureCollectionSiteWebsiteUrl(database);
+  ensureCollectionSiteMetadata(database);
+  ensureCollectionSiteMetrics(database);
   ensureTargetAccountSchedulingSchema(database);
   ensureTargetRuleSchema(database);
   ensureTelegramSchema(database);
@@ -242,6 +244,18 @@ function ensureCollectionSiteWebsiteUrl(database: DatabaseSync) {
   const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
   if (columns.some((column) => column.name === "website_url")) return;
   database.exec("ALTER TABLE collection_sites ADD COLUMN website_url TEXT NOT NULL DEFAULT ''");
+}
+
+function ensureCollectionSiteMetadata(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "remark")) database.exec("ALTER TABLE collection_sites ADD COLUMN remark TEXT NOT NULL DEFAULT ''");
+  if (!columns.some((column) => column.name === "balance_alert_threshold")) database.exec("ALTER TABLE collection_sites ADD COLUMN balance_alert_threshold REAL");
+}
+
+function ensureCollectionSiteMetrics(database: DatabaseSync) {
+  const columns = database.prepare("PRAGMA table_info(collection_sites)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "today_consume")) database.exec("ALTER TABLE collection_sites ADD COLUMN today_consume REAL");
+  if (!columns.some((column) => column.name === "history_recharge")) database.exec("ALTER TABLE collection_sites ADD COLUMN history_recharge REAL");
 }
 
 function ensureTargetAccountSchedulingSchema(database: DatabaseSync) {
