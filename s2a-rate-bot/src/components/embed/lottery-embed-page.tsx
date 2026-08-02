@@ -48,7 +48,8 @@ function CampaignList({ items, loading, onSelect }: Readonly<{ items: readonly L
   if (!items.length) return <div className="empty-state"><Gift className="size-7" /><span>当前没有可展示的抽奖活动</span></div>;
   return <div className="grid gap-4 sm:grid-cols-2">{items.map((campaign) => <Button key={campaign.id} type="button" variant="outline" className="h-auto min-h-0 flex-col items-stretch rounded-lg p-4 text-left shadow-panel hover:border-primary/40 hover:bg-surface hover:shadow-md" onClick={() => onSelect(campaign)}>
     <div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary-strong"><Gift className="size-5" /></span><Status status={campaign.status} /></div><h2 className="mt-4 text-lg font-semibold">{campaign.name}</h2><p className="mt-1 line-clamp-2 text-sm leading-6 text-muted">{campaign.description || "查看活动详情与奖品"}</p>
-    <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-muted"><span>{campaign.eligibilityConditions.length ? `${campaign.eligibilityConditions.length} 项参与条件` : "无参与门槛"}</span><span>剩余 {campaign.prizeInventory.reduce((sum, item) => sum + item.remaining, 0)} 份</span></div>
+    <PrizeInventoryPreview campaign={campaign} limit={3} className="mt-4" />
+    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-muted"><span>{campaign.eligibilityConditions.length ? `${campaign.eligibilityConditions.length} 项参与条件` : "无参与门槛"}</span><span>剩余 {totalRemainingPrizes(campaign)} 份</span></div>
   </Button>)}</div>;
 }
 
@@ -88,7 +89,7 @@ function ScheduledOverview({ campaign }: Readonly<{ campaign: LotteryCampaign }>
 }
 
 function CampaignInformation({ campaign }: Readonly<{ campaign: LotteryCampaign }>) {
-  return <div className="grid gap-6 border-t border-border p-4 sm:p-6 lg:grid-cols-2"><section><h3 className="flex items-center gap-2 text-sm font-semibold"><Gift className="size-4 text-primary" />奖品设置</h3><div className="mt-3 grid gap-2">{campaign.prizes.map((prize) => <PrizeCard key={prize.id} campaign={campaign} prizeId={prize.id} />)}</div></section>
+  return <div className="grid gap-6 border-t border-border p-4 sm:p-6 lg:grid-cols-2"><section aria-labelledby="lottery-prize-inventory-heading"><h3 id="lottery-prize-inventory-heading" className="flex items-center gap-2 text-sm font-semibold"><Gift className="size-4 text-primary" />剩余奖品</h3><p className="mt-1 text-xs leading-5 text-muted">展示当前可领取奖品库存。</p><div className="mt-3 grid gap-2">{campaign.prizes.map((prize) => <PrizeCard key={prize.id} campaign={campaign} prizeId={prize.id} />)}</div></section>
     <section><h3 className="flex items-center gap-2 text-sm font-semibold"><Trophy className="size-4 text-warning" />中奖名单</h3>{campaign.winners.length ? <ul className="mt-3 divide-y divide-border rounded-lg border border-border">{campaign.winners.map((winner) => <li key={winner.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{winner.maskedEmail}</span><strong className="text-primary-strong">{winner.prizeName}</strong></li>)}</ul> : <p className="mt-3 rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted">暂未公布中奖名单</p>}</section>
   </div>;
 }
@@ -98,6 +99,24 @@ function ActionError({ message }: Readonly<{ message: string }>) { return <p rol
 function CampaignTimes({ campaign }: Readonly<{ campaign: LotteryCampaign }>) { return <dl className="grid gap-2 rounded-lg border border-border bg-surface-muted p-3 text-xs sm:grid-cols-3"><TimeItem label="活动开始" value={campaign.registrationStart} /><TimeItem label="活动结束" value={campaign.registrationEnd} />{campaign.drawMode === "scheduled" ? <TimeItem label="开奖时间" value={campaign.drawAt} /> : null}</dl>; }
 function TimeItem({ label, value }: Readonly<{ label: string; value: string | null }>) { return <div><dt className="text-muted">{label}</dt><dd className="mt-1 font-medium">{value ? formatDate(value) : "不限制"}</dd></div>; }
 function PrizeCard({ campaign, prizeId }: Readonly<{ campaign: LotteryCampaign; prizeId: string }>) { const prize = campaign.prizes.find((item) => item.id === prizeId); if (!prize) return null; const remaining = campaign.prizeInventory.find((item) => item.prizeId === prizeId)?.remaining ?? 0; return <div className="rounded-lg border border-border bg-surface-muted p-3"><p className="font-medium">{prize.name}</p><p className="mt-1 text-xs text-muted">{prize.type === "balance" ? "余额金额" : "订阅额度"} {prize.value} · 剩余 {remaining}/{prize.quantity} 份{campaign.drawMode === "instant" ? ` · 中奖率 ${prize.probability}%` : ""}</p></div>; }
+
+function PrizeInventoryPreview(props: Readonly<{ campaign: LotteryCampaign; limit: number; className?: string }>) {
+  const items = prizeInventoryItems(props.campaign);
+  return <div className={props.className} aria-label="当前剩余奖品">
+    <div className="flex flex-wrap gap-1.5">{items.slice(0, props.limit).map((item) => <span key={item.id} className="rounded-md border border-border bg-surface-muted px-2 py-1 text-xs text-muted"><span className="text-foreground">{item.name}</span> · 剩余 {item.remaining}/{item.quantity}</span>)}{items.length > props.limit ? <span className="rounded-md border border-border bg-surface-muted px-2 py-1 text-xs text-muted">另 {items.length - props.limit} 种奖品</span> : null}</div>
+  </div>;
+}
+
+function prizeInventoryItems(campaign: LotteryCampaign) {
+  return campaign.prizes.map((prize) => {
+    const inventory = campaign.prizeInventory.find((item) => item.prizeId === prize.id);
+    return { id: prize.id, name: prize.name, quantity: prize.quantity, remaining: inventory?.remaining ?? 0 };
+  });
+}
+
+function totalRemainingPrizes(campaign: LotteryCampaign) {
+  return campaign.prizeInventory.reduce((sum, item) => sum + item.remaining, 0);
+}
 
 function RewardResult({ campaign }: Readonly<{ campaign: LotteryCampaign }>) {
   const entry = campaign.currentEntry;

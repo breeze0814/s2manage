@@ -85,6 +85,9 @@ test("centered dialogs preserve their position during open and close animations"
 test("engagement settings and lottery editing use accessible modal dialogs", () => {
   const settings = source("src/components/engagement/embed-settings-dialog.tsx");
   const lotteryForm = source("src/components/engagement/lottery-form.tsx");
+  const lotteryFormSections = source("src/components/engagement/lottery-form-sections.tsx");
+  const lotteryPrizeFields = source("src/components/engagement/lottery-prize-fields.tsx");
+  const lotteryEditor = [lotteryForm, lotteryFormSections, lotteryPrizeFields].join("\n");
   const eligibilityFields = source("src/components/engagement/lottery-eligibility-fields.tsx");
   const dashboards = [
     "src/components/engagement/tickets-dashboard.tsx",
@@ -99,30 +102,57 @@ test("engagement settings and lottery editing use accessible modal dialogs", () 
   assert.match(lotteryForm, /from "\.\.\/ui\/dialog"/);
   assert.match(lotteryForm, /DialogContent/);
   assert.match(lotteryForm, /新建抽奖活动/);
-  assert.match(lotteryForm, /RadioGroup/);
-  assert.match(lotteryForm, /即时开奖/);
-  assert.match(lotteryForm, /定时开奖/);
-  assert.match(lotteryForm, /奖励类型/);
-  assert.match(lotteryForm, /奖励额度/);
-  assert.match(lotteryForm, /lottery-visible-to-users/);
-  assert.match(lotteryForm, /Switch/);
-  assert.match(lotteryForm, /LotteryEligibilityFields/);
+  assert.match(lotteryForm, /overscroll-contain/);
+  assert.match(lotteryForm, /safe-area-inset-bottom/);
+  assert.match(lotteryForm, /md:grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(lotteryForm, /min-\[360px\]:grid-cols-2/);
+  assert.match(lotteryForm, /hidden min-w-0 truncate text-xs/);
+  assert.match(lotteryForm, /aria-busy=\{saving\}/);
+  assert.match(lotteryForm, /lottery-form-error/);
+  assert.match(lotteryForm, /errorRef\.current\?\.focus\(\)/);
+  assert.match(lotteryForm, /!open && !saving/);
+  assert.match(lotteryFormSections, /活动信息/);
+  assert.match(lotteryFormSections, /参与规则/);
+  assert.match(lotteryFormSections, /label="活动名称" required/);
+  assert.match(lotteryEditor, /RadioGroup/);
+  assert.match(lotteryFormSections, /focus-within:ring-2/);
+  assert.doesNotMatch(lotteryFormSections, /RadioGroupItem[^>]+className="sr-only"/);
+  assert.match(lotteryEditor, /即时开奖/);
+  assert.match(lotteryEditor, /定时开奖/);
+  assert.match(lotteryPrizeFields, /奖品设置/);
+  assert.match(lotteryPrizeFields, /奖励类型/);
+  assert.match(lotteryPrizeFields, /奖励额度/);
+  assert.match(lotteryPrizeFields, /transition-\[width\]/);
+  assert.match(lotteryPrizeFields, /inputMode="decimal"/);
+  assert.match(lotteryPrizeFields, /aria-live="polite"/);
+  assert.match(lotteryPrizeFields, /label="奖品名称" required/);
+  assert.match(lotteryFormSections, /lottery-visible-to-users/);
+  assert.match(lotteryFormSections, /lottery-public-winners/);
+  assert.match(lotteryFormSections, /Switch/);
+  assert.match(lotteryFormSections, /LotteryEligibilityFields/);
   assert.match(eligibilityFields, /当前余额大于 X/);
   assert.match(eligibilityFields, /当天使用过兑换码/);
   assert.match(eligibilityFields, /当天邀请过好友/);
   assert.match(eligibilityFields, /Checkbox/);
-  assert.doesNotMatch(lotteryForm, /奖品权重|手动开奖/);
+  assert.match(eligibilityFields, /aria-describedby="lottery-eligibility-description"/);
+  assert.doesNotMatch(lotteryEditor, /奖品权重|手动开奖/);
   assert.match(dashboards, /EngagementPageHeader/);
   assert.doesNotMatch(dashboards, /<EmbedLinkPanel|<TicketConfigPanel/);
 });
 
-test("customer lottery hides participant counts and explains configured eligibility conditions", () => {
+test("customer lottery hides participant and winner counts while showing remaining prizes", () => {
   const customerLottery = source("src/components/embed/lottery-embed-page.tsx");
   const lotteryWheel = source("src/components/embed/lottery-wheel.tsx");
   const operationsLottery = source("src/components/engagement/lottery-dashboard.tsx");
   const eligibilitySummary = source("src/components/lottery-eligibility-summary.tsx");
 
-  assert.doesNotMatch(customerLottery, /entryCount|人参与/);
+  assert.doesNotMatch(customerLottery, /entryCount|winnerCount|人参与|中奖人数/);
+  assert.match(customerLottery, /PrizeInventoryPreview/);
+  assert.match(customerLottery, /当前剩余奖品/);
+  assert.match(customerLottery, /剩余奖品/);
+  assert.match(customerLottery, /totalRemainingPrizes/);
+  assert.match(customerLottery, /item\.remaining/);
+  assert.match(customerLottery, /inventory\?\.remaining/);
   assert.match(customerLottery, /LotteryEligibilitySummary/);
   assert.match(eligibilitySummary, /lotteryEligibilityRequirement/);
   assert.match(customerLottery, /LotteryWheel/);

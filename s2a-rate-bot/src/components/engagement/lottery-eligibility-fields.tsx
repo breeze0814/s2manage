@@ -19,10 +19,10 @@ export function LotteryEligibilityFields(props: Readonly<{
   value: readonly LotteryEligibilityCondition[];
   onChange: (value: LotteryEligibilityCondition[]) => void;
 }>) {
-  return <fieldset className="lg:col-span-2">
+  return <fieldset aria-describedby="lottery-eligibility-description">
     <legend className="text-sm font-semibold">参与条件</legend>
-    <p className="mt-1 text-xs leading-5 text-muted">已选择的条件需同时满足；全部关闭表示不限制参与条件。</p>
-    <div className="mt-3 grid gap-3 md:grid-cols-3">
+    <p id="lottery-eligibility-description" className="mt-1 text-xs leading-5 text-muted">已选择的条件需同时满足；全部关闭表示不限制参与条件。</p>
+    <div className="mt-3 grid gap-3 lg:grid-cols-3">
       {CONDITION_OPTIONS.map((option) => <ConditionField key={option.type} option={option}
         condition={props.value.find((condition) => condition.type === option.type)}
         onToggle={(enabled) => props.onChange(toggleCondition(props.value, option.type, enabled))}
@@ -41,7 +41,7 @@ function ConditionField(props: Readonly<{
   const checkboxId = `lottery-condition-${props.option.type}`;
   const minimum = props.condition?.type === "minimum_balance" ? props.condition.minimum : DEFAULT_MINIMUM_LOTTERY_BALANCE;
   const Icon = props.option.icon;
-  return <div className={`rounded-lg border p-3 transition-colors ${checked ? "border-primary/40 bg-primary/5" : "border-border bg-surface"}`}>
+  return <div className={`rounded-lg border p-3 transition-[border-color,background-color,box-shadow] duration-200 ${checked ? "border-primary/50 bg-primary/5 shadow-sm" : "border-border bg-surface"}`}>
     <div className="flex min-h-12 items-start gap-3">
       <Checkbox id={checkboxId} checked={checked} onCheckedChange={(value) => props.onToggle(value === true)} className="mt-0.5" />
       <Label htmlFor={checkboxId} className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
@@ -51,7 +51,7 @@ function ConditionField(props: Readonly<{
     </div>
     {props.option.type === "minimum_balance" && checked ? <Label htmlFor="lottery-minimum-balance" className="mt-3 block border-t border-border pt-3">
       <span className="mb-1.5 block text-xs text-muted">余额阈值 X</span>
-      <Input id="lottery-minimum-balance" type="number" min={0} step="any" value={minimum}
+      <Input id="lottery-minimum-balance" type="number" inputMode="decimal" min={0} step="any" value={minimum}
         onChange={(event) => props.onMinimumChange(Number(event.target.value))} />
     </Label> : null}
   </div>;
