@@ -100,35 +100,26 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(table, /bg-surface/);
 });
 
-test("source rate table isolates each collection site behind accessible tabs", () => {
+test("aggregated source rate table combines group and site in one column", () => {
   const dashboard = source("src/components/sources/sources-dashboard.tsx");
   const table = source("src/components/sources/source-rates-table.tsx");
-  const tabs = source("src/components/sources/source-rate-tabs.tsx");
   const effectiveRate = source("src/components/ui/effective-rate-value.tsx");
   const platformIcon = source("src/components/platform-icon.tsx");
 
   assert.match(dashboard, /data-source-split-layout/);
   assert.match(dashboard, /selectedSiteId/);
-  assert.match(dashboard, /const activeSiteId = resolveActiveSiteId\(view\.sites, selectedSiteId\)/);
+  assert.match(dashboard, /const activeSiteId = selectedSite\?\.id \?\? null/);
   assert.match(dashboard, /onSelect=\{setSelectedSiteId\}/);
-  assert.match(dashboard, /onSiteChange=\{setSelectedSiteId\}/);
+  assert.match(dashboard, /onShowAll=\{\(\) => setSelectedSiteId\(null\)\}/);
   assert.doesNotMatch(dashboard, /view\.sites\[0\]\?\.id/);
-  assert.doesNotMatch(table, /展示全部/);
-  assert.doesNotMatch(table, /matchesSite/);
-  assert.match(table, /SourceRateTabs/);
-  assert.match(tabs, /role="tablist"/);
-  assert.match(tabs, /role="tab"/);
-  assert.match(tabs, /aria-selected=\{active\}/);
-  assert.match(tabs, /aria-controls=\{sourceRatePanelId\(\)\}/);
-  assert.match(tabs, /ArrowLeft/);
-  assert.match(tabs, /overflow-x-auto/);
+  assert.match(table, /展示全部/);
+  assert.match(table, /matchesSite/);
   assert.match(dashboard, /source-split/);
   assert.match(dashboard, /source-side-rail/);
   assert.match(table, /采集站/);
   assert.match(table, /分组/);
-  assert.match(table, /分组 ID/);
-  assert.doesNotMatch(table, /ID \/ 采集站/);
-  assert.doesNotMatch(table, /SiteTag/);
+  assert.match(table, /ID \/ 采集站/);
+  assert.match(table, /#\{rate\.groupId\}[\s\S]*SiteTag name=\{siteName\}/);
   assert.match(table, /平台/);
   assert.match(table, /原始倍率/);
   assert.match(table, /有效倍率/);
@@ -159,8 +150,9 @@ test("source rate table isolates each collection site behind accessible tabs", (
   assert.match(table, /自动识别/);
   assert.match(table, /onPlatformChange/);
   assert.match(table, /<Tag/);
-  assert.match(table, /当前展示「\$\{activeSite\.name\}」/);
-  assert.match(table, /搜索分组或平台/);
+  assert.match(table, /SiteTag/);
+  assert.match(table, /title=\{name\} tone="info"/);
+  assert.match(table, /max-w-36 truncate/);
   assert.match(platformIcon, /openai/);
   assert.match(platformIcon, /anthropic/);
   assert.match(platformIcon, /gemini/);

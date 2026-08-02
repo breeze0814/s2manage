@@ -13,8 +13,8 @@ export function SourcesDashboard() {
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
   const [sitesExpanded, setSitesExpanded] = useState(false);
   if (view.loading) return <LoadingDashboard />;
-  const activeSiteId = resolveActiveSiteId(view.sites, selectedSiteId);
-  const selectedSite = view.sites.find((site) => site.id === activeSiteId);
+  const selectedSite = view.sites.find((site) => site.id === selectedSiteId);
+  const activeSiteId = selectedSite?.id ?? null;
   return (
     <section className="page-stack">
       <DashboardHeader actions={<SourceActions bulkPending={view.bulkPending} onCreate={() => view.openDialog(null)} onRefreshAll={view.refreshAll} />} />
@@ -30,8 +30,8 @@ export function SourcesDashboard() {
 
           <div className="lg:hidden">
             <MobileSiteSummary
-          sitesCount={view.sites.length}
-          selectedName={selectedSite?.name ?? null}
+              sitesCount={view.sites.length}
+              selectedName={selectedSite?.name ?? null}
               expanded={sitesExpanded}
               onToggle={() => setSitesExpanded((value) => !value)}
             />
@@ -68,12 +68,12 @@ export function SourcesDashboard() {
         <SourceRatesTable
           rates={view.rates}
           sites={view.sites}
-          activeSiteId={activeSiteId}
+          selectedSiteId={activeSiteId}
           platformPending={view.platformPending}
           search={view.search}
           onSearch={view.setSearch}
           onPlatformChange={view.setRatePlatform}
-          onSiteChange={setSelectedSiteId}
+          onShowAll={() => setSelectedSiteId(null)}
         />
       </div>
       <SourceSiteDialog open={view.dialog.open} site={view.dialog.site} pending={view.dialogPending} onOpenChange={view.setDialogOpen} onSave={view.saveSite} />
@@ -102,7 +102,7 @@ function MobileSiteSummary({
     >
       <div className="min-w-0">
         <p className="text-sm font-medium">
-          {selectedName ? `当前站点：${selectedName}` : "暂无采集站"}
+          {selectedName ? `当前筛选：${selectedName}` : "全部采集站"}
         </p>
         <p className="mt-0.5 text-xs text-muted">
           {expanded ? "收起站点列表，优先查看倍率" : `展开选择站点（共 ${sitesCount} 个）`}
@@ -111,11 +111,6 @@ function MobileSiteSummary({
       <ChevronDown className={`size-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
     </Button>
   );
-}
-
-function resolveActiveSiteId(sites: readonly { id: number }[], selectedSiteId: number | null) {
-  if (selectedSiteId !== null && sites.some((site) => site.id === selectedSiteId)) return selectedSiteId;
-  return sites[0]?.id ?? null;
 }
 
 function DashboardHeader({ actions }: Readonly<{ actions: React.ReactNode }>) {
