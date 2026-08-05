@@ -9,7 +9,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { requestJson } from "./api";
 
-type Kind = "tickets" | "leaderboard" | "lottery";
+type Kind = "tickets" | "leaderboard" | "lottery" | "compensation";
 type Config = { readonly embedToken: string; readonly config: Record<string, unknown>; readonly updatedAt: string };
 
 export function EmbedLinkPanel({ kind }: Readonly<{ kind: Kind }>) {

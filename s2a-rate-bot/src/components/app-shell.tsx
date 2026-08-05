@@ -13,7 +13,7 @@ const NAVIGATION = [
   { href: "/sources", label: "倍率采集", icon: Database },
   { href: "/connections", label: "对接治理", icon: Cable },
   { href: "/accounts", label: "账号调度", icon: UsersRound },
-  { href: "/tickets", label: "互动运营", icon: PanelsTopLeft, matches: ["/tickets", "/leaderboard", "/lottery"] },
+  { href: "/tickets", label: "互动运营", icon: PanelsTopLeft, matches: ["/tickets", "/leaderboard", "/lottery", "/compensation"] },
   { href: "/logs", label: "系统日志", icon: ScrollText },
 ] as const;
 

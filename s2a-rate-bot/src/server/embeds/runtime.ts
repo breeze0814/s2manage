@@ -1,4 +1,11 @@
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
+import { createAesGcmSecretCipher } from "../crypto.ts";
+import { createSqliteCompensationClaimStore } from "../compensation/claim-store.ts";
+import { createCompensationConfigService } from "../compensation/config-service.ts";
+import { createSqliteCompensationConfigStore } from "../compensation/config-store.ts";
+import { createFetchTransport } from "../compensation/http.ts";
+import { createLiandongGateway } from "../compensation/liandong-gateway.ts";
+import { createCompensationService } from "../compensation/service.ts";
 import { createSqliteEmbedConfigStore } from "./config-store.ts";
 import { basicSettings, createEmbedConfigService, type EmbedConfigService } from "./config-service.ts";
 import { createEmbedIdentityService } from "./identity-service.ts";
@@ -26,9 +33,13 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
   const secret = env.APP_SECRET;
   if (!secret) throw new Error("APP_SECRET is required");
   const settings = getRuntimeSettingsService(env);
+  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+  const cipher = createAesGcmSecretCipher(secret);
   const store = createSqliteEmbedConfigStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
   const ticketsStore = createSqliteTicketStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
   const lotteryStore = createSqliteLotteryStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
+  const compensationConfigStore = createSqliteCompensationConfigStore(databaseUrl);
+  const compensationClaimStore = createSqliteCompensationClaimStore(databaseUrl);
   const upstream = createEmbedUpstreamGateway(settings);
   const configs = createEmbedConfigService({ store, sourceOrigin: upstream.sourceOrigin });
   const sessions = createActiveEmbedSessionService(createEmbedSessionService(secret), configs);
@@ -43,9 +54,19 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
       (identity) => upstream.userBalance(identity.sub2apiUserId),
     ),
   });
+  const compensationConfig = createCompensationConfigService({ store: compensationConfigStore, cipher });
+  const compensation = createCompensationService({
+    config: compensationConfig,
+    claims: compensationClaimStore,
+    liandong: createLiandongGateway(createFetchTransport()),
+    rewards: createRuntimeRewardCodeGateway(settings),
+  });
   return {
-    configs, identities, sessions, tickets, leaderboard, lottery,
-    close: () => { lotteryStore.close(); ticketsStore.close(); store.close(); },
+    configs, identities, sessions, tickets, leaderboard, lottery, compensationConfig, compensation,
+    close: () => {
+      compensationClaimStore.close(); compensationConfigStore.close(); lotteryStore.close();
+      ticketsStore.close(); store.close();
+    },
   };
 }
 

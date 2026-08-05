@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { createSqliteConnectionHealthStore } from "../src/server/connection-health/store.ts";
-import { initializeSqliteSchema } from "../src/storage/sqlite-schema.ts";
+import { initializeSqliteSchema, SQLITE_SCHEMA_VERSION } from "../src/storage/sqlite-schema.ts";
 
 test("schema 26 health states gain an explicit suspension reason", async () => {
   const directory = await mkdtemp(join(tmpdir(), "s2a-health-migration-"));
@@ -26,7 +26,7 @@ test("schema 26 health states gain an explicit suspension reason", async () => {
     const columns = inspection.prepare("PRAGMA table_info(connection_health_states)").all() as Array<{ name: string }>;
     const version = inspection.prepare("SELECT value FROM schema_meta WHERE key='schema_version'").get() as { value: string };
     assert.equal(columns.some((column) => column.name === "suspension_reason"), true);
-    assert.equal(version.value, "29");
+    assert.equal(version.value, String(SQLITE_SCHEMA_VERSION));
   } finally {
     inspection.close();
     await rm(directory, { recursive: true, force: true });

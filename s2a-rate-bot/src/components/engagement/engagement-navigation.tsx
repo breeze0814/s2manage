@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gift, MessageSquareText, Trophy } from "lucide-react";
+import { Calculator, Gift, MessageSquareText, Trophy } from "lucide-react";
 
 const ITEMS = [
   { href: "/tickets", label: "工单", icon: MessageSquareText },
   { href: "/lottery", label: "抽奖", icon: Gift },
+  { href: "/compensation", label: "订单补偿", icon: Calculator },
   { href: "/leaderboard", label: "排行榜", icon: Trophy },
 ] as const;
 

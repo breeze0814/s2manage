@@ -6,8 +6,13 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, Dia
 import { EmbedLinkPanel } from "./embed-link-panel";
 import { TicketConfigPanel } from "./ticket-config-panel";
 
-type Kind = "tickets" | "leaderboard" | "lottery";
-const LABELS: Record<Kind, string> = { tickets: "工单", leaderboard: "排行榜", lottery: "抽奖" };
+type Kind = "tickets" | "leaderboard" | "lottery" | "compensation";
+const LABELS: Record<Kind, string> = {
+  tickets: "工单",
+  leaderboard: "排行榜",
+  lottery: "抽奖",
+  compensation: "订单补偿",
+};
 
 export function EmbedSettingsDialog({ kind }: Readonly<{ kind: Kind }>) {
   return (

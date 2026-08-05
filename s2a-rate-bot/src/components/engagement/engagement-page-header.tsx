@@ -1,10 +1,15 @@
-import { Gift, MessageSquareText, Trophy, type LucideIcon } from "lucide-react";
+import { Calculator, Gift, MessageSquareText, Trophy, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { EmbedSettingsDialog } from "./embed-settings-dialog";
 import { EngagementNavigation } from "./engagement-navigation";
 
-type Kind = "tickets" | "leaderboard" | "lottery";
-const ICONS: Record<Kind, LucideIcon> = { tickets: MessageSquareText, leaderboard: Trophy, lottery: Gift };
+type Kind = "tickets" | "leaderboard" | "lottery" | "compensation";
+const ICONS: Record<Kind, LucideIcon> = {
+  tickets: MessageSquareText,
+  leaderboard: Trophy,
+  lottery: Gift,
+  compensation: Calculator,
+};
 
 export function EngagementPageHeader(props: Readonly<{
   kind: Kind;

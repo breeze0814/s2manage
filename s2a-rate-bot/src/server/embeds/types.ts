@@ -2,7 +2,7 @@ import type { LotteryEligibilityCondition } from "../../core/lottery-eligibility
 
 export type { LotteryEligibilityCondition } from "../../core/lottery-eligibility.ts";
 
-export const EMBED_KINDS = ["tickets", "leaderboard", "lottery"] as const;
+export const EMBED_KINDS = ["tickets", "leaderboard", "lottery", "compensation"] as const;
 export type EmbedKind = typeof EMBED_KINDS[number];
 
 export type EmbedConfig = {

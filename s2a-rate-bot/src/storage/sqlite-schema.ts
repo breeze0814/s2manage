@@ -6,7 +6,7 @@ import { ensureTelegramSchema, TELEGRAM_SCHEMA_VERSION } from "./sqlite-telegram
 
 const MINIMUM_PARAMETER_SCHEMA_VERSION = 9;
 const LOCAL_SNAPSHOT_SCHEMA_VERSION = 10;
-const SCHEMA_VERSION = Math.max(TELEGRAM_SCHEMA_VERSION, EMBED_SCHEMA_VERSION, CONNECTION_SCHEMA_VERSION);
+export const SQLITE_SCHEMA_VERSION = Math.max(TELEGRAM_SCHEMA_VERSION, EMBED_SCHEMA_VERSION, CONNECTION_SCHEMA_VERSION);
 const LEGACY_TABLES = [
   "source_rates", "source_accounts", "source_sites", "group_rules", "target_accounts",
   "target_groups", "worker_settings", "proxy_settings", "bot_settings", "target_settings",
@@ -197,7 +197,7 @@ export function initializeSqliteSchema(database: DatabaseSync) {
   database.exec("PRAGMA journal_mode = WAL");
   database.exec(CREATE_TABLES[0]);
   const previousVersion = schemaVersion(database);
-  if (previousVersion < SCHEMA_VERSION) dropLegacyTables(database);
+  if (previousVersion < SQLITE_SCHEMA_VERSION) dropLegacyTables(database);
   for (const statement of CREATE_TABLES.slice(1)) database.exec(statement);
   ensureConnectionSchema(database);
   migrateSchema(database, previousVersion);
@@ -205,7 +205,7 @@ export function initializeSqliteSchema(database: DatabaseSync) {
     INSERT INTO schema_meta (key, value)
     VALUES ('schema_version', ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).run(String(SCHEMA_VERSION));
+  `).run(String(SQLITE_SCHEMA_VERSION));
 }
 
 function migrateSchema(database: DatabaseSync, previousVersion: number) {

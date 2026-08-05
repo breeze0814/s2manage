@@ -1,11 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS } from "../core/lottery-eligibility.ts";
 
-export const EMBED_SCHEMA_VERSION = 25;
+export const EMBED_SCHEMA_VERSION = 30;
 const DEFAULT_LOTTERY_ELIGIBILITY_JSON = JSON.stringify(DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS);
 
 export function ensureEmbedSchema(database: DatabaseSync) {
   for (const statement of EMBED_TABLES) database.exec(statement);
+  migrateEmbedConfigKind(database);
   migrateTicketStatus(database);
   migrateLotteryCampaignStatus(database);
   ensureLotteryCampaignColumns(database);
@@ -14,7 +15,7 @@ export function ensureEmbedSchema(database: DatabaseSync) {
 
 const EMBED_TABLES = [
   `CREATE TABLE IF NOT EXISTS embed_configs (
-    kind TEXT PRIMARY KEY CHECK (kind IN ('tickets', 'leaderboard', 'lottery')),
+    kind TEXT PRIMARY KEY CHECK (kind IN ('tickets', 'leaderboard', 'lottery', 'compensation')),
     embed_token TEXT NOT NULL UNIQUE,
     config_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -102,7 +103,56 @@ const EMBED_TABLES = [
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS embed_lottery_entries_campaign
     ON embed_lottery_entries (campaign_id, status, created_at)`,
+  `CREATE TABLE IF NOT EXISTS embed_compensation_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    activity_name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    username TEXT NOT NULL,
+    password_enc TEXT NOT NULL,
+    rules_json TEXT NOT NULL CHECK (json_valid(rules_json)),
+    updated_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS embed_compensation_claims (
+    id TEXT PRIMARY KEY,
+    src_host TEXT NOT NULL,
+    sub2api_user_id TEXT NOT NULL,
+    masked_email TEXT NOT NULL,
+    store_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
+    results_json TEXT NOT NULL CHECK (json_valid(results_json)),
+    eligible_order_count INTEGER NOT NULL,
+    invalid_order_count INTEGER NOT NULL,
+    total_compensation_fen INTEGER NOT NULL,
+    redemption_code TEXT,
+    reward_code_id INTEGER,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE INDEX IF NOT EXISTS embed_compensation_claims_recent
+    ON embed_compensation_claims (created_at DESC, id DESC)`,
 ] as const;
+
+function migrateEmbedConfigKind(database: DatabaseSync) {
+  const row = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'embed_configs'")
+    .get() as { sql?: string } | undefined;
+  if (!row?.sql || row.sql.includes("'compensation'")) return;
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec(EMBED_TABLES[0].replace("embed_configs", "embed_configs_new"));
+    database.exec(`INSERT INTO embed_configs_new
+      (kind, embed_token, config_json, created_at, updated_at)
+      SELECT kind, embed_token, config_json, created_at, updated_at FROM embed_configs`);
+    database.exec("DROP TABLE embed_configs");
+    database.exec("ALTER TABLE embed_configs_new RENAME TO embed_configs");
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
 
 function migrateTicketStatus(database: DatabaseSync) {
   const row = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'embed_tickets'").get() as { sql?: string } | undefined;

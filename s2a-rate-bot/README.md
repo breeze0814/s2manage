@@ -10,9 +10,10 @@
 - 直接从目标站读取分组与账号，SQLite 不作为目标站状态的权威来源。
 - 支持 Sub2API 与 New API 采集站，统一应用代理、请求超时和错误格式。
 - 通用 Worker 按站点间隔并发采集，并在采集后应用已启用的倍率规则。
-- 提供可嵌入 Sub2API 的工单、抽奖和用量排行榜页面，并在管理端统一配置与运营。
+- 提供可嵌入 Sub2API 的工单、抽奖、订单补偿和用量排行榜页面，并在管理端统一配置与运营。
 - 工单支持四态流转、分类/优先级、图片附件和客服回复；单图上限 2 MB，整次附件请求上限 13 MB。
 - 抽奖支持即时开奖中奖率、定时开奖奖品份数、报名撤回、自动兑换码和公开或私密中奖名单。
+- 订单补偿支持加密配置联动小铺凭据、活动时间与补偿比例；计算完成后按合计金额自动生成余额兑换码，并保留明确的成功或失败记录。
 
 ## 运行要求
 
@@ -167,8 +168,9 @@ npm run build
 - `/settings`：目标站、代理和 Worker 配置。
 - `/tickets`：嵌入工单配置、工单队列、状态与客服回复。
 - `/lottery`：嵌入抽奖配置、活动管理与开奖结果。
+- `/compensation`：联动小铺连接、补偿规则、活动状态和自动发码记录。
 - `/leaderboard`：嵌入排行榜配置与 Sub2API 用量排名。
-- `/embed/tickets`、`/embed/lottery`、`/embed/leaderboard`：供 Sub2API iframe 加载的用户界面。
+- `/embed/tickets`、`/embed/lottery`、`/embed/compensation`、`/embed/leaderboard`：供 Sub2API iframe 加载的用户界面。
 - `/api/worker/status`：最近一轮 Worker 运行摘要。
 
 所有管理 API 都要求有效登录会话。远端错误会作为明确错误返回，不会写入假成功状态。

@@ -13,11 +13,17 @@ export async function POST(request: NextRequest, context: Context) {
   try {
     const kind = parseKind(context.params.kind);
     const result = await getRuntimeEmbedServices().identities.exchange(kind, await readJsonBody(request));
-    const settings = kind === "tickets" ? ticketSettings(result.config) : undefined;
+    const settings = sessionSettings(kind, result.config);
     return NextResponse.json({ sessionToken: result.sessionToken, expiresIn: 1_800, settings }, {
       headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
     });
   } catch (error) { return embedErrorResponse(error); }
+}
+
+function sessionSettings(kind: EmbedKind, config: Parameters<typeof ticketSettings>[0]) {
+  if (kind === "tickets") return ticketSettings(config);
+  if (kind === "compensation") return getRuntimeEmbedServices().compensationConfig.getPublic();
+  return undefined;
 }
 
 function parseKind(value: string): EmbedKind {
