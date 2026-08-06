@@ -30,8 +30,11 @@ test("deployment script provisions infrastructure and reloads PM2 services", () 
   assert.match(deploy, /git pull --ff-only/);
   assert.match(deploy, /npm ci/);
   assert.match(deploy, /docker compose .* up -d --wait/);
+  assert.match(deploy, /npm run db:migrate/);
   assert.match(deploy, /npm run check:infrastructure/);
   assert.match(deploy, /npm run build/);
+  assert.ok(deploy.indexOf("npm run db:migrate") < deploy.indexOf("npm run check:infrastructure"));
+  assert.ok(deploy.indexOf("npm run check:infrastructure") < deploy.indexOf("npm run build"));
   assert.match(deploy, /deployment_mode="pm2"/);
   assert.match(deploy, /startOrReload .*--update-env/);
   assert.match(deploy, /--pm2/);

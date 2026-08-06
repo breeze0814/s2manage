@@ -56,4 +56,5 @@ test("deployment uses PostgreSQL and Redis while retaining SQLite only for migra
   assert.match(environment, /^SQLITE_MIGRATION_URL=file:/m);
   assert.doesNotMatch(environment, /^DATABASE_URL=/m);
   assert.match(readme, /npm run migrate:postgres/);
+  assert.match(readme, /npm run db:migrate/);
 });

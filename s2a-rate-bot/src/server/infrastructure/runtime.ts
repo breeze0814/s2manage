@@ -1,4 +1,4 @@
-import { ensurePostgresSchema } from "../../storage/postgres-schema.ts";
+import { assertPostgresSchema } from "../../storage/postgres-schema.ts";
 import { createPostgresPool } from "./postgres.ts";
 import { createRuntimeRedis } from "./redis.ts";
 import { infrastructureEnvironment } from "./runtime-env.ts";
@@ -20,7 +20,7 @@ export function getRuntimeInfrastructure(env: NodeJS.ProcessEnv = process.env) {
 function buildRuntimeInfrastructure(env: NodeJS.ProcessEnv) {
   const values = infrastructureEnvironment(env);
   const pool = createPostgresPool(values.postgresUrl);
-  const postgresReady = ensurePostgresSchema(pool);
+  const postgresReady = assertPostgresSchema(pool);
   const redis = createRuntimeRedis(values.redisUrl);
   return {
     postgres: { pool, ready: postgresReady },

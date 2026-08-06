@@ -104,7 +104,10 @@ else
   echo "==> 使用外部 PostgreSQL/Redis"
 fi
 
-echo "==> 检查运行时环境和基础设施连接"
+echo "==> 迁移 s2a-rate-bot PostgreSQL 数据库"
+npm run db:migrate
+
+echo "==> 检查数据库版本和基础设施连接"
 npm run check:infrastructure
 
 echo "==> 构建 Next.js"

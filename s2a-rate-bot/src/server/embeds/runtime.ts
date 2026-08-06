@@ -38,7 +38,7 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
   const cipher = createAesGcmSecretCipher(secret);
   const store = createPostgresEmbedConfigStore(infrastructure.postgres);
   const ticketsStore = createPostgresTicketStore(infrastructure.postgres);
-  const lotteryStore = createPostgresLotteryStore(infrastructure.postgres.pool);
+  const lotteryStore = createPostgresLotteryStore(infrastructure.postgres);
   const compensationConfigStore = createPostgresCompensationConfigStore(infrastructure.postgres);
   const compensationClaimStore = createPostgresCompensationClaimStore(infrastructure.postgres);
   const upstream = createEmbedUpstreamGateway(settings);

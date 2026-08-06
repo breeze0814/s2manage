@@ -1,7 +1,7 @@
 import { createClient } from "redis";
 import { createPostgresPool } from "../src/server/infrastructure/postgres.ts";
 import { infrastructureEnvironment } from "../src/server/infrastructure/runtime-env.ts";
-import { ensurePostgresSchema } from "../src/storage/postgres-schema.ts";
+import { assertPostgresSchema } from "../src/storage/postgres-schema.ts";
 
 const CONNECTION_TIMEOUT_MS = 10_000;
 
@@ -18,7 +18,7 @@ const redis = createClient({
 redis.on("error", (error) => console.error("[redis-check]", error.message));
 
 try {
-  await ensurePostgresSchema(postgres);
+  await assertPostgresSchema(postgres);
   await postgres.query("SELECT 1");
   await redis.connect();
   const reply = await redis.ping();

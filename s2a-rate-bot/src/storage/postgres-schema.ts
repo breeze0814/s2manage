@@ -1,13 +1,14 @@
 import type { Pool, PoolClient } from "pg";
-import { ensurePostgresLotterySchema } from "./postgres-lottery-schema.ts";
+import { assertPostgresLotterySchema, migratePostgresLotterySchema } from "./postgres-lottery-schema.ts";
 import { POSTGRES_CONNECTION_SCHEMA } from "./postgres-connection-schema.ts";
 import { POSTGRES_CORE_SCHEMA } from "./postgres-core-schema.ts";
 import { POSTGRES_EMBED_SCHEMA } from "./postgres-embed-schema.ts";
+import { assertPostgresSchemaVersion } from "./postgres-schema-state.ts";
 
-const APPLICATION_SCHEMA_VERSION = 4;
+export const POSTGRES_APPLICATION_SCHEMA_VERSION = 4;
 const APPLICATION_SCHEMA_LOCK = "s2a-rate-bot:application-schema";
 
-export async function ensurePostgresSchema(pool: Pool) {
+export async function migratePostgresSchema(pool: Pool) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -19,7 +20,7 @@ export async function ensurePostgresSchema(pool: Pool) {
       "SELECT version FROM app_schema_migrations WHERE name=$1 FOR UPDATE", ["application"],
     );
     const version = result.rows[0]?.version ?? 0;
-    if (version > APPLICATION_SCHEMA_VERSION) throw new Error("PostgreSQL application schema is newer than this application");
+    if (version > POSTGRES_APPLICATION_SCHEMA_VERSION) throw new Error("PostgreSQL application schema is newer than this application");
     if (version < 1) await client.query(`${POSTGRES_CORE_SCHEMA}${POSTGRES_CONNECTION_SCHEMA}${POSTGRES_EMBED_SCHEMA}`);
     if (version < 2) await client.query(`CREATE TABLE IF NOT EXISTS app_runtime_metadata (
       key text PRIMARY KEY, value text NOT NULL, updated_at text NOT NULL
@@ -30,13 +31,21 @@ export async function ensurePostgresSchema(pool: Pool) {
     if (version < 4) await migrateCompensationRedemptions(client);
     await client.query(`INSERT INTO app_schema_migrations (name,version) VALUES ($1,$2)
       ON CONFLICT (name) DO UPDATE SET version=EXCLUDED.version,updated_at=now()`,
-    ["application", APPLICATION_SCHEMA_VERSION]);
+    ["application", POSTGRES_APPLICATION_SCHEMA_VERSION]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally { client.release(); }
-  await ensurePostgresLotterySchema(pool);
+  await migratePostgresLotterySchema(pool);
+}
+
+export async function assertPostgresSchema(pool: Pool) {
+  await assertPostgresSchemaVersion(pool, {
+    name: "application",
+    expectedVersion: POSTGRES_APPLICATION_SCHEMA_VERSION,
+  });
+  await assertPostgresLotterySchema(pool);
 }
 
 async function migrateCompensationRedemptions(client: Pick<PoolClient, "query">) {

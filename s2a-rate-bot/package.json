@@ -15,6 +15,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "worker": "node --env-file=.env --import tsx src/worker/main.ts",
+    "db:migrate": "node --env-file=.env --import tsx scripts/migrate-postgres.ts",
     "check:infrastructure": "node --env-file=.env --import tsx scripts/check-infrastructure.ts",
     "migrate:postgres": "node --env-file=.env --import tsx scripts/migrate-sqlite-to-postgres.ts",
     "pm2:setup": "node scripts/setup-pm2-logrotate.cjs",

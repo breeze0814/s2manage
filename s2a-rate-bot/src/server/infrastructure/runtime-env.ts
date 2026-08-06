@@ -8,9 +8,13 @@ export type InfrastructureEnvironment = Readonly<{
 
 export function infrastructureEnvironment(env: NodeJS.ProcessEnv): InfrastructureEnvironment {
   return {
-    postgresUrl: requiredConnectionUrl("POSTGRES_URL", env.POSTGRES_URL, POSTGRES_PROTOCOLS),
+    postgresUrl: postgresConnectionUrl(env),
     redisUrl: requiredConnectionUrl("REDIS_URL", env.REDIS_URL, REDIS_PROTOCOLS),
   };
+}
+
+export function postgresConnectionUrl(env: NodeJS.ProcessEnv) {
+  return requiredConnectionUrl("POSTGRES_URL", env.POSTGRES_URL, POSTGRES_PROTOCOLS);
 }
 
 function requiredConnectionUrl(name: string, value: string | undefined, protocols: ReadonlySet<string>) {

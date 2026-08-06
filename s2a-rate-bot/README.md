@@ -37,7 +37,7 @@ PORT=18074
 
 `APP_SECRET` 同时用于会话签名和敏感配置加密。生产环境可使用 `openssl rand -hex 32` 生成随机值；更换该值后，已有密文配置无法解密，需要重新录入。
 
-`POSTGRES_URL` 和 `REDIS_URL` 必须是完整连接 URL，代码中不包含默认凭据或连接降级。应用启动时会执行版本化 PostgreSQL schema 迁移，并在连接失败时明确报错。
+`POSTGRES_URL` 和 `REDIS_URL` 必须是完整连接 URL，代码中不包含默认凭据或连接降级。`POSTGRES_URL` 应指向由 `s2a-rate-bot` 独占的数据库，不得与上级 `S2A-Manager` 的 Prisma 数据库共用。Web 和 Worker 启动时只校验 schema 版本，不会隐式修改数据库。
 
 `SQLITE_MIGRATION_URL` 只供一次性旧数据导入命令使用，不参与 Web 或 Worker 运行。迁移完成并核对数据后可以从生产环境删除该变量。
 
@@ -53,8 +53,19 @@ npm run dev
 
 ```bash
 docker compose -f compose.dev.yml --env-file .env up -d --wait
+npm run db:migrate
 npm run check:infrastructure
 ```
+
+`s2a-rate-bot` 独立维护 PostgreSQL schema。每次拉取包含数据库改动的新版本后，必须先执行：
+
+```bash
+npm run db:migrate
+```
+
+迁移命令只读取本项目 `.env` 中的 `POSTGRES_URL`，使用事务、迁移版本和 PostgreSQL advisory lock 串行升级 `s2a-rate-bot` 自有表。上级目录的 Prisma schema 和 migrations 不参与本项目部署。
+
+后续数据库改动必须追加新的 schema 版本和幂等迁移分支，不能修改已经发布的版本逻辑；同时补充迁移测试。部署脚本会先完成全部迁移，迁移失败不会继续构建或重载服务。
 
 从旧 SQLite 数据库迁移全部业务数据：
 
@@ -117,6 +128,8 @@ $env:S2A_WORKER_ONCE='1'; npm run worker
 
 ```bash
 npm ci
+npm run db:migrate
+npm run check:infrastructure
 npm run build
 npm run start
 ```
@@ -135,6 +148,8 @@ Web 与 Worker 必须使用相同的 `APP_SECRET`、`POSTGRES_URL` 和 `REDIS_UR
 
 ```bash
 npm ci
+npm run db:migrate
+npm run check:infrastructure
 npm run build
 npm run pm2:start
 pm2 save
@@ -171,7 +186,7 @@ chmod +x deploy.sh
 ./deploy.sh --pm2
 ```
 
-部署脚本会依次拉取最新代码、安装依赖、检查运行时连接、构建项目，最后启动或平滑重载 PM2 的 Web 与 Worker 进程。
+部署脚本会依次拉取最新代码、安装依赖、执行本项目 PostgreSQL 迁移、检查 schema 版本和运行时连接、构建项目，最后启动或平滑重载 PM2 的 Web 与 Worker 进程。迁移失败时部署会立即终止，旧 PM2 进程不会被新版本替换。
 
 需要由 Docker Compose 管理 PostgreSQL/Redis 时使用 Docker 模式。应用 Web/Worker 仍由 PM2 管理，数据库数据卷不会随容器更新被删除：
 

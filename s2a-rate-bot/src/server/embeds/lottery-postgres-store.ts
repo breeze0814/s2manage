@@ -1,5 +1,4 @@
-import type { Pool } from "pg";
-import { ensurePostgresLotterySchema } from "../../storage/postgres-lottery-schema.ts";
+import type { PostgresContext } from "../infrastructure/postgres-context.ts";
 import type { LotteryStore } from "./lottery-store-contract.ts";
 import {
   advancePostgresCampaigns, drawPostgresScheduled, enterPostgresScheduled, getPostgresEntry,
@@ -14,8 +13,7 @@ import {
   claimPostgresRewardJobs, completePostgresRewardJob, failPostgresRewardJob,
 } from "./lottery-postgres-rewards.ts";
 
-export function createPostgresLotteryStore(pool: Pool): LotteryStore {
-  const context = { pool, ready: ensurePostgresLotterySchema(pool) };
+export function createPostgresLotteryStore(context: PostgresContext): LotteryStore {
   return {
     listCampaigns: () => listPostgresCampaigns(context),
     getCampaign: (id) => getPostgresCampaign(context, id),
@@ -35,6 +33,6 @@ export function createPostgresLotteryStore(pool: Pool): LotteryStore {
     claimRewardJobs: (input) => claimPostgresRewardJobs(context, input),
     completeRewardJob: (input) => completePostgresRewardJob(context, input),
     failRewardJob: (input) => failPostgresRewardJob(context, input),
-    close: () => pool.end(),
+    close: () => context.pool.end(),
   };
 }

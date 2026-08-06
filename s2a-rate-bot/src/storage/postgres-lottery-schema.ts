@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
+import { assertPostgresSchemaVersion } from "./postgres-schema-state.ts";
 
-const LOTTERY_SCHEMA_VERSION = 2;
+export const POSTGRES_LOTTERY_SCHEMA_VERSION = 2;
 const LOTTERY_SCHEMA_LOCK = "s2a-rate-bot:lottery-schema";
 
 const MIGRATION_V1 = `
@@ -82,7 +83,7 @@ const MIGRATION_V2 = `
 ALTER TABLE lottery_reward_jobs ADD COLUMN IF NOT EXISTS lock_token text;
 `;
 
-export async function ensurePostgresLotterySchema(pool: Pool) {
+export async function migratePostgresLotterySchema(pool: Pool) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -95,12 +96,12 @@ export async function ensurePostgresLotterySchema(pool: Pool) {
       ["lottery"],
     );
     const version = result.rows[0]?.version ?? 0;
-    if (version > LOTTERY_SCHEMA_VERSION) throw new Error("PostgreSQL lottery schema is newer than this application");
+    if (version > POSTGRES_LOTTERY_SCHEMA_VERSION) throw new Error("PostgreSQL lottery schema is newer than this application");
     if (version < 1) await client.query(MIGRATION_V1);
     if (version < 2) await client.query(MIGRATION_V2);
     await client.query(`INSERT INTO app_schema_migrations (name, version) VALUES ($1, $2)
       ON CONFLICT (name) DO UPDATE SET version = EXCLUDED.version, updated_at = now()`,
-    ["lottery", LOTTERY_SCHEMA_VERSION]);
+    ["lottery", POSTGRES_LOTTERY_SCHEMA_VERSION]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -108,4 +109,11 @@ export async function ensurePostgresLotterySchema(pool: Pool) {
   } finally {
     client.release();
   }
+}
+
+export async function assertPostgresLotterySchema(pool: Pool) {
+  await assertPostgresSchemaVersion(pool, {
+    name: "lottery",
+    expectedVersion: POSTGRES_LOTTERY_SCHEMA_VERSION,
+  });
 }

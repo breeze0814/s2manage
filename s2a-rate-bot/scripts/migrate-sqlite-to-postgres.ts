@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { createPostgresPool } from "../src/server/infrastructure/postgres.ts";
-import { ensurePostgresSchema } from "../src/storage/postgres-schema.ts";
+import { migratePostgresSchema } from "../src/storage/postgres-schema.ts";
 import { sqlitePath } from "../src/storage/sqlite-utils.ts";
 import { initializeSqliteSchema } from "../src/storage/sqlite-schema.ts";
 import { importCommonTables } from "./sqlite-import-common.ts";
@@ -16,7 +16,7 @@ const pool = createPostgresPool(postgresUrl);
 
 try {
   initializeSqliteSchema(database);
-  await ensurePostgresSchema(pool);
+  await migratePostgresSchema(pool);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
