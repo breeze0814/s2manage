@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { calculateCompensation, summarizeCompensations, type CompensationRule } from "../src/core/compensation.ts";
@@ -13,6 +14,16 @@ import { findLiandongOrder } from "../src/server/compensation/liandong-orders.ts
 import { createFetchTransport, createRuntimeLiandongTransport, type JsonRequest } from "../src/server/compensation/http.ts";
 import type { SettingsService } from "../src/server/settings/service.ts";
 import { ensureEmbedSchema } from "../src/storage/sqlite-embed-schema.ts";
+
+const ROOT = new URL("../", import.meta.url);
+
+test("compensation admin routes await asynchronous PostgreSQL services before serializing", () => {
+  const claims = source("src/app/api/compensation/claims/route.ts");
+  const config = source("src/app/api/compensation/config/route.ts");
+  assert.match(claims, /items: await .*\.listClaims\(\)/);
+  assert.match(config, /NextResponse\.json\(await .*\.getAdmin\(\)\)/);
+  assert.match(config, /const settings = await .*\.update\(/);
+});
 
 const RULES: readonly CompensationRule[] = [{
   id: "half",
@@ -271,3 +282,7 @@ function orderPage() {
 }
 
 function seconds(value: string) { return Date.parse(value) / 1_000; }
+
+function source(path: string) {
+  return readFileSync(new URL(path, ROOT), "utf8");
+}

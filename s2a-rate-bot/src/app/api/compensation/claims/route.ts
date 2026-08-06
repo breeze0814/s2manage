@@ -9,6 +9,6 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     await requireAuthenticatedRequest(request);
-    return NextResponse.json({ items: getRuntimeEmbedServices().compensation.listClaims() });
+    return NextResponse.json({ items: await getRuntimeEmbedServices().compensation.listClaims() });
   } catch (error) { return embedErrorResponse(error); }
 }
