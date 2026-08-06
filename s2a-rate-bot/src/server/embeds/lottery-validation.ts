@@ -32,6 +32,7 @@ const campaignFields = z.object({
   name: z.string().trim().min(1, "活动名称不能为空").max(MAX_CAMPAIGN_NAME_LENGTH),
   description: z.string().trim().max(MAX_DESCRIPTION_LENGTH),
   drawMode: z.enum(["instant", "scheduled"]),
+  participationMode: z.enum(["daily", "once"]).default("once"),
   registrationStart: optionalDate(),
   registrationEnd: optionalDate(),
   drawAt: optionalDate(),

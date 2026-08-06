@@ -4,6 +4,7 @@ import { AlertTriangle, Gift, Loader2, Save, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { LotteryCampaign } from "../../server/embeds/types";
+import { lotteryParticipationLabel } from "../../core/lottery-participation";
 import { campaignInputError } from "../../server/embeds/lottery-validation";
 import { Button } from "../ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
@@ -58,7 +59,7 @@ function LotteryFormActions(props: Readonly<{
 }>) {
   const inventory = props.draft.prizes.reduce((sum, prize) => sum + prize.quantity, 0);
   const conditionLabel = props.draft.eligibilityConditions.length ? `${props.draft.eligibilityConditions.length} 项参与条件` : "无额外参与条件";
-  const summary = `${props.draft.drawMode === "instant" ? "即时开奖" : "定时开奖"} · ${props.draft.prizes.length} 个奖品 / ${inventory} 份 · ${conditionLabel}`;
+  const summary = `${props.draft.drawMode === "instant" ? "即时开奖" : "定时开奖"} · ${lotteryParticipationLabel(props.draft.participationMode)} · ${props.draft.prizes.length} 个奖品 / ${inventory} 份 · ${conditionLabel}`;
   return <footer className="min-w-0 shrink-0 border-t border-border bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4">
     <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <p title={summary} className="hidden min-w-0 truncate text-xs text-muted md:block">{summary}</p>

@@ -71,7 +71,9 @@ function jsonRequest(url: string, body: Readonly<Record<string, unknown>>): Json
 function protocolHeaders(token?: string) {
   return Object.freeze({
     accept: "application/json, text/plain, */*",
+    "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
     "content-type": "application/json",
+    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     ...(token ? { "merchant-token": token } : {}),
   });
 }

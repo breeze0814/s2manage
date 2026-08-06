@@ -3,7 +3,7 @@ import { createAesGcmSecretCipher } from "../crypto.ts";
 import { createSqliteCompensationClaimStore } from "../compensation/claim-store.ts";
 import { createCompensationConfigService } from "../compensation/config-service.ts";
 import { createSqliteCompensationConfigStore } from "../compensation/config-store.ts";
-import { createFetchTransport } from "../compensation/http.ts";
+import { createRuntimeLiandongTransport } from "../compensation/http.ts";
 import { createLiandongGateway } from "../compensation/liandong-gateway.ts";
 import { createCompensationService } from "../compensation/service.ts";
 import { createSqliteEmbedConfigStore } from "./config-store.ts";
@@ -58,7 +58,7 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
   const compensation = createCompensationService({
     config: compensationConfig,
     claims: compensationClaimStore,
-    liandong: createLiandongGateway(createFetchTransport()),
+    liandong: createLiandongGateway(createRuntimeLiandongTransport(settings)),
     rewards: createRuntimeRewardCodeGateway(settings),
   });
   return {

@@ -10,7 +10,8 @@ import type { CompensationSettings, LiandongOrder } from "../src/server/compensa
 import type { EmbedIdentity } from "../src/server/embeds/types.ts";
 import { loginLiandong } from "../src/server/compensation/liandong-auth.ts";
 import { findLiandongOrder } from "../src/server/compensation/liandong-orders.ts";
-import type { JsonRequest } from "../src/server/compensation/http.ts";
+import { createFetchTransport, createRuntimeLiandongTransport, type JsonRequest } from "../src/server/compensation/http.ts";
+import type { SettingsService } from "../src/server/settings/service.ts";
 import { ensureEmbedSchema } from "../src/storage/sqlite-embed-schema.ts";
 
 const RULES: readonly CompensationRule[] = [{
@@ -138,6 +139,46 @@ test("extracted Liandong protocol logs in and parses an exact order", async () =
   ]);
   assert.equal(requests[3]?.headers["merchant-token"], "merchant-token");
   assert.equal(requests[3]?.body.trade_no, "LD-1");
+  assert.match(requests[0]?.headers["user-agent"] ?? "", /Mozilla\/5\.0/);
+  assert.match(requests[3]?.headers["accept-language"] ?? "", /zh-CN/);
+});
+
+test("Liandong transport identifies an HTML security response", async () => {
+  const transport = createFetchTransport(1_000, async () => new Response(
+    "<!doctype html><html><head><title>Access denied</title></head><body>Region blocked</body></html>",
+    { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+  ));
+  await assert.rejects(transport.request({
+    url: "https://www.ldxp.cn/merchantApi/user/checkSafeMode",
+    headers: { "content-type": "application/json" },
+    body: {},
+  }), /HTML 页面.*地域限制或安全验证.*HTTP 200.*text\/html.*Access denied/);
+});
+
+test("runtime Liandong transport honors global proxy and Worker timeout settings", async () => {
+  let options: { timeoutMs: number; proxyUrl: string | null } | null = null;
+  const settings = {
+    get: async () => ({
+      target: null,
+      proxy: { enabled: true, proxyUrl: "http://127.0.0.1:7890" },
+      worker: { intervalSeconds: 60, timeoutSeconds: 12, concurrency: 2 },
+      telegram: { botToken: "", chatId: "", hourlyBalanceEnabled: false, rateChangeEnabled: false },
+    }),
+    save: async () => { throw new Error("not used"); },
+  } satisfies SettingsService;
+  const transport = createRuntimeLiandongTransport(settings, (configured) => {
+    options = configured;
+    return { requestText: async () => ({
+      status: 200,
+      text: JSON.stringify({ code: 1, data: { safe_mode: 0 } }),
+      headers: { "content-type": "application/json" },
+    }) };
+  });
+  assert.deepEqual(await transport.request({ url: "https://www.ldxp.cn/api", headers: {}, body: {} }), {
+    code: 1,
+    data: { safe_mode: 0 },
+  });
+  assert.deepEqual(options, { timeoutMs: 12_000, proxyUrl: "http://127.0.0.1:7890" });
 });
 
 function configuredService() {

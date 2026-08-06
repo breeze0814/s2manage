@@ -1,10 +1,12 @@
 import type { LotteryCampaign, LotteryPrize } from "../../server/embeds/types";
 import { DEFAULT_MINIMUM_LOTTERY_BALANCE, type LotteryEligibilityCondition } from "../../core/lottery-eligibility";
+import type { LotteryParticipationMode } from "../../core/lottery-participation";
 
 export type LotteryFormDraft = {
   name: string;
   description: string;
   drawMode: "instant" | "scheduled";
+  participationMode: LotteryParticipationMode;
   registrationStart: string;
   registrationEnd: string;
   drawAt: string;
@@ -28,6 +30,7 @@ export function initialLotteryDraft(campaign: LotteryCampaign | null): LotteryFo
       name: "",
       description: "",
       drawMode: "instant",
+      participationMode: "once",
       registrationStart: "",
       registrationEnd: "",
       drawAt: "",
@@ -41,6 +44,7 @@ export function initialLotteryDraft(campaign: LotteryCampaign | null): LotteryFo
     name: campaign.name,
     description: campaign.description,
     drawMode: campaign.drawMode,
+    participationMode: campaign.participationMode,
     registrationStart: toInput(campaign.registrationStart),
     registrationEnd: toInput(campaign.registrationEnd),
     drawAt: toInput(campaign.drawAt),

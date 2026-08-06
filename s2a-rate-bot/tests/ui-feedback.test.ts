@@ -119,6 +119,10 @@ test("engagement settings and lottery editing use accessible modal dialogs", () 
   assert.doesNotMatch(lotteryFormSections, /RadioGroupItem[^>]+className="sr-only"/);
   assert.match(lotteryEditor, /即时开奖/);
   assert.match(lotteryEditor, /定时开奖/);
+  assert.match(lotteryFormSections, /参与频率/);
+  assert.match(lotteryFormSections, /每日一次/);
+  assert.match(lotteryFormSections, /活动期间一次/);
+  assert.match(lotteryFormSections, /上海自然日/);
   assert.match(lotteryPrizeFields, /奖品设置/);
   assert.match(lotteryPrizeFields, /奖励类型/);
   assert.match(lotteryPrizeFields, /奖励额度/);
@@ -154,6 +158,9 @@ test("customer lottery hides participant and winner counts while showing remaini
   assert.match(customerLottery, /item\.remaining/);
   assert.match(customerLottery, /inventory\?\.remaining/);
   assert.match(customerLottery, /LotteryEligibilitySummary/);
+  assert.match(customerLottery, /lotteryParticipationLabel/);
+  assert.match(customerLottery, /ParticipationHistory/);
+  assert.match(customerLottery, /myEntries/);
   assert.match(eligibilitySummary, /lotteryEligibilityRequirement/);
   assert.match(customerLottery, /LotteryWheel/);
   assert.match(lotteryWheel, /conic-gradient/);

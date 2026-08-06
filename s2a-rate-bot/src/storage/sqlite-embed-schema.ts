@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS } from "../core/lottery-eligibility.ts";
 
-export const EMBED_SCHEMA_VERSION = 30;
+export const EMBED_SCHEMA_VERSION = 31;
 const DEFAULT_LOTTERY_ELIGIBILITY_JSON = JSON.stringify(DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS);
 
 export function ensureEmbedSchema(database: DatabaseSync) {
@@ -11,6 +11,7 @@ export function ensureEmbedSchema(database: DatabaseSync) {
   migrateLotteryCampaignStatus(database);
   ensureLotteryCampaignColumns(database);
   ensureLotteryRewardColumns(database);
+  migrateLotteryEntryParticipation(database);
 }
 
 const EMBED_TABLES = [
@@ -69,6 +70,7 @@ const EMBED_TABLES = [
     name TEXT NOT NULL,
     description TEXT NOT NULL,
     draw_mode TEXT NOT NULL CHECK (draw_mode IN ('instant', 'scheduled')),
+    participation_mode TEXT NOT NULL DEFAULT 'once' CHECK (participation_mode IN ('daily', 'once')),
     status TEXT NOT NULL CHECK (status IN ('scheduled', 'open', 'drawing', 'drawn', 'exhausted', 'cancelled')),
     registration_start TEXT,
     registration_end TEXT,
@@ -88,6 +90,7 @@ const EMBED_TABLES = [
     id TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL,
     sub2api_user_id TEXT NOT NULL,
+    participation_key TEXT NOT NULL,
     masked_email TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('entered', 'won', 'not_won', 'withdrawn')),
     prize_id TEXT,
@@ -98,7 +101,7 @@ const EMBED_TABLES = [
     reward_code_id INTEGER,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    UNIQUE (campaign_id, sub2api_user_id),
+    UNIQUE (campaign_id, sub2api_user_id, participation_key),
     FOREIGN KEY (campaign_id) REFERENCES embed_lottery_campaigns(id) ON DELETE CASCADE
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS embed_lottery_entries_campaign
@@ -219,9 +222,36 @@ function ensureLotteryCampaignColumns(database: DatabaseSync) {
   const additions = [
     ["visible_to_users", "INTEGER NOT NULL DEFAULT 1 CHECK (visible_to_users IN (0, 1))"],
     ["eligibility_json", `TEXT NOT NULL DEFAULT '${DEFAULT_LOTTERY_ELIGIBILITY_JSON}' CHECK (json_valid(eligibility_json))`],
+    ["participation_mode", "TEXT NOT NULL DEFAULT 'once' CHECK (participation_mode IN ('daily', 'once'))"],
   ] as const;
   for (const [name, definition] of additions) {
     if (!names.has(name)) database.exec(`ALTER TABLE embed_lottery_campaigns ADD COLUMN ${name} ${definition}`);
+  }
+}
+
+function migrateLotteryEntryParticipation(database: DatabaseSync) {
+  const row = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'embed_lottery_entries'")
+    .get() as { sql?: string } | undefined;
+  if (!row?.sql || row.sql.includes("participation_key")) return;
+  database.exec("PRAGMA foreign_keys = OFF");
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    database.exec(EMBED_TABLES[9].replace("embed_lottery_entries", "embed_lottery_entries_new"));
+    database.exec(`INSERT INTO embed_lottery_entries_new
+      (id, campaign_id, sub2api_user_id, participation_key, masked_email, status, prize_id,
+        prize_name, prize_type, prize_value, redemption_code, reward_code_id, created_at, updated_at)
+      SELECT id, campaign_id, sub2api_user_id, 'campaign', masked_email, status, prize_id,
+        prize_name, prize_type, prize_value, redemption_code, reward_code_id, created_at, updated_at
+      FROM embed_lottery_entries`);
+    database.exec("DROP TABLE embed_lottery_entries");
+    database.exec("ALTER TABLE embed_lottery_entries_new RENAME TO embed_lottery_entries");
+    database.exec(EMBED_TABLES[10]);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  } finally {
+    database.exec("PRAGMA foreign_keys = ON");
   }
 }
 

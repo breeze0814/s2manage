@@ -47,8 +47,10 @@ function protocolHeaders(merchantToken: string) {
   if (!token) throw new Error("merchantToken 不能为空");
   return Object.freeze({
     accept: "application/json, text/plain, */*",
+    "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
     "content-type": "application/json",
     "merchant-token": token,
+    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
   });
 }
 

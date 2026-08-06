@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CalendarRange, Eye, ShieldCheck, Sparkles, Timer, UsersRound, type LucideIcon } from "lucide-react";
+import { CalendarCheck2, CalendarClock, CalendarDays, CalendarRange, Eye, ShieldCheck, Sparkles, Timer, UsersRound, type LucideIcon } from "lucide-react";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
@@ -33,8 +33,11 @@ export function LotteryActivityFields(props: DraftProps) {
 
 export function LotteryParticipationFields(props: DraftProps) {
   const draft = props.value;
-  return <LotteryFormSection id="lottery-participation-heading" icon={ShieldCheck} title="参与规则" description="配置用户准入条件与活动公开范围。">
-    <LotteryEligibilityFields value={draft.eligibilityConditions} onChange={(eligibilityConditions) => props.onChange({ ...draft, eligibilityConditions })} />
+  return <LotteryFormSection id="lottery-participation-heading" icon={ShieldCheck} title="参与规则" description="配置参与频率、用户准入条件与活动公开范围。">
+    <ParticipationModeField value={draft.participationMode} onChange={(participationMode) => props.onChange({ ...draft, participationMode })} />
+    <div className="mt-5 border-t border-border pt-5">
+      <LotteryEligibilityFields value={draft.eligibilityConditions} onChange={(eligibilityConditions) => props.onChange({ ...draft, eligibilityConditions })} />
+    </div>
     <div className="mt-5 border-t border-border pt-5">
       <p className="mb-3 text-sm font-semibold">公开设置</p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -43,6 +46,18 @@ export function LotteryParticipationFields(props: DraftProps) {
       </div>
     </div>
   </LotteryFormSection>;
+}
+
+function ParticipationModeField(props: Readonly<{
+  value: LotteryFormDraft["participationMode"];
+  onChange: (value: LotteryFormDraft["participationMode"]) => void;
+}>) {
+  return <fieldset><legend className="mb-2 text-sm font-semibold">参与频率</legend>
+    <RadioGroup value={props.value} onValueChange={(value) => props.onChange(value as LotteryFormDraft["participationMode"])} className="grid gap-2 sm:grid-cols-2">
+      <DrawModeOption value="daily" icon={CalendarDays} title="每日一次" description="每个上海自然日可参与一次" />
+      <DrawModeOption value="once" icon={CalendarCheck2} title="活动期间一次" description="整个活动周期内只能参与一次" />
+    </RadioGroup>
+  </fieldset>;
 }
 
 function DrawModeField(props: Readonly<{
@@ -58,7 +73,7 @@ function DrawModeField(props: Readonly<{
 }
 
 function DrawModeOption(props: Readonly<{
-  value: LotteryFormDraft["drawMode"];
+  value: string;
   icon: LucideIcon;
   title: string;
   description: string;

@@ -1,6 +1,8 @@
 import type { LotteryEligibilityCondition } from "../../core/lottery-eligibility.ts";
+import type { LotteryParticipationMode } from "../../core/lottery-participation.ts";
 
 export type { LotteryEligibilityCondition } from "../../core/lottery-eligibility.ts";
+export type { LotteryParticipationMode } from "../../core/lottery-participation.ts";
 
 export const EMBED_KINDS = ["tickets", "leaderboard", "lottery", "compensation"] as const;
 export type EmbedKind = typeof EMBED_KINDS[number];
@@ -125,6 +127,7 @@ export type LotteryCampaign = {
   readonly name: string;
   readonly description: string;
   readonly drawMode: "instant" | "scheduled";
+  readonly participationMode: LotteryParticipationMode;
   readonly status: "scheduled" | "open" | "drawing" | "drawn" | "exhausted" | "cancelled";
   readonly registrationStart: string | null;
   readonly registrationEnd: string | null;
@@ -137,6 +140,7 @@ export type LotteryCampaign = {
   readonly entryCount: number;
   readonly winnerCount: number;
   readonly currentEntry: LotteryEntry | null;
+  readonly myEntries: readonly LotteryEntry[];
   readonly winners: readonly LotteryEntry[];
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -147,6 +151,7 @@ export type LotteryCampaign = {
 export type LotteryEntry = {
   readonly id: string;
   readonly campaignId: string;
+  readonly participationKey: string;
   readonly sub2apiUserId: string;
   readonly maskedEmail: string;
   readonly status: "entered" | "won" | "not_won" | "withdrawn";

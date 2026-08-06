@@ -1,4 +1,5 @@
 import type { LotteryStore, StoredCampaign } from "./lottery-store.ts";
+import { lotteryParticipationKey } from "../../core/lottery-participation.ts";
 import {
   EmbedError,
   type EmbedIdentity,
@@ -11,8 +12,13 @@ export function lotteryCampaignDetail(
   store: LotteryStore,
   campaign: StoredCampaign,
   identity?: EmbedIdentity,
+  now = new Date(),
 ): LotteryCampaign {
   const entries = store.listEntries(campaign.id);
+  const mine = identity
+    ? entries.filter((entry) => entry.sub2apiUserId === identity.sub2apiUserId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
+    : [];
   const winners = entries.filter((entry) => entry.status === "won");
   const visibleWinners = !identity || campaign.publicWinners
     ? winners
@@ -24,8 +30,9 @@ export function lotteryCampaignDetail(
     prizeInventory: campaign.prizes.map((prize) => inventoryFor(prize, entries)),
     currentEntry: identity
       ? visibleCurrentEntry(campaign,
-        entries.find((entry) => entry.sub2apiUserId === identity.sub2apiUserId) ?? null)
+        mine.find((entry) => entry.participationKey === lotteryParticipationKey(campaign.participationMode, now)) ?? null)
       : null,
+    myEntries: mine.map(redactEntry(identity)),
     winners: visibleWinners.map(redactEntry(identity)),
     lastError: identity ? null : campaign.lastError,
   };

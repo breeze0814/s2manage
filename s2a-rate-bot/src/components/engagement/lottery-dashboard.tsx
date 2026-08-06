@@ -3,6 +3,7 @@
 import { Activity, AlertTriangle, Ban, CalendarClock, Copy, Eye, EyeOff, Gift, Loader2, Pencil, Plus, RefreshCw, Search, TicketCheck, Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { lotteryParticipationLabel } from "../../core/lottery-participation";
 import type { LotteryCampaign } from "../../server/embeds/types";
 import { LotteryEligibilitySummary } from "../lottery-eligibility-summary";
 import { Button } from "../ui/button";
@@ -95,7 +96,7 @@ function CampaignCard({ campaign, visibilityPending, onEdit, onCancel, onVisibil
   const VisibilityIcon = campaign.visibleToUsers ? Eye : EyeOff;
   return <article className="rounded-lg border border-border bg-surface p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/35 hover:shadow-md">
     <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{campaign.name}</h3><p className="mt-1 line-clamp-2 text-sm leading-6 text-muted">{campaign.description || "暂无活动说明"}</p></div><span className={statusClass(campaign.status)}>{statusLabel(campaign)}</span></div>
-    <p className="mt-3 flex items-center gap-2 text-xs text-muted"><CalendarClock className="size-3.5" />{campaign.drawMode === "scheduled" ? `定时开奖${campaign.drawAt ? ` · ${formatDate(campaign.drawAt)}` : ""}` : "即时开奖 · 用户抽奖后立即返回结果"}</p>
+    <p className="mt-3 flex items-center gap-2 text-xs text-muted"><CalendarClock className="size-3.5" />{campaign.drawMode === "scheduled" ? `定时开奖${campaign.drawAt ? ` · ${formatDate(campaign.drawAt)}` : ""}` : "即时开奖"} · {lotteryParticipationLabel(campaign.participationMode)}</p>
     <dl className="mt-4 grid grid-cols-3 gap-2 text-center"><Metric icon={TicketCheck} label="参与" value={campaign.entryCount} /><Metric icon={Gift} label="剩余奖品" value={campaign.prizeInventory.reduce((sum, item) => sum + item.remaining, 0)} /><Metric icon={Trophy} label="中奖" value={campaign.winnerCount} /></dl>
     <PrizeInventory campaign={campaign} />
     <LotteryEligibilitySummary conditions={campaign.eligibilityConditions} className="mt-3 border-t border-border pt-3" />
