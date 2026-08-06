@@ -35,7 +35,7 @@ export type CollectionSiteStored = Omit<CollectionSiteInput, "password" | "acces
   readonly historyRecharge: number | null;
   readonly lastRunAt: string | null;
   readonly lastSuccessAt: string | null;
-  readonly lastStatus: "success" | "failed" | null;
+  readonly lastStatus: "success" | "partial" | "failed" | null;
   readonly lastError: string | null;
   readonly consecutiveFailures: number;
   readonly refreshVersion: number;
@@ -54,8 +54,9 @@ export type CollectionSiteView = Omit<CollectionSiteRuntime, "password" | "acces
 };
 
 export type CollectionOverview = {
-  readonly account: SourceAccountSnapshot;
-  readonly rates: readonly SourceRateSnapshot[];
+  readonly account: SourceAccountSnapshot | null;
+  readonly rates: readonly SourceRateSnapshot[] | null;
+  readonly errors: readonly string[];
   readonly credentials?: SourceAuthSession;
 };
 

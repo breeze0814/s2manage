@@ -77,7 +77,7 @@ function recordSuccess(store: ReturnType<typeof createSqliteCollectionStore>, si
   store.recordSuccess({
     siteId,
     refreshVersion: store.beginRefresh(siteId),
-    overview: { account: { sourceSiteId: siteId, label: "user", balance: 10, todayConsume: 1, historyRecharge: 20 }, rates },
+    overview: { account: { sourceSiteId: siteId, label: "user", balance: 10, todayConsume: 1, historyRecharge: 20 }, rates, errors: [] },
     startedAt,
   });
 }

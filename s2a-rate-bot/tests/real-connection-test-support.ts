@@ -24,6 +24,7 @@ export function recordVipRate(store: ReturnType<typeof createSqliteCollectionSto
         sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai",
         rawRate: 2, effectiveRate: 2, collectedAt: new Date(),
       }],
+      errors: [],
     },
   });
 }

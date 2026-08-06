@@ -52,7 +52,7 @@ function Header({ loading, onRefresh }: Readonly<{ loading: boolean; onRefresh: 
 function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
   const enabledSites = data.sites.filter((site) => site.enabled).length;
   const enabledRules = data.groups.filter((group) => group.rule.enabled).length;
-  const failures = data.sites.filter((site) => site.lastStatus === "failed").length;
+  const failures = data.sites.filter((site) => site.lastStatus === "failed" || site.lastStatus === "partial").length;
   const lowBalanceSites = data.sites.filter((site) => site.balance !== null && site.balanceAlertThreshold !== null && site.balance <= site.balanceAlertThreshold);
   const totalBalance = data.sites.reduce((total, site) => total + (site.balance ?? 0), 0);
   const totalTodayConsume = data.sites.reduce((total, site) => total + (site.todayConsume ?? 0), 0);
@@ -79,7 +79,7 @@ function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
 function AlertBanner({ data, failedSites, lowBalanceSites }: Readonly<{ data: DashboardData; failedSites: number; lowBalanceSites: number }>) {
   const items: { readonly href: string; readonly text: string }[] = [];
   if (!data.workerConnected) items.push({ href: "/settings", text: "Worker 未连接，自动采集与应用可能已停止" });
-  if (failedSites > 0) items.push({ href: "/sources", text: `${failedSites} 个采集站最近一次运行失败` });
+  if (failedSites > 0) items.push({ href: "/sources", text: `${failedSites} 个采集站最近一次运行存在接口异常` });
   if (lowBalanceSites > 0) items.push({ href: "/sources", text: `${lowBalanceSites} 个采集站余额低于告警阈值` });
   if (data.run?.status === "failed" || data.run?.status === "partial") {
     items.push({ href: "/logs", text: `Worker 最近运行状态为 ${data.run.status}` });
@@ -163,6 +163,7 @@ function SiteBalances({ sites }: Readonly<{ sites: readonly Site[] }>) {
 
 function siteStatusClass(site: Site) {
   if (site.lastStatus === "failed") return "bg-danger";
+  if (site.lastStatus === "partial") return "bg-warning";
   return site.enabled ? "bg-success" : "bg-muted";
 }
 

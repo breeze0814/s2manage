@@ -91,9 +91,13 @@ async function reload(actions: LoadActions) {
 async function refreshSite(input: RefreshSiteActions) {
   input.setPendingId(input.site.id);
   try {
-    await api(`/api/sources/${input.site.id}/refresh`, { method: "POST" });
+    const body = await api<{ site: SourceSiteView }>(`/api/sources/${input.site.id}/refresh`, { method: "POST" });
     await reloadData(input.setSites, input.setRates);
-    toast.success(`已重新请求远端采集站「${input.site.name}」`);
+    if (body.site.lastStatus === "partial") {
+      toast.warning(`采集站「${input.site.name}」部分接口失败：${body.site.lastError ?? "未知错误"}`);
+    } else {
+      toast.success(`已重新请求远端采集站「${input.site.name}」`);
+    }
   } catch (error) {
     toast.error(errorMessage(error));
   } finally {
@@ -109,8 +113,10 @@ async function refreshAll(input: RefreshAllActions) {
     const body = await streamRefreshAll(input.setBulkProgress, input.setPendingSiteIds);
     await reloadData(input.setSites, input.setRates);
     const failed = body.results.filter((result) => !result.ok).length;
-    const message = `重新请求全部远端完成：成功 ${body.results.length - failed}，失败 ${failed}`;
-    if (failed > 0) toast.warning(message); else toast.success(message);
+    const partial = body.results.filter((result) => result.ok && result.error).length;
+    const success = body.results.length - failed - partial;
+    const message = `重新请求全部远端完成：成功 ${success}，部分成功 ${partial}，失败 ${failed}`;
+    if (failed > 0 || partial > 0) toast.warning(message); else toast.success(message);
   } catch (error) {
     toast.error(errorMessage(error));
   } finally {
@@ -130,7 +136,7 @@ async function streamRefreshAll(setProgress: (value: BulkProgress) => void, setP
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  const results: Array<{ ok: boolean }> = [];
+  const results: Array<{ ok: boolean; error?: string }> = [];
   while (true) {
     const chunk = await reader.read();
     buffer += decoder.decode(chunk.value ?? new Uint8Array(), { stream: !chunk.done });
@@ -142,7 +148,7 @@ async function streamRefreshAll(setProgress: (value: BulkProgress) => void, setP
   return { results };
 }
 
-function handleProgressFrame(frame: string, setProgress: (value: BulkProgress) => void, setPendingSiteIds: SetPendingSiteIds, results: Array<{ ok: boolean }>) {
+function handleProgressFrame(frame: string, setProgress: (value: BulkProgress) => void, setPendingSiteIds: SetPendingSiteIds, results: Array<{ ok: boolean; error?: string }>) {
   const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
   if (!data) return;
   const event = JSON.parse(data) as RefreshProgressEvent;
@@ -150,7 +156,7 @@ function handleProgressFrame(frame: string, setProgress: (value: BulkProgress) =
   if (event.type === "finished") {
     setPendingSiteIds((current) => { const next = new Set(current); next.delete(event.id); return next; });
     setProgress({ completed: event.completed, total: event.total });
-    results.push({ ok: event.ok });
+    results.push({ ok: event.ok, ...(event.error ? { error: event.error } : {}) });
   }
   if (event.type === "complete") setProgress({ completed: event.completed, total: event.total });
 }

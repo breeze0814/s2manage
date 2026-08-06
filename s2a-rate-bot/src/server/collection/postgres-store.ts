@@ -4,7 +4,7 @@ import { execute, postgresTransaction, row, rows, type PostgresContext } from ".
 import { readPostgresChanges, readPostgresRuns } from "./postgres-history.ts";
 import { readPostgresRateCatalog, readPostgresRates, setPostgresRateGroupType, setPostgresRatePlatform } from "./postgres-rate-catalog.ts";
 import { compareRateSnapshots, type PendingRateChange } from "./rate-changes.ts";
-import { CollectionRefreshSupersededError, type CollectionStore, type RefreshFailure, type RefreshSuccess, type SiteWrite } from "./store.ts";
+import { CollectionRefreshSupersededError, refreshCompletion, type CollectionStore, type RefreshFailure, type RefreshSuccess, type SiteWrite } from "./store.ts";
 import type { CollectionSiteStored } from "./types.ts";
 
 const MISSING_BINDINGS_RULE_ERROR = "绑定的采集分组已删除，倍率规则已自动停用";
@@ -83,13 +83,15 @@ async function beginRefresh(context: PostgresContext, id: number) {
 
 async function recordSuccess(context: PostgresContext, input: RefreshSuccess) {
   const finishedAt = new Date().toISOString();
+  const completion = refreshCompletion(input.overview);
   await postgresTransaction(context, async (client) => {
     await assertCurrentRefresh(client, input.siteId, input.refreshVersion);
+    await updateCompletedSite(client, { input, completion, finishedAt });
+    const runId = await insertRun(client, { siteId: input.siteId, ...completion,
+      startedAt: input.startedAt, finishedAt });
+    if (input.overview.rates === null) return;
     const previous = await currentRateIdentities(client, input.siteId);
     const changes = compareRateSnapshots(previous, input.overview.rates);
-    await updateSuccessfulSite(client, input, finishedAt);
-    const runId = await insertRun(client, { siteId: input.siteId, status: "success", error: null,
-      groupCount: input.overview.rates.length, startedAt: input.startedAt, finishedAt });
     await insertChanges(client, runId, input.siteId, changes, finishedAt);
     await replaceRates(client, input.siteId, input.overview.rates);
     await removeMissingBindings(client, input.siteId, finishedAt);
@@ -121,14 +123,22 @@ async function currentRateIdentities(client: PoolClient, siteId: number) {
     platform: nullableText(value.platform) ?? undefined, effectiveRate: Number(value.effective_rate) } as SourceRateSnapshot));
 }
 
-async function updateSuccessfulSite(client: PoolClient, input: RefreshSuccess, finishedAt: string) {
-  const account = input.overview.account;
-  await client.query(`UPDATE collection_sites SET account_label=$2,balance=$3,today_consume=$4,
-    history_recharge=$5,last_run_at=$6,last_success_at=$6,last_status='success',last_error=NULL,
-    consecutive_failures=0,access_token_enc=COALESCE($7,access_token_enc),
-    refresh_token_enc=COALESCE($8,refresh_token_enc),updated_at=$6 WHERE id=$1`,
-  [input.siteId, account.label, account.balance, account.todayConsume, account.historyRecharge, finishedAt,
+async function updateCompletedSite(client: PoolClient, options: Readonly<{
+  input: RefreshSuccess;
+  completion: ReturnType<typeof refreshCompletion>;
+  finishedAt: string;
+}>) {
+  const { input, completion, finishedAt } = options;
+  await client.query(`UPDATE collection_sites SET last_run_at=$2,last_success_at=$2,last_status=$3,last_error=$4,
+    consecutive_failures=0,access_token_enc=COALESCE($5,access_token_enc),
+    refresh_token_enc=COALESCE($6,refresh_token_enc),updated_at=$2 WHERE id=$1`,
+  [input.siteId, finishedAt, completion.status, completion.error,
     input.credentials?.accessTokenEnc ?? null, input.credentials?.refreshTokenEnc ?? null]);
+  const account = input.overview.account;
+  if (account === null) return;
+  await client.query(`UPDATE collection_sites SET account_label=$2,balance=$3,today_consume=$4,
+    history_recharge=$5 WHERE id=$1`,
+  [input.siteId, account.label, account.balance, account.todayConsume, account.historyRecharge]);
 }
 
 async function insertRun(client: PoolClient, input: Readonly<{ siteId: number; status: string; error: string | null;

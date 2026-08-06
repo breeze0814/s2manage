@@ -13,7 +13,7 @@ export type CollectionChangesQuery = {
   readonly changeType?: CollectionRateChangeType;
 };
 
-export type CollectionRunStatus = "success" | "failed";
+export type CollectionRunStatus = "success" | "partial" | "failed";
 
 export type CollectionRunRecord = {
   readonly id: number;

@@ -33,6 +33,7 @@ export function successOverview(
       todayConsume: values.todayConsume ?? 1.25, historyRecharge: values.historyRecharge ?? 30,
     },
     rates: [{ sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai", rawRate: rate, effectiveRate: rate, collectedAt: new Date() }],
+    errors: [],
   };
 }
 
@@ -40,6 +41,5 @@ export function sourceRate(input: Readonly<{ siteId: number; groupId: string; gr
   return { sourceSiteId: input.siteId, groupId: input.groupId, groupName: input.groupName, platform: "openai", rawRate: input.effectiveRate, effectiveRate: input.effectiveRate, collectedAt: new Date() };
 }
 
-export type CollectionCollector = {
-  readonly collect: (input: { site: { id: number; siteType: string } }) => Promise<ReturnType<typeof successOverview>>;
-};
+export type CollectionCollector = RuntimeCollectionCollector;
+import type { CollectionCollector as RuntimeCollectionCollector } from "../src/server/collection/types.ts";

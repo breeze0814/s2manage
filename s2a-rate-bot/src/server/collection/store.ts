@@ -129,21 +129,39 @@ function beginRefresh(database: DatabaseSync, siteId: number) {
 
 function recordSuccess(database: DatabaseSync, input: RefreshSuccess) {
   const finishedAt = nowIso();
+  const completion = refreshCompletion(input.overview);
   transaction(database, () => {
     assertCurrentRefresh(database, input.siteId, input.refreshVersion);
+    updateCompletedSite(database, { input, completion, finishedAt });
+    const runId = insertRun(database, { siteId: input.siteId, ...completion,
+      startedAt: input.startedAt, finishedAt });
+    if (input.overview.rates === null) return;
     const changes = compareRateSnapshots(readRates(database, input.siteId), input.overview.rates);
-    database.prepare(`UPDATE collection_sites SET account_label=:label, balance=:balance,
-      today_consume=:todayConsume, history_recharge=:historyRecharge,
-      last_run_at=:finishedAt, last_success_at=:finishedAt, last_status='success', last_error=NULL,
-      consecutive_failures=0, access_token_enc=COALESCE(:accessTokenEnc, access_token_enc),
-      refresh_token_enc=COALESCE(:refreshTokenEnc, refresh_token_enc), updated_at=:finishedAt
-      WHERE id=:siteId`).run({ siteId: input.siteId, label: input.overview.account.label, balance: input.overview.account.balance,
-      todayConsume: input.overview.account.todayConsume, historyRecharge: input.overview.account.historyRecharge,
-      accessTokenEnc: input.credentials?.accessTokenEnc ?? null, refreshTokenEnc: input.credentials?.refreshTokenEnc ?? null, finishedAt });
-    const runId = insertRun(database, { siteId: input.siteId, status: "success", error: null, groupCount: input.overview.rates.length, startedAt: input.startedAt, finishedAt });
     insertChanges(database, { runId, siteId: input.siteId, changes, collectedAt: finishedAt });
     replaceRates(database, input.siteId, input.overview.rates);
     removeMissingBindings(database, input.siteId);
+  });
+}
+
+function updateCompletedSite(database: DatabaseSync, options: Readonly<{
+  input: RefreshSuccess;
+  completion: RefreshCompletion;
+  finishedAt: string;
+}>) {
+  const { input, completion, finishedAt } = options;
+  database.prepare(`UPDATE collection_sites SET
+      last_run_at=:finishedAt, last_success_at=:finishedAt, last_status=:status, last_error=:error,
+      consecutive_failures=0, access_token_enc=COALESCE(:accessTokenEnc, access_token_enc),
+      refresh_token_enc=COALESCE(:refreshTokenEnc, refresh_token_enc), updated_at=:finishedAt
+      WHERE id=:siteId`).run({ siteId: input.siteId, status: completion.status, error: completion.error,
+    accessTokenEnc: input.credentials?.accessTokenEnc ?? null,
+    refreshTokenEnc: input.credentials?.refreshTokenEnc ?? null, finishedAt });
+  const account = input.overview.account;
+  if (account === null) return;
+  database.prepare(`UPDATE collection_sites SET account_label=:label, balance=:balance,
+    today_consume=:todayConsume, history_recharge=:historyRecharge WHERE id=:siteId`).run({
+    siteId: input.siteId, label: account.label, balance: account.balance,
+    todayConsume: account.todayConsume, historyRecharge: account.historyRecharge,
   });
 }
 
@@ -228,6 +246,17 @@ export class CollectionRefreshSupersededError extends Error {
     super(`采集站 ${siteId} 的刷新结果已过期，未写入本地状态`);
   }
 }
+
+export function refreshCompletion(overview: CollectionOverview) {
+  const error = overview.errors.length > 0 ? overview.errors.join("；") : null;
+  return {
+    status: error ? "partial" as const : "success" as const,
+    error,
+    groupCount: overview.rates?.length ?? 0,
+  };
+}
+
+type RefreshCompletion = ReturnType<typeof refreshCompletion>;
 
 function nullableText(value: unknown) { return value === null || value === undefined ? null : String(value); }
 function nullableNumber(value: unknown) { return value === null || value === undefined ? null : Number(value); }

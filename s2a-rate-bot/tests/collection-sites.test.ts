@@ -139,7 +139,7 @@ test("successful refresh records added updated and deleted group rates", async (
       const rates = collection === 1
         ? [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2 }), sourceRate({ siteId: site.id, groupId: "legacy", groupName: "Legacy", effectiveRate: 3 })]
         : [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2.5 }), sourceRate({ siteId: site.id, groupId: "new", groupName: "New", effectiveRate: 1.2 })];
-      return { account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5, todayConsume: 1, historyRecharge: 20 }, rates };
+      return { account: { sourceSiteId: site.id, label: "source@example.com", balance: 12.5, todayConsume: 1, historyRecharge: 20 }, rates, errors: [] };
     },
   };
   await withCollection(collector, async ({ service, databasePath }) => {
@@ -173,6 +173,7 @@ test("successful refresh removes bindings for deleted source groups", async () =
       rates: ++collection === 1
         ? [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2 }), sourceRate({ siteId: site.id, groupId: "legacy", groupName: "Legacy", effectiveRate: 3 })]
         : [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 2.5 })],
+      errors: [],
     }),
   };
   await withCollection(collector, async ({ service, databasePath }) => {
@@ -245,6 +246,62 @@ test("failed API refresh preserves the last persisted balance and rates", async 
   });
 });
 
+test("account API failure preserves account data while updating rates", async () => {
+  let partial = false;
+  const collector: CollectionCollector = {
+    collect: async ({ site }) => partial
+      ? { account: null, rates: [sourceRate({ siteId: site.id, groupId: "vip", groupName: "VIP", effectiveRate: 4 })], errors: ["账户信息接口：请求超时"] }
+      : successOverview(site.id),
+  };
+  await withCollection(collector, async ({ service }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+    partial = true;
+
+    const refreshed = await service.refresh(site.id);
+    assert.equal(refreshed.lastStatus, "partial");
+    assert.equal(refreshed.lastError, "账户信息接口：请求超时");
+    assert.equal(refreshed.balance, 12.5);
+    assert.equal((await service.rates(site.id))[0]?.effectiveRate, 4);
+    assert.equal((await service.runs({ siteId: site.id }))[0]?.status, "partial");
+  });
+});
+
+test("rate API failure preserves rates while updating account data", async () => {
+  let partial = false;
+  const collector: CollectionCollector = {
+    collect: async ({ site }) => partial
+      ? { ...successOverview(site.id, { balance: 88 }), rates: null, errors: ["倍率接口：HTTP 503"] }
+      : successOverview(site.id),
+  };
+  await withCollection(collector, async ({ service }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+    partial = true;
+
+    const refreshed = await service.refresh(site.id);
+    assert.equal(refreshed.lastStatus, "partial");
+    assert.equal(refreshed.balance, 88);
+    assert.deepEqual((await service.rates(site.id)).map((rate) => rate.groupId), ["vip"]);
+  });
+});
+
+test("successful empty rate response clears persisted rates", async () => {
+  let empty = false;
+  const collector: CollectionCollector = {
+    collect: async ({ site }) => empty ? { ...successOverview(site.id), rates: [] } : successOverview(site.id),
+  };
+  await withCollection(collector, async ({ service }) => {
+    const site = await service.create(sourceInput());
+    await service.refresh(site.id);
+    empty = true;
+
+    const refreshed = await service.refresh(site.id);
+    assert.equal(refreshed.lastStatus, "success");
+    assert.deepEqual(await service.rates(site.id), []);
+  });
+});
+
 test("an older concurrent refresh cannot overwrite a newer result", async () => {
   let calls = 0;
   let releaseFirst: (() => void) | undefined;
@@ -279,19 +336,22 @@ test("refresh all reports each enabled site result without hiding failures", asy
   const collector: CollectionCollector = {
     collect: async ({ site }) => {
       if (site.siteType === "newapi") throw new Error("newapi failed");
+      if (site.name === "Partial") return { ...successOverview(site.id), rates: null, errors: ["倍率接口：timeout"] };
       return successOverview(site.id);
     },
   };
   await withCollection(collector, async ({ service }) => {
     await service.create(sourceInput());
     await service.create(sourceInput({ name: "New API", siteType: "newapi", authMode: "manual_token", accessToken: "token" }));
+    await service.create(sourceInput({ name: "Partial" }));
     await service.create(sourceInput({ name: "Disabled", enabled: false }));
 
     const progress: Array<{ type: string }> = [];
     const results = await service.refreshAllWithProgress((event) => progress.push(event));
 
-    assert.deepEqual(results.map((result: { ok: boolean }) => result.ok), [true, false]);
+    assert.deepEqual(results.map((result: { ok: boolean }) => result.ok), [true, false, true]);
     assert.match(results[1].error ?? "", /newapi failed/);
+    assert.match(results[2].error ?? "", /倍率接口/);
     assert.equal(progress.at(-1)?.type, "complete");
   });
 });

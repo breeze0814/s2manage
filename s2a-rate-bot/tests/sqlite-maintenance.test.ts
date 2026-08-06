@@ -118,7 +118,7 @@ function siteInput() {
 function overview(siteId: number, rate: number) {
   return { account: { sourceSiteId: siteId, label: "user", balance: 1, todayConsume: 0.5, historyRecharge: 10 }, rates: [
     { sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai", rawRate: rate, effectiveRate: rate, collectedAt: NOW },
-  ] };
+  ], errors: [] };
 }
 
 function summary(timestamp: string) {

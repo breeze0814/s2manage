@@ -214,8 +214,8 @@ function MenuItem({ marker, icon, label, danger = false, ...item }: Readonly<{ m
 }
 
 function Status({ site }: Readonly<{ site: SourceSiteView }>) {
-  const text = !site.enabled ? "已停用" : site.lastStatus === "failed" ? "失败" : site.lastStatus === "success" ? "正常" : "未运行";
-  const tone = site.lastStatus === "failed" ? "danger" : site.enabled ? "success" : "neutral";
+  const text = !site.enabled ? "已停用" : site.lastStatus === "failed" ? "失败" : site.lastStatus === "partial" ? "部分成功" : site.lastStatus === "success" ? "正常" : "未运行";
+  const tone = site.lastStatus === "failed" ? "danger" : site.lastStatus === "partial" ? "warning" : site.enabled ? "success" : "neutral";
   return <Tag title={site.lastError ?? undefined} tone={tone}>{text}</Tag>;
 }
 

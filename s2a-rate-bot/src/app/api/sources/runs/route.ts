@@ -42,6 +42,6 @@ function optionalText(value: string | null) {
 
 function parseStatus(value: string | null): CollectionRunStatus | undefined {
   if (value === null || value === "") return undefined;
-  if (value !== "success" && value !== "failed") throw new Error("采集运行状态无效");
+  if (value !== "success" && value !== "partial" && value !== "failed") throw new Error("采集运行状态无效");
   return value;
 }

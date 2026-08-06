@@ -19,7 +19,7 @@ export type SourceSiteView = {
   readonly historyRecharge: number | null;
   readonly lastRunAt: string | null;
   readonly lastSuccessAt: string | null;
-  readonly lastStatus: "success" | "failed" | null;
+  readonly lastStatus: "success" | "partial" | "failed" | null;
   readonly lastError: string | null;
   readonly consecutiveFailures: number;
   readonly hasPassword: boolean;
@@ -76,7 +76,7 @@ export type SourceRunView = {
   readonly id: number;
   readonly sourceSiteId: number;
   readonly sourceSiteName: string;
-  readonly status: "success" | "failed";
+  readonly status: "success" | "partial" | "failed";
   readonly error: string | null;
   readonly groupCount: number;
   readonly startedAt: string;

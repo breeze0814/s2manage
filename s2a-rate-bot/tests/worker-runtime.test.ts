@@ -126,6 +126,24 @@ test("worker preserves completed task counts when notification startup fails", a
   });
 });
 
+test("worker records partial collection errors without failing the source", async () => {
+  const dependencies = baseDependencies({
+    collection: {
+      list: async () => [site(1)],
+      refresh: async () => ({ lastStatus: "partial", lastError: "倍率接口：HTTP 503" }),
+    },
+  });
+
+  await withWorker(dependencies, async ({ worker, store }) => {
+    const summary = await worker.runCycle();
+    assert.equal(summary.collectedSources, 1);
+    assert.equal(summary.failedSources, 0);
+    assert.equal(summary.status, "partial");
+    assert.match(summary.errors.join("\n"), /倍率接口：HTTP 503/);
+    assert.equal((await store.latest())?.status, "partial");
+  });
+});
+
 test("worker entry and status route use the generic worker service", () => {
   const entry = readFileSync(new URL("src/worker/main.ts", ROOT), "utf8");
   const status = readFileSync(new URL("src/app/api/worker/status/route.ts", ROOT), "utf8");

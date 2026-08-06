@@ -65,7 +65,15 @@ function ChangeHistoryList({ changes }: Readonly<{ changes: readonly SourceRateC
 }
 
 function RunList({ runs }: Readonly<{ runs: readonly SourceRunView[] }>) {
-  return <div className="divide-y divide-border rounded-lg border border-border bg-surface">{runs.map((run) => <article key={run.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-medium">{run.sourceSiteName}</span><Tag tone={run.status === "success" ? "success" : "danger"}>{run.status === "success" ? "成功" : "失败"}</Tag><Tag>{run.groupCount} 个分组</Tag></div><p className="mt-1 text-xs text-muted">{formatTime(run.startedAt)} · 耗时 {formatDuration(run.durationMs)}</p>{run.error ? <p className="mt-1 truncate text-xs text-danger" title={run.error}>{run.error}</p> : null}</div><span className="shrink-0 font-mono text-xs tabular-nums text-muted">#{run.id}</span></article>)}</div>;
+  return <div className="divide-y divide-border rounded-lg border border-border bg-surface">{runs.map((run) => <article key={run.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-medium">{run.sourceSiteName}</span><Tag tone={runTone(run.status)}>{runLabel(run.status)}</Tag><Tag>{run.groupCount} 个分组</Tag></div><p className="mt-1 text-xs text-muted">{formatTime(run.startedAt)} · 耗时 {formatDuration(run.durationMs)}</p>{run.error ? <p className="mt-1 truncate text-xs text-danger" title={run.error}>{run.error}</p> : null}</div><span className="shrink-0 font-mono text-xs tabular-nums text-muted">#{run.id}</span></article>)}</div>;
+}
+
+function runTone(status: SourceRunView["status"]) {
+  return status === "success" ? "success" as const : status === "partial" ? "warning" as const : "danger" as const;
+}
+
+function runLabel(status: SourceRunView["status"]) {
+  return status === "success" ? "成功" : status === "partial" ? "部分成功" : "失败";
 }
 
 function ChangeIcon({ change }: Readonly<{ change: SourceRateChangeView }>) {

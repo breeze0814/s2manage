@@ -115,7 +115,10 @@ async function executeCycle(input: WorkerDependencies, startedAt: string) {
 
 async function refreshSource(input: WorkerDependencies, source: WorkerSource): Promise<TaskResult> {
   try {
-    await input.collection.refresh(source.id);
+    const refreshed = await input.collection.refresh(source.id);
+    if (isPartialRefresh(refreshed)) {
+      return { outcome: "success", error: `采集站 ${source.name}(${source.id}): ${refreshed.lastError}` };
+    }
     return { outcome: "success" };
   } catch (error) {
     return { outcome: "failed", error: `采集站 ${source.name}(${source.id}): ${errorMessage(error)}` };
@@ -176,6 +179,12 @@ function completedSummary(input: Readonly<{
     startedAt: input.startedAt,
     finishedAt: input.finishedAt,
   };
+}
+
+function isPartialRefresh(value: unknown): value is { readonly lastStatus: "partial"; readonly lastError: string } {
+  if (!value || typeof value !== "object") return false;
+  const refresh = value as Record<string, unknown>;
+  return refresh.lastStatus === "partial" && typeof refresh.lastError === "string";
 }
 
 async function runNotifications(input: WorkerDependencies): Promise<TaskStats> {

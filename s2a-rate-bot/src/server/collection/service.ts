@@ -146,10 +146,12 @@ async function refreshAllSites(input: CollectionDependencies, onProgress?: (even
   const results = await Promise.all(sites.map(async (site) => {
     onProgress?.({ type: "started", id: site.id, name: site.name, total: sites.length });
     try {
-      await refreshSite(input, site.id);
-      const result = { id: site.id, ok: true } as const;
+      const refreshed = await refreshSite(input, site.id);
+      const error = refreshed.lastStatus === "partial" ? refreshed.lastError ?? "部分接口采集失败" : undefined;
+      const result = { id: site.id, ok: true, ...(error ? { error } : {}) } as const;
       completed += 1;
-      onProgress?.({ type: "finished", id: site.id, name: site.name, completed, total: sites.length, ok: true });
+      onProgress?.({ type: "finished", id: site.id, name: site.name, completed,
+        total: sites.length, ok: true, ...(error ? { error } : {}) });
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
