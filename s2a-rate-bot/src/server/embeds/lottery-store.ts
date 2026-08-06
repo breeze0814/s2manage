@@ -257,6 +257,7 @@ function mapEntry(row: EntryRow): LotteryEntry {
     maskedEmail: row.masked_email, status: row.status, prizeId: row.prize_id,
     prizeName: row.prize_name, prizeType: row.prize_type, prizeValue: row.prize_value,
     redemptionCode: row.redemption_code, rewardCodeId: row.reward_code_id,
+    rewardStatus: null,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }

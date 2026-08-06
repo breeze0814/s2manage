@@ -41,10 +41,10 @@ test("SQLite notification state preserves independent cursors", async () => {
   const directory = await mkdtemp(join(tmpdir(), "s2a-telegram-state-"));
   const store = createSqliteTelegramStateStore(`file:${join(directory, "app.db")}`);
   try {
-    assert.deepEqual(store.get(), { lastBalancePushAt: null, lastRateChangeId: null });
-    store.markBalancePushed(NOW.toISOString());
-    store.markRateChangesPushed(14);
-    assert.deepEqual(store.get(), { lastBalancePushAt: NOW.toISOString(), lastRateChangeId: 14 });
+    assert.deepEqual(await store.get(), { lastBalancePushAt: null, lastRateChangeId: null });
+    await store.markBalancePushed(NOW.toISOString());
+    await store.markRateChangesPushed(14);
+    assert.deepEqual(await store.get(), { lastBalancePushAt: NOW.toISOString(), lastRateChangeId: 14 });
   } finally {
     store.close();
     await rm(directory, { recursive: true, force: true });
@@ -59,14 +59,14 @@ test("notifications push hourly balances and only future rate changes", async ()
 
   assert.deepEqual(firstResult, { success: 1, skipped: 1, failed: 0, errors: [] });
   assert.match(messages[0] ?? "", /采集站账户余额/);
-  assert.equal(state.get().lastBalancePushAt, NOW.toISOString());
-  assert.equal(state.get().lastRateChangeId, 9);
+  assert.equal((await state.get()).lastBalancePushAt, NOW.toISOString());
+  assert.equal((await state.get()).lastRateChangeId, 9);
 
   const second = notificationService({ state, messages, changes: [rateChange(10)] });
   const secondResult = await second.run();
   assert.deepEqual(secondResult, { success: 1, skipped: 1, failed: 0, errors: [] });
   assert.match(messages[1] ?? "", /2 -> 2\.5/);
-  assert.equal(state.get().lastRateChangeId, 10);
+  assert.equal((await state.get()).lastRateChangeId, 10);
 });
 
 test("failed rate change delivery does not advance the cursor", async () => {
@@ -81,7 +81,7 @@ test("failed rate change delivery does not advance the cursor", async () => {
   const result = await service.run();
   assert.equal(result.failed, 1);
   assert.match(result.errors.join("\n"), /telegram unavailable/);
-  assert.equal(state.get().lastRateChangeId, 9);
+  assert.equal((await state.get()).lastRateChangeId, 9);
 });
 
 function notificationService(input: Readonly<{ state: TelegramStateStore; messages: string[]; changes: ReturnType<typeof rateChange>[] }>) {

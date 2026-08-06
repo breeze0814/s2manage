@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, flag, nowIso, sqlitePath } from "../../storage/sqlite-utils.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type StoredSettings = {
   readonly targetName: string;
@@ -19,9 +20,9 @@ export type StoredSettings = {
 };
 
 export type SettingsStore = {
-  readonly get: () => StoredSettings | null;
-  readonly save: (settings: StoredSettings) => void;
-  readonly close: () => void;
+  readonly get: () => Awaitable<StoredSettings | null>;
+  readonly save: (settings: StoredSettings) => Awaitable<void>;
+  readonly close: () => Awaitable<void>;
 };
 
 export function createSqliteSettingsStore(databaseUrl: string): SettingsStore {

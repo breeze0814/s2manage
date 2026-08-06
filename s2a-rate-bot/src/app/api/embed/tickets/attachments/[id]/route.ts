@@ -8,7 +8,7 @@ export async function GET(request: NextRequest, { params }: Context) {
   try {
     const runtime = getRuntimeEmbedServices();
     const identity = await requireEmbedIdentity(request, "tickets", runtime.sessions);
-    const file = runtime.tickets.attachmentUser(params.id, identity);
+    const file = await runtime.tickets.attachmentUser(params.id, identity);
     return new Response(Buffer.from(file.data), {
       headers: { "content-type": file.contentType, "content-length": String(file.sizeBytes), "cache-control": "private, no-store" },
     });

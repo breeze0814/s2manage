@@ -8,6 +8,7 @@ import type { WorkerCycleResult } from "../server/worker/service.ts";
 const HEALTH_SCHEDULER_POLL_MS = 1_000;
 const HEALTH_RETRY_DELAY_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const LOTTERY_POLL_MS = 2_000;
 let stopping = false;
 const wakeDelays = new Set<() => void>();
 
@@ -23,7 +24,7 @@ export async function runWorker() {
   } finally {
     clearInterval(heartbeat);
     await writeWorkerLog({ event: "worker_stopped" });
-    worker.close();
+    await worker.close();
   }
 }
 
@@ -36,7 +37,7 @@ async function runLoops(
   worker: ReturnType<typeof getRuntimeWorkerService>,
   runOnce: boolean,
 ) {
-  const loops = [runCollectionLoop(worker, runOnce), runHealthLoop(worker, runOnce)];
+  const loops = [runCollectionLoop(worker, runOnce), runHealthLoop(worker, runOnce), runLotteryLoop(worker, runOnce)];
   try {
     await Promise.all(loops);
   } catch (error) {
@@ -44,6 +45,23 @@ async function runLoops(
     await Promise.allSettled(loops);
     throw error;
   }
+}
+
+async function runLotteryLoop(
+  worker: ReturnType<typeof getRuntimeWorkerService>,
+  runOnce: boolean,
+) {
+  do {
+    try {
+      await worker.runLotteryCycle();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await writeWorkerLog({ event: "lottery_cycle_failed", error: message });
+      console.error(`[worker] lottery: ${message}`);
+      if (runOnce) throw error;
+    }
+    if (!runOnce && !stopping) await delay(LOTTERY_POLL_MS);
+  } while (!runOnce && !stopping);
 }
 
 async function runCollectionLoop(

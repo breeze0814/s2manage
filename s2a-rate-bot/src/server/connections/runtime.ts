@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 import { getRuntimeCollectionService } from "../collection/runtime.ts";
 import { createConnectionHealthRuntime } from "../connection-health/runtime.ts";
-import { createSqliteRuntimeLeaseStore } from "../runtime-leases/store.ts";
+import { createRedisRuntimeLeaseStore } from "../runtime-leases/redis-store.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { getRuntimeTargetGroupService } from "../target-groups/runtime.ts";
 import { createRuntimeConnectionRemoteGateway } from "./remote-gateway.ts";
 import { createConnectionService, type ConnectionService } from "./service.ts";
-import { createSqliteConnectionStore } from "./store.ts";
+import { createPostgresConnectionStore } from "./postgres-store.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const RUNTIME_VERSION = 2;
 type RuntimeCache = { readonly version: number; readonly service: ConnectionService; readonly close: () => void };
 const runtime = globalThis as typeof globalThis & { s2aConnectionRuntime?: RuntimeCache };
@@ -30,9 +30,9 @@ function buildRuntime(env: NodeJS.ProcessEnv): RuntimeCache {
   const collection = getRuntimeCollectionService(env);
   const targetGroups = getRuntimeTargetGroupService(env);
   const settings = getRuntimeSettingsService(env);
-  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
-  const store = createSqliteConnectionStore(databaseUrl);
-  const leases = createSqliteRuntimeLeaseStore(databaseUrl);
+  const infrastructure = getRuntimeInfrastructure(env);
+  const store = createPostgresConnectionStore(infrastructure.postgres);
+  const leases = createRedisRuntimeLeaseStore(infrastructure.redis);
   const health = createConnectionHealthRuntime(env);
   const service = createConnectionService({
     store,

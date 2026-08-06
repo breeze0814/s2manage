@@ -36,8 +36,8 @@ export async function runDueProbes(context: HealthContext) {
 }
 
 async function executeProbe(context: HealthContext, connectionId: string) {
-  const connection = activeConnection(context, connectionId);
-  const monitor = requiredMonitor(context, connection.id);
+  const connection = await activeConnection(context, connectionId);
+  const monitor = await requiredMonitor(context, connection.id);
   const accountId = requiredTargetAccount(connection);
   const startedAt = Date.now();
   let result: ProbeResult;
@@ -68,20 +68,20 @@ async function recordProbe(context: HealthContext, input: ProbeRecord): Promise<
     action = await applyAutomaticAction(context, { ...input, state });
   } catch (error) {
     const retryable = retryableActionState(state);
-    context.store.saveStateAndEvent(retryable, probeEvent({
+    await context.store.saveStateAndEvent(retryable, probeEvent({
       monitor: input.monitor, state: retryable, result: input.result, at: at.toISOString(),
     }));
     throw error;
   }
-  context.store.saveStateAndEvent(state, probeEvent({
+  await context.store.saveStateAndEvent(state, probeEvent({
     monitor: input.monitor, state, result: input.result, at: at.toISOString(),
   }));
-  if (action) appendAction(context, {
+  if (action) await appendAction(context, {
     connectionId: input.connection.id, fromState: input.monitor.state,
     toState: state.state, message: action.message, result: "success",
   });
   return {
-    monitor: requiredMonitor(context, input.connection.id),
+    monitor: await requiredMonitor(context, input.connection.id),
     success: input.result.success,
     message: input.result.message,
   };
@@ -100,7 +100,7 @@ async function applyAutomaticAction(context: HealthContext, input: AutomaticActi
     });
   }
   if (input.state.state !== "healthy" || input.monitor.suspensionReason !== "automatic" || !policy.autoRestore) return null;
-  const schedulable = originalSchedule(context, input.connection);
+  const schedulable = await originalSchedule(context, input.connection);
   const message = schedulable ? "恢复探测达标，已恢复接管前调度状态" : "恢复探测达标，接管前状态为不可调度";
   return runScheduleAction(context, {
     connection: input.connection,
@@ -116,9 +116,9 @@ async function executeManualAction(
   connectionId: string,
   action: "suspend" | "restore",
 ) {
-  const connection = activeConnection(context, connectionId);
-  const monitor = requiredMonitor(context, connection.id);
-  const schedulable = action === "restore" ? originalSchedule(context, connection) : false;
+  const connection = await activeConnection(context, connectionId);
+  const monitor = await requiredMonitor(context, connection.id);
+  const schedulable = action === "restore" ? await originalSchedule(context, connection) : false;
   const nextState = action === "restore" ? "observing" : "suspended";
   const message = manualActionMessage(action, schedulable);
   await executeSchedule(context, {
@@ -127,7 +127,7 @@ async function executeManualAction(
   const state = manualState(context, {
     monitor, state: nextState, suspensionReason: action === "suspend" ? "manual" : null,
   });
-  context.store.saveStateAndEvent(state, actionEvent({
+  await context.store.saveStateAndEvent(state, actionEvent({
     connectionId, fromState: monitor.state, toState: nextState,
     message, result: "success", at: state.updatedAt,
   }));
@@ -155,10 +155,10 @@ async function executeSchedule(context: HealthContext, input: ScheduleInput) {
 }
 
 async function executeDueProbes(context: HealthContext) {
-  const activeIds = new Set(context.connections.list()
+  const activeIds = new Set((await context.connections.list())
     .filter((connection) => connection.status === "active")
     .map((connection) => connection.id));
-  const due = context.store.listDue(context.now().toISOString())
+  const due = (await context.store.listDue(context.now().toISOString()))
     .filter((monitor) => activeIds.has(monitor.connectionId));
   const results = await mapConcurrent({
     items: due,
@@ -192,15 +192,15 @@ function manualState(context: HealthContext, input: ManualStateInput): Connectio
   };
 }
 
-function appendAction(context: HealthContext, input: ActionEventInput) {
-  context.store.appendEvent(actionEvent({
+async function appendAction(context: HealthContext, input: ActionEventInput) {
+  await context.store.appendEvent(actionEvent({
     ...input,
     at: context.now().toISOString(),
   }));
 }
 
-function activeConnection(context: HealthContext, id: string) {
-  const connection = context.connections.get(id);
+async function activeConnection(context: HealthContext, id: string) {
+  const connection = await context.connections.get(id);
   if (!connection) throw new Error(`真实连接不存在: ${id}`);
   if (connection.status !== "active") {
     throw new HealthPolicyConflictError(`真实连接当前状态不可探测: ${connection.status}`);
@@ -208,8 +208,8 @@ function activeConnection(context: HealthContext, id: string) {
   return connection;
 }
 
-function requiredMonitor(context: HealthContext, connectionId: string) {
-  const monitor = context.store.monitor(connectionId);
+async function requiredMonitor(context: HealthContext, connectionId: string) {
+  const monitor = await context.store.monitor(connectionId);
   if (!monitor) throw new HealthPolicyConflictError("真实连接尚未分配健康策略");
   return monitor;
 }

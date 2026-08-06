@@ -4,17 +4,17 @@ import type { ConnectionView, RealConnection } from "./types.ts";
 const RESOURCE_NAME_LIMIT = 80;
 const ERROR_MESSAGE_LIMIT = 1_000;
 
-export function requiredConnection(context: ConnectionContext, id: string) {
-  const connection = context.store.get(id);
+export async function requiredConnection(context: ConnectionContext, id: string) {
+  const connection = await context.store.get(id);
   if (!connection) throw new Error(`真实连接不存在: ${id}`);
   return connection;
 }
 
-export function ensureResourceName(context: ConnectionContext, connection: RealConnection) {
+export async function ensureResourceName(context: ConnectionContext, connection: RealConnection) {
   if (connection.resourceName) return connection.resourceName;
   const raw = `s2a-${connection.sourceSiteName}-${connection.sourceGroupName}-${connection.id.slice(0, 8)}`;
   const resourceName = raw.replace(/\s+/g, "-").slice(0, RESOURCE_NAME_LIMIT);
-  context.store.setResourceName({ id: connection.id, resourceName, at: context.now().toISOString() });
+  await context.store.setResourceName({ id: connection.id, resourceName, at: context.now().toISOString() });
   return resourceName;
 }
 

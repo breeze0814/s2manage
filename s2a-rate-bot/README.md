@@ -5,42 +5,63 @@
 ## 功能
 
 - 首次启动初始化管理员，后续使用邮箱和密码登录。
-- 在 SQLite 中保存全局配置、采集站、倍率快照、账号采集分组绑定、测试联动策略、账号测试状态、带格式版本的分组规则和 Worker 运行记录。
+- PostgreSQL 保存全局配置、采集站、倍率快照、规则、账号状态、真实连接、工单、补偿、抽奖和 Worker 运行记录。
+- Redis 保存 30 分钟嵌入会话，并提供真实连接、健康治理和账号调度的分布式操作租约。
 - 使用 AES-256-GCM 加密目标站 Admin Key、采集站密码和 Token。
-- 直接从目标站读取分组与账号，SQLite 不作为目标站状态的权威来源。
+- 直接从目标站读取分组与账号，PostgreSQL 中的快照用于规则计算、审计和故障恢复。
 - 支持 Sub2API 与 New API 采集站，统一应用代理、请求超时和错误格式。
 - 通用 Worker 按站点间隔并发采集，并在采集后应用已启用的倍率规则。
 - 提供可嵌入 Sub2API 的工单、抽奖、订单补偿和用量排行榜页面，并在管理端统一配置与运营。
 - 工单支持四态流转、分类/优先级、图片附件和客服回复；单图上限 2 MB，整次附件请求上限 13 MB。
-- 抽奖支持即时开奖中奖率、定时开奖奖品份数、报名撤回、自动兑换码和公开或私密中奖名单。
+- 抽奖支持即时开奖、定时开奖和活动期间每日一次三种预设，以及异步自动发码和公开或私密中奖名单。
 - 订单补偿支持加密配置联动小铺凭据、活动时间与补偿比例；计算完成后按合计金额自动生成余额兑换码，并保留明确的成功或失败记录。
 
 ## 运行要求
 
 - Node.js 22.13 或更高版本。
-- 本地可写目录，用于 SQLite 数据库。
+- PostgreSQL 16 或兼容版本。
+- Redis 7 或兼容版本。
 - 可访问目标站和采集站的网络环境。
 
 ## 环境变量
 
-复制 `.env.example` 为 `.env`，供 Next.js Web、Worker 和 PM2 共同读取；至少设置 `APP_SECRET`：
+复制 `.env.example` 为 `.env`，供 Next.js Web、Worker 和 PM2 共同读取。`APP_SECRET`、`POSTGRES_URL` 和 `REDIS_URL` 均为必填项：
 
 ```bash
 APP_SECRET=replace-with-a-random-secret
-DATABASE_URL=file:./data/s2a-rate-bot.db
+POSTGRES_URL=postgresql://s2a:postgres-password@127.0.0.1:5432/s2a_rate_bot
+REDIS_URL=redis://:redis-password@127.0.0.1:6379
+SQLITE_MIGRATION_URL=file:./data/s2a-rate-bot.db
 PORT=18074
 ```
 
 `APP_SECRET` 同时用于会话签名和敏感配置加密。生产环境可使用 `openssl rand -hex 32` 生成随机值；更换该值后，已有密文配置无法解密，需要重新录入。
 
-`DATABASE_URL` 仅支持本地 `file:` SQLite URL；默认值为 `file:./data/s2a-rate-bot.db`。
+`POSTGRES_URL` 和 `REDIS_URL` 必须是完整连接 URL，代码中不包含默认凭据或连接降级。应用启动时会执行版本化 PostgreSQL schema 迁移，并在连接失败时明确报错。
+
+`SQLITE_MIGRATION_URL` 只供一次性旧数据导入命令使用，不参与 Web 或 Worker 运行。迁移完成并核对数据后可以从生产环境删除该变量。
 
 ## 本地开发
 
 ```bash
 npm ci
+npm run typecheck
 npm run dev
 ```
+
+项目提供本地 PostgreSQL/Redis Compose 配置。先在 `.env` 中填写 `.env.example` 的 `POSTGRES_*`、`REDIS_*` 和两个连接 URL，再启动基础设施：
+
+```bash
+docker compose -f compose.dev.yml --env-file .env up -d
+```
+
+从旧 SQLite 数据库迁移全部业务数据：
+
+```bash
+npm run migrate:postgres
+```
+
+该命令要求同时配置 `SQLITE_MIGRATION_URL` 和 `POSTGRES_URL`。导入在单个 PostgreSQL 事务中执行，可按主键重复运行；任何表或抽奖结构转换失败都会回滚并返回错误。
 
 管理端默认地址为 `http://127.0.0.1:18074`。首次访问时，登录对话框会切换到管理员初始化流程。
 
@@ -65,19 +86,19 @@ $env:PORT='19000'; npm run dev
 
 ## Worker
 
-Worker 是独立常驻进程，与 Next.js Web 进程共享同一个 SQLite 数据库和 `.env` 配置：
+Worker 是独立常驻进程，与 Next.js Web 进程共享 PostgreSQL、Redis 和同一份 `.env` 配置：
 
 ```bash
 npm run worker
 ```
 
-Worker 启动脚本会从项目根目录的 `.env` 加载 `APP_SECRET`、`DATABASE_URL` 等运行配置。
+Worker 启动脚本会从项目根目录的 `.env` 加载 `APP_SECRET`、`POSTGRES_URL` 和 `REDIS_URL` 等运行配置。
 
 每轮运行会重新读取全局 Worker 间隔和并发数。收到 `SIGINT` 或 `SIGTERM` 后，进程会结束当前周期或等待并安全退出。
 
-Worker 会每小时执行一次 SQLite 历史清理，仅保留最近 2 天的采集运行、倍率变化、Worker 运行记录和账号测试结果；采集站配置、账号绑定及最新状态快照会持续保留。删除过期数据后会压缩数据库并截断 WAL，避免数据库文件持续膨胀。首页“最近倍率变化”仅查询并展示最近 24 小时的数据。
+Worker 会每小时执行一次 PostgreSQL 历史清理，仅保留最近 2 天的采集运行、倍率变化、Worker 运行记录和账号测试结果；采集站配置、账号绑定及最新状态快照会持续保留。健康和连接生命周期事件保留 30 天。首页“最近倍率变化”仅查询并展示最近 24 小时的数据。
 
-Worker 每轮还会处理到期的定时抽奖。开奖会先锁定活动并持久化中奖计划，再逐项生成兑换码；失败会保留活动错误并在后续 Worker 周期从未完成项继续，不会伪装为成功。即时开奖按奖品独立中奖率抽取，未配置部分明确为未中奖，奖品耗尽不会重分配概率。
+Worker 每 2 秒推进到期活动、结算定时抽奖并领取发奖任务。定时开奖在单个 PostgreSQL 事务内锁定活动、确定中奖者、扣减库存并创建发奖任务；兑换码随后使用稳定幂等键异步生成。失败任务会记录错误并按退避时间重试，不会重新抽取中奖者或伪装为成功。即时开奖按奖品独立中奖率固化结果，未配置部分明确为未中奖，奖品耗尽不会重分配概率。
 
 临时执行单轮诊断：
 
@@ -105,7 +126,7 @@ npm run start
 npm run worker
 ```
 
-Web 与 Worker 必须使用相同的 `APP_SECRET` 和 `DATABASE_URL`。部署时应持久化 `data/` 目录，并在备份 SQLite 前停止写入进程或使用 SQLite 在线备份机制。
+Web 与 Worker 必须使用相同的 `APP_SECRET`、`POSTGRES_URL` 和 `REDIS_URL`。部署时应持久化并备份 PostgreSQL；Redis 可开启持久化，但不作为业务结果或配置的权威存储。
 
 ### PM2 部署
 
@@ -171,6 +192,6 @@ npm run build
 - `/compensation`：联动小铺连接、补偿规则、活动状态和自动发码记录。
 - `/leaderboard`：嵌入排行榜配置与 Sub2API 用量排名。
 - `/embed/tickets`、`/embed/lottery`、`/embed/compensation`、`/embed/leaderboard`：供 Sub2API iframe 加载的用户界面。
-- `/api/worker/status`：最近一轮 Worker 运行摘要。
+- `/api/worker/status`：最近一轮 Worker 运行摘要、心跳以及 PostgreSQL/Redis 健康状态。
 
 所有管理 API 都要求有效登录会话。远端错误会作为明确错误返回，不会写入假成功状态。

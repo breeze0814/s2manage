@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, nowIso, sqlitePath } from "../../storage/sqlite-utils.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type AdminUserRecord = {
   readonly email: string;
@@ -8,9 +9,9 @@ export type AdminUserRecord = {
 };
 
 export type AuthStore = {
-  readonly getAdmin: () => AdminUserRecord | null;
-  readonly createAdmin: (admin: AdminUserRecord) => void;
-  readonly close: () => void;
+  readonly getAdmin: () => Awaitable<AdminUserRecord | null>;
+  readonly createAdmin: (admin: AdminUserRecord) => Awaitable<void>;
+  readonly close: () => Awaitable<void>;
 };
 
 export function createSqliteAuthStore(databaseUrl: string): AuthStore {

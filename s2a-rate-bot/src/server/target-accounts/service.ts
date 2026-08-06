@@ -14,10 +14,10 @@ const bindingSchema = z.object({
 const schedulableSchema = z.boolean();
 
 export type TargetAccountService = {
-  readonly list: () => Promise<ReturnType<TargetAccountStore["list"]>>;
-  readonly refresh: () => Promise<ReturnType<TargetAccountStore["list"]>>;
-  readonly saveBinding: (accountId: number, binding: unknown) => Promise<ReturnType<TargetAccountStore["get"]>>;
-  readonly setSchedulable: (accountId: number, schedulable: unknown) => Promise<ReturnType<TargetAccountStore["get"]>>;
+  readonly list: () => Promise<Awaited<ReturnType<TargetAccountStore["list"]>>>;
+  readonly refresh: () => Promise<Awaited<ReturnType<TargetAccountStore["list"]>>>;
+  readonly saveBinding: (accountId: number, binding: unknown) => Promise<Awaited<ReturnType<TargetAccountStore["get"]>>>;
+  readonly setSchedulable: (accountId: number, schedulable: unknown) => Promise<Awaited<ReturnType<TargetAccountStore["get"]>>>;
   readonly testChannel: (accountId: number) => Promise<TargetAccountTestExecution>;
   readonly testAllChannels: () => Promise<Awaited<ReturnType<typeof testAllChannels>>>;
 };
@@ -34,14 +34,14 @@ export function createTargetAccountService(input: AccountDependencies): TargetAc
 }
 
 async function refreshAccounts(input: AccountDependencies) {
-  input.store.replaceAll(await input.client.listAccounts());
+  await input.store.replaceAll(await input.client.listAccounts());
   return input.store.list();
 }
 
 async function saveBinding(input: AccountDependencies, rawAccountId: number, rawBinding: unknown) {
   const accountId = accountIdSchema.parse(rawAccountId);
   const binding = bindingSchema.parse(rawBinding);
-  requireAccount(input.store, accountId);
+  await requireAccount(input.store, accountId);
   if (binding && !bindingExists(binding, await input.sourceRates())) {
     throw new Error(`采集分组不存在: ${binding.sourceSiteId}:${binding.sourceGroupId}`);
   }
@@ -51,7 +51,7 @@ async function saveBinding(input: AccountDependencies, rawAccountId: number, raw
       task: async () => input.store.saveBinding(accountId, binding),
     });
   } else {
-    input.store.saveBinding(accountId, binding);
+    await input.store.saveBinding(accountId, binding);
   }
   return requireAccount(input.store, accountId);
 }
@@ -59,24 +59,24 @@ async function saveBinding(input: AccountDependencies, rawAccountId: number, raw
 async function setSchedulable(input: AccountDependencies, rawAccountId: number, rawSchedulable: unknown) {
   const accountId = accountIdSchema.parse(rawAccountId);
   const schedulable = schedulableSchema.parse(rawSchedulable);
-  requireAccount(input.store, accountId);
+  await requireAccount(input.store, accountId);
   await applySchedulable(input, accountId, schedulable);
   return requireAccount(input.store, accountId);
 }
 
 async function testChannel(input: AccountDependencies, rawAccountId: number) {
-  const account = requireAccount(input.store, accountIdSchema.parse(rawAccountId));
+  const account = await requireAccount(input.store, accountIdSchema.parse(rawAccountId));
   return executeChannelTest(input, account);
 }
 
 async function testAllChannels(input: AccountDependencies) {
-  const accounts = input.store.list();
+  const accounts = await input.store.list();
   const executions = await mapConcurrent({
     items: accounts,
     concurrency: await input.testConcurrency(),
     task: (account) => executeChannelTest(input, account),
   });
-  return { accounts: input.store.list(), summary: testSummary(executions) };
+  return { accounts: await input.store.list(), summary: testSummary(executions) };
 }
 
 async function executeChannelTest(input: AccountDependencies, account: TargetAccountView): Promise<TargetAccountTestExecution> {
@@ -92,9 +92,9 @@ async function executeChannelTest(input: AccountDependencies, account: TargetAcc
   } catch (error) {
     state = { status: "error", message: errorMessage(error), latencyMs: Date.now() - startedAt, testedAt: new Date().toISOString() };
   }
-  input.store.recordTest(account.id, state);
+  await input.store.recordTest(account.id, state);
   if (account.binding?.autoManageSchedulable) await applySchedulable(input, account.id, state.status === "available");
-  return { account: requireAccount(input.store, account.id), test: state };
+  return { account: await requireAccount(input.store, account.id), test: state };
 }
 
 async function applySchedulable(input: AccountDependencies, accountId: number, schedulable: boolean) {
@@ -102,7 +102,7 @@ async function applySchedulable(input: AccountDependencies, accountId: number, s
     accountId,
     task: async () => {
       await input.client.setSchedulable(accountId, schedulable);
-      input.store.updateSchedulable(accountId, schedulable);
+      await input.store.updateSchedulable(accountId, schedulable);
     },
   });
 }
@@ -116,8 +116,8 @@ function testSummary(executions: readonly TargetAccountTestExecution[]) {
   };
 }
 
-function requireAccount(store: TargetAccountStore, accountId: number) {
-  const account = store.get(accountId);
+async function requireAccount(store: TargetAccountStore, accountId: number) {
+  const account = await store.get(accountId);
   if (!account) throw new Error(`目标账号不存在: ${accountId}`);
   return account;
 }

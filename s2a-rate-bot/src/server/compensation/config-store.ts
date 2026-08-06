@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, flag, nowIso, sqlitePath } from "../../storage/sqlite-utils.ts";
 import type { CompensationRule } from "../../core/compensation.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type StoredCompensationSettings = Readonly<{
   enabled: boolean;
@@ -15,9 +16,9 @@ export type StoredCompensationSettings = Readonly<{
 }>;
 
 export type CompensationConfigStore = Readonly<{
-  get: () => StoredCompensationSettings | null;
-  save: (settings: Omit<StoredCompensationSettings, "updatedAt">) => StoredCompensationSettings;
-  close: () => void;
+  get: () => Awaitable<StoredCompensationSettings | null>;
+  save: (settings: Omit<StoredCompensationSettings, "updatedAt">) => Awaitable<StoredCompensationSettings>;
+  close: () => Awaitable<void>;
 }>;
 
 export function createSqliteCompensationConfigStore(databaseUrl: string): CompensationConfigStore {

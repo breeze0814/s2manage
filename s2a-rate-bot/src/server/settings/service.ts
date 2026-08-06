@@ -63,13 +63,13 @@ export function createSettingsService(input: {
   readonly cipher: SecretCipher;
 }): SettingsService {
   return {
-    get: async () => settingsSnapshot(input),
+    get: () => settingsSnapshot(input),
     save: async (settings) => saveSettings(input, settings),
   };
 }
 
-function settingsSnapshot(input: SettingsDependencies): SettingsSnapshot {
-  const stored = input.store.get();
+async function settingsSnapshot(input: SettingsDependencies): Promise<SettingsSnapshot> {
+  const stored = await input.store.get();
   if (!stored) return defaultSettings();
   return {
     target: {
@@ -93,9 +93,9 @@ function settingsSnapshot(input: SettingsDependencies): SettingsSnapshot {
   };
 }
 
-function saveSettings(input: SettingsDependencies, raw: unknown) {
+async function saveSettings(input: SettingsDependencies, raw: unknown) {
   const settings = appSettingsSchema.parse(raw);
-  input.store.save({
+  await input.store.save({
     targetName: settings.target.name,
     targetBaseUrl: settings.target.baseUrl,
     targetAdminKeyEnc: input.cipher.encrypt(settings.target.adminApiKey),

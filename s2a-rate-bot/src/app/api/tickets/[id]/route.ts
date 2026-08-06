@@ -10,14 +10,14 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest, { params }: Context) {
   try {
     await requireAuthenticatedRequest(request);
-    return NextResponse.json(getRuntimeEmbedServices().tickets.getAdmin(params.id));
+    return NextResponse.json(await getRuntimeEmbedServices().tickets.getAdmin(params.id));
   } catch (error) { return embedErrorResponse(error); }
 }
 
 export async function PATCH(request: NextRequest, { params }: Context) {
   try {
     await requireAuthenticatedRequest(request);
-    return NextResponse.json(getRuntimeEmbedServices().tickets.updateStatus(params.id, await readJsonBody(request)));
+    return NextResponse.json(await getRuntimeEmbedServices().tickets.updateStatus(params.id, await readJsonBody(request)));
   } catch (error) { return embedErrorResponse(error); }
 }
 

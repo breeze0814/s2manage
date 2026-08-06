@@ -2,14 +2,15 @@ import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, sqlitePath } from "../../storage/sqlite-utils.ts";
 import type { WorkerRunSummary, WorkerRunStatus } from "./service.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type WorkerRunRecord = WorkerRunSummary & { readonly id: number };
 
 export type WorkerRunStore = {
-  readonly start: (startedAt: string) => number;
-  readonly finish: (id: number, summary: WorkerRunSummary) => void;
-  readonly latest: () => WorkerRunRecord | null;
-  readonly close: () => void;
+  readonly start: (startedAt: string) => Awaitable<number>;
+  readonly finish: (id: number, summary: WorkerRunSummary) => Awaitable<void>;
+  readonly latest: () => Awaitable<WorkerRunRecord | null>;
+  readonly close: () => Awaitable<void>;
 };
 
 export function createSqliteWorkerRunStore(databaseUrl: string): WorkerRunStore {

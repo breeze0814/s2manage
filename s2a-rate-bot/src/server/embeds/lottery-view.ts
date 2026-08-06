@@ -1,24 +1,17 @@
-import type { LotteryStore, StoredCampaign } from "./lottery-store.ts";
 import { lotteryParticipationKey } from "../../core/lottery-participation.ts";
+import type { LotteryStore, StoredCampaign } from "./lottery-store-contract.ts";
 import {
-  EmbedError,
-  type EmbedIdentity,
-  type LotteryCampaign,
-  type LotteryEntry,
-  type LotteryPrize,
+  EmbedError, type EmbedIdentity, type LotteryCampaign, type LotteryEntry, type LotteryPrize,
 } from "./types.ts";
 
-export function lotteryCampaignDetail(
+export async function lotteryCampaignDetail(
   store: LotteryStore,
   campaign: StoredCampaign,
   identity?: EmbedIdentity,
   now = new Date(),
-): LotteryCampaign {
-  const entries = store.listEntries(campaign.id);
-  const mine = identity
-    ? entries.filter((entry) => entry.sub2apiUserId === identity.sub2apiUserId)
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
-    : [];
+): Promise<LotteryCampaign> {
+  const entries = await store.listEntries(campaign.id);
+  const mine = identity ? userEntries(entries, identity.sub2apiUserId) : [];
   const winners = entries.filter((entry) => entry.status === "won");
   const visibleWinners = !identity || campaign.publicWinners
     ? winners
@@ -28,25 +21,20 @@ export function lotteryCampaignDetail(
     entryCount: entries.filter((entry) => entry.status !== "withdrawn").length,
     winnerCount: winners.length,
     prizeInventory: campaign.prizes.map((prize) => inventoryFor(prize, entries)),
-    currentEntry: identity
-      ? visibleCurrentEntry(campaign,
-        mine.find((entry) => entry.participationKey === lotteryParticipationKey(campaign.participationMode, now)) ?? null)
-      : null,
+    currentEntry: identity ? currentEntry(campaign, mine, now) : null,
     myEntries: mine.map(redactEntry(identity)),
     winners: visibleWinners.map(redactEntry(identity)),
     lastError: identity ? null : campaign.lastError,
   };
 }
 
-export function lotteryCampaignForViewer(
+export async function lotteryCampaignForViewer(
   store: LotteryStore,
   id: string,
   identity?: EmbedIdentity,
 ) {
-  const campaign = store.getCampaign(id);
-  if (!campaign || (identity && !campaign.visibleToUsers)) {
-    throw new EmbedError("抽奖活动不存在", 404);
-  }
+  const campaign = await store.getCampaign(id);
+  if (!campaign || (identity && !campaign.visibleToUsers)) throw new EmbedError("抽奖活动不存在", 404);
   return campaign;
 }
 
@@ -54,20 +42,23 @@ export function assertLotteryCampaignVisible(campaign: StoredCampaign) {
   if (!campaign.visibleToUsers) throw new EmbedError("抽奖活动不存在", 404);
 }
 
+function userEntries(entries: readonly LotteryEntry[], userId: string) {
+  return entries.filter((entry) => entry.sub2apiUserId === userId)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+}
+
+function currentEntry(campaign: StoredCampaign, entries: readonly LotteryEntry[], now: Date) {
+  const key = lotteryParticipationKey(campaign.participationMode, now);
+  return entries.find((entry) => entry.participationKey === key) ?? null;
+}
+
 function inventoryFor(prize: LotteryPrize, entries: readonly LotteryEntry[]) {
-  const awarded = entries.filter((entry) => entry.prizeId === prize.id
-    && (entry.status === "entered" || entry.status === "won")).length;
+  const awarded = entries.filter((entry) => entry.prizeId === prize.id && entry.status === "won").length;
   return { prizeId: prize.id, awarded, remaining: Math.max(0, prize.quantity - awarded) };
 }
 
-function visibleCurrentEntry(campaign: StoredCampaign, entry: LotteryEntry | null) {
-  if (!entry || campaign.status !== "drawing" || entry.status !== "entered") return entry;
-  return { ...entry, prizeId: null, prizeName: null, prizeType: null, prizeValue: null };
-}
-
 function redactEntry(identity?: EmbedIdentity) {
-  return (entry: LotteryEntry): LotteryEntry => !identity
-    || identity.sub2apiUserId === entry.sub2apiUserId
+  return (entry: LotteryEntry): LotteryEntry => !identity || identity.sub2apiUserId === entry.sub2apiUserId
     ? entry
-    : { ...entry, sub2apiUserId: "", redemptionCode: null, rewardCodeId: null };
+    : { ...entry, sub2apiUserId: "", redemptionCode: null, rewardCodeId: null, rewardStatus: null };
 }

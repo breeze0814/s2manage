@@ -17,7 +17,7 @@ export async function withScheduleLease<T>(input: Readonly<{
 export async function trySchedulerLease(input: Readonly<{ context: HealthContext; task: () => Promise<void> }>) {
   const ownerId = input.context.leaseId();
   const at = input.context.now();
-  const acquired = input.context.leases.tryAcquire({
+  const acquired = await input.context.leases.tryAcquire({
     key: "connection-health:scheduler", ownerId,
     expiresAt: new Date(at.getTime() + OPERATION_LEASE_DURATION_MS).toISOString(),
   }, at.toISOString());
@@ -26,14 +26,14 @@ export async function trySchedulerLease(input: Readonly<{ context: HealthContext
     await input.task();
     return true;
   } finally {
-    input.context.leases.release("connection-health:scheduler", ownerId);
+    await input.context.leases.release("connection-health:scheduler", ownerId);
   }
 }
 
 async function withLease<T>(input: Readonly<{ context: HealthContext; key: string; task: () => Promise<T> }>) {
   const ownerId = input.context.leaseId();
   const at = input.context.now();
-  const acquired = input.context.leases.tryAcquire({
+  const acquired = await input.context.leases.tryAcquire({
     key: input.key, ownerId,
     expiresAt: new Date(at.getTime() + OPERATION_LEASE_DURATION_MS).toISOString(),
   }, at.toISOString());
@@ -41,6 +41,6 @@ async function withLease<T>(input: Readonly<{ context: HealthContext; key: strin
   try {
     return await input.task();
   } finally {
-    input.context.leases.release(input.key, ownerId);
+    await input.context.leases.release(input.key, ownerId);
   }
 }

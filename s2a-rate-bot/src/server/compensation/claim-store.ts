@@ -2,13 +2,14 @@ import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, sqlitePath } from "../../storage/sqlite-utils.ts";
 import type { CompensationClaim } from "./types.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type CompensationClaimStore = Readonly<{
-  create: (claim: CompensationClaim) => CompensationClaim;
-  complete: (id: string, reward: Readonly<{ code: string; id: number }> | null, updatedAt: string) => CompensationClaim;
-  fail: (id: string, errorMessage: string, updatedAt: string) => CompensationClaim;
-  list: () => readonly CompensationClaim[];
-  close: () => void;
+  create: (claim: CompensationClaim) => Awaitable<CompensationClaim>;
+  complete: (id: string, reward: Readonly<{ code: string; id: number }> | null, updatedAt: string) => Awaitable<CompensationClaim>;
+  fail: (id: string, errorMessage: string, updatedAt: string) => Awaitable<CompensationClaim>;
+  list: () => Awaitable<readonly CompensationClaim[]>;
+  close: () => Awaitable<void>;
 }>;
 
 export function createSqliteCompensationClaimStore(databaseUrl: string): CompensationClaimStore {

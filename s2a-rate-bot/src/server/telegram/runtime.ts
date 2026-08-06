@@ -1,19 +1,20 @@
 import { createTelegramBotClient } from "../../adapters/telegram-bot.ts";
 import { getRuntimeCollectionService } from "../collection/runtime.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
+import { createPostgresTelegramStateStore } from "./postgres-state-store.ts";
 import { createTelegramNotificationService, type TelegramNotificationService } from "./service.ts";
-import { createSqliteTelegramStateStore } from "./state-store.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const globalTelegram = globalThis as typeof globalThis & { s2aTelegramService?: TelegramNotificationService };
 
 export function getRuntimeTelegramNotificationService(env: NodeJS.ProcessEnv = process.env) {
   if (env === process.env && globalTelegram.s2aTelegramService) return globalTelegram.s2aTelegramService;
   const settings = getRuntimeSettingsService(env);
+  const infrastructure = getRuntimeInfrastructure(env);
   const service = createTelegramNotificationService({
     settings: async () => runtimeSettings(await settings.get()),
     collection: getRuntimeCollectionService(env),
-    state: createSqliteTelegramStateStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL),
+    state: createPostgresTelegramStateStore(infrastructure.postgres),
     client: createTelegramBotClient(),
     now: () => new Date(),
   });

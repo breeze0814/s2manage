@@ -64,7 +64,7 @@ test("worker collects due Sub2API and NewAPI sites with configured concurrency",
     assert.equal(maxActive, 2);
     assert.equal(summary.collectedSources, 2);
     assert.equal(summary.skippedSources, 2);
-    assert.equal(store.latest()?.status, "success");
+    assert.equal((await store.latest())?.status, "success");
   });
 });
 
@@ -90,7 +90,7 @@ test("worker records collection and rule failures without hiding successful task
     assert.equal(summary.skippedNotifications, 2);
     assert.match(summary.errors.join("\n"), /newapi unavailable/);
     assert.match(summary.errors.join("\n"), /target rejected/);
-    assert.equal(store.latest()?.status, "partial");
+    assert.equal((await store.latest())?.status, "partial");
   });
 });
 

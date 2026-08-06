@@ -29,15 +29,15 @@ async function executeManagedSchedule(
 ) {
   const accountId = requiredTargetAccount(connection);
   const remoteValue = await context.gateway.readSchedulable(accountId);
-  context.gateway.assertSchedulableControl(accountId);
-  const state = claimOrRead({ context, connectionId: connection.id, accountId, remoteValue });
-  const reconciled = reconcilePending(context, state, remoteValue);
-  assertRemoteUnchanged(context, reconciled, remoteValue);
+  await context.gateway.assertSchedulableControl(accountId);
+  const state = await claimOrRead({ context, connectionId: connection.id, accountId, remoteValue });
+  const reconciled = await reconcilePending(context, state, remoteValue);
+  await assertRemoteUnchanged(context, reconciled, remoteValue);
   await commitSchedule({ context, state: reconciled, schedulable, remoteValue });
 }
 
-export function originalSchedule(context: HealthContext, connection: RealConnection) {
-  const state = context.store.actionState(connection.id);
+export async function originalSchedule(context: HealthContext, connection: RealConnection) {
+  const state = await context.store.actionState(connection.id);
   if (!state) throw new HealthPolicyConflictError("健康治理未持有该目标账号的调度状态");
   return state.originalSchedulable;
 }
@@ -46,7 +46,7 @@ export async function releaseManagedSchedule(
   context: HealthContext,
   connection: RealConnection,
 ): Promise<ScheduleRelease | null> {
-  const accountId = context.store.actionState(connection.id)?.accountId;
+  const accountId = (await context.store.actionState(connection.id))?.accountId;
   if (accountId === undefined) return null;
   return withScheduleLease({
     context,
@@ -59,10 +59,10 @@ async function executeRelease(
   context: HealthContext,
   connection: RealConnection,
 ): Promise<ScheduleRelease | null> {
-  const state = context.store.actionState(connection.id);
+  const state = await context.store.actionState(connection.id);
   if (!state) return null;
   if (connection.targetAccountId === null || connection.targetAccountDeleted) {
-    context.store.deleteActionState(connection.id);
+    await context.store.deleteActionState(connection.id);
     return { result: "info", message: "目标账号已删除，已释放健康治理所有权" };
   }
   const remoteValue = await context.gateway.readSchedulable(state.accountId);
@@ -71,34 +71,34 @@ async function executeRelease(
   if (remoteValue !== state.originalSchedulable) {
     await restoreOriginalSchedule(context, state, remoteValue);
   }
-  context.store.deleteActionState(connection.id);
+  await context.store.deleteActionState(connection.id);
   return { result: "success", message: "已恢复接管前调度状态并释放健康治理所有权" };
 }
 
-function claimOrRead(input: Readonly<{
+async function claimOrRead(input: Readonly<{
   context: HealthContext;
   connectionId: string;
   accountId: number;
   remoteValue: boolean;
 }>) {
-  const existing = input.context.store.actionState(input.connectionId);
+  const existing = await input.context.store.actionState(input.connectionId);
   if (existing) {
     if (existing.accountId !== input.accountId) throw new HealthPolicyConflictError("真实连接的目标账号已发生变化");
     if (existing.conflict) throw new HealthPolicyConflictError("目标账号调度状态存在未解决的外部修改冲突");
     return existing;
   }
-  const owner = input.context.store.actionStateByAccount(input.accountId);
+  const owner = await input.context.store.actionStateByAccount(input.accountId);
   if (owner) throw new HealthPolicyConflictError(`目标账号已由连接 ${owner.connectionId} 接管调度状态`);
   const state = actionState({ ...input, updatedAt: input.context.now().toISOString() });
   try {
-    input.context.store.saveActionState(state);
+    await input.context.store.saveActionState(state);
   } catch (error) {
     throw new HealthPolicyConflictError("目标账号调度状态已被其他连接接管", { cause: error });
   }
   return state;
 }
 
-function reconcilePending(
+async function reconcilePending(
   context: HealthContext,
   state: ConnectionHealthActionState,
   remoteValue: boolean,
@@ -106,21 +106,21 @@ function reconcilePending(
   if (state.pendingSchedulable === null) return state;
   if (remoteValue === state.pendingSchedulable) {
     const applied = updatedState({ context, state, lastAppliedSchedulable: remoteValue, pendingSchedulable: null, conflict: false });
-    context.store.saveActionState(applied);
+    await context.store.saveActionState(applied);
     return applied;
   }
   if (remoteValue === state.lastAppliedSchedulable) return state;
-  markConflict(context, state);
+  await markConflict(context, state);
   throw new HealthPolicyConflictError("目标账号在健康动作提交期间被外部修改");
 }
 
-function assertRemoteUnchanged(
+async function assertRemoteUnchanged(
   context: HealthContext,
   state: ConnectionHealthActionState,
   remoteValue: boolean,
 ) {
   if (remoteValue === state.lastAppliedSchedulable) return;
-  markConflict(context, state);
+  await markConflict(context, state);
   throw new HealthPolicyConflictError("目标账号调度状态已被外部修改");
 }
 
@@ -131,18 +131,18 @@ async function commitSchedule(input: Readonly<{
   remoteValue: boolean;
 }>) {
   if (input.remoteValue === input.schedulable) {
-    input.context.store.saveActionState(updatedState({
+    await input.context.store.saveActionState(updatedState({
       ...input, lastAppliedSchedulable: input.schedulable,
       pendingSchedulable: null, conflict: false,
     }));
     return;
   }
-  input.context.store.saveActionState(updatedState({
+  await input.context.store.saveActionState(updatedState({
     ...input, lastAppliedSchedulable: input.state.lastAppliedSchedulable,
     pendingSchedulable: input.schedulable, conflict: false,
   }));
   await input.context.gateway.setSchedulable(input.state.accountId, input.schedulable);
-  input.context.store.saveActionState(updatedState({
+  await input.context.store.saveActionState(updatedState({
     ...input, lastAppliedSchedulable: input.schedulable,
     pendingSchedulable: null, conflict: false,
   }));
@@ -156,8 +156,8 @@ function releaseAppliedValue(state: ConnectionHealthActionState, remoteValue: bo
   return remoteValue === state.lastAppliedSchedulable ? state.lastAppliedSchedulable : null;
 }
 
-function releaseExternalChange(context: HealthContext, state: ConnectionHealthActionState): ScheduleRelease {
-  context.store.deleteActionState(state.connectionId);
+async function releaseExternalChange(context: HealthContext, state: ConnectionHealthActionState): Promise<ScheduleRelease> {
+  await context.store.deleteActionState(state.connectionId);
   return { result: "failure", message: "检测到外部调度状态变更，未覆盖远端状态并已释放健康治理所有权" };
 }
 
@@ -166,15 +166,15 @@ async function restoreOriginalSchedule(
   state: ConnectionHealthActionState,
   remoteValue: boolean,
 ) {
-  context.store.saveActionState(updatedState({
+  await context.store.saveActionState(updatedState({
     context, state, lastAppliedSchedulable: remoteValue,
     pendingSchedulable: state.originalSchedulable, conflict: false,
   }));
   await context.gateway.setSchedulable(state.accountId, state.originalSchedulable);
 }
 
-function markConflict(context: HealthContext, state: ConnectionHealthActionState) {
-  context.store.saveActionState(updatedState({
+async function markConflict(context: HealthContext, state: ConnectionHealthActionState) {
+  await context.store.saveActionState(updatedState({
     context, state, lastAppliedSchedulable: state.lastAppliedSchedulable,
     pendingSchedulable: state.pendingSchedulable, conflict: true,
   }));

@@ -18,16 +18,16 @@ export function createTicketService(input: {
 }) {
   const dependencies = { ...input, now: input.now ?? (() => new Date()), id: input.id ?? randomUUID };
   return {
-    listAdmin: (status?: string) => input.store.list(status ? statusSchema.parse(status) : undefined),
-    getAdmin: (id: string) => required(input.store.get(id)),
+    listAdmin: async (status?: string) => input.store.list(status ? statusSchema.parse(status) : undefined),
+    getAdmin: async (id: string) => required(await input.store.get(id)),
     replyAdmin: (id: string, raw: unknown) => replyAdmin(dependencies, id, raw),
     updateStatus: (id: string, raw: unknown) => updateStatus(dependencies, id, raw),
-    listUser: (identity: EmbedIdentity) => input.store.listForUser(identity),
-    getUser: (id: string, identity: EmbedIdentity) => required(input.store.getForUser(id, identity)),
+    listUser: async (identity: EmbedIdentity) => input.store.listForUser(identity),
+    getUser: async (id: string, identity: EmbedIdentity) => required(await input.store.getForUser(id, identity)),
     createUser: (identity: EmbedIdentity, raw: unknown, files: readonly RawTicketUpload[]) => createUser(dependencies, identity, raw, files),
     replyUser: (id: string, identity: EmbedIdentity, raw: unknown) => replyUser(dependencies, id, identity, raw),
     attachmentUser: (id: string, identity: EmbedIdentity) => attachmentUser(input.store, id, identity),
-    attachmentAdmin: (id: string) => required(input.store.attachment(id)),
+    attachmentAdmin: async (id: string) => required(await input.store.attachment(id)),
   };
 }
 
@@ -45,8 +45,8 @@ async function createUser(input: TicketDependencies, identity: EmbedIdentity, ra
   return input.store.create(record);
 }
 
-function replyUser(input: TicketDependencies, id: string, identity: EmbedIdentity, raw: unknown) {
-  const ticket = required(input.store.getForUser(id, identity));
+async function replyUser(input: TicketDependencies, id: string, identity: EmbedIdentity, raw: unknown) {
+  const ticket = required(await input.store.getForUser(id, identity));
   if (ticket.status === "closed") throw new EmbedError("已关闭的工单不能继续回复", 409);
   const { body } = ticketReplySchema.parse(raw);
   return input.store.addMessage({
@@ -56,8 +56,8 @@ function replyUser(input: TicketDependencies, id: string, identity: EmbedIdentit
   });
 }
 
-function replyAdmin(input: TicketDependencies, id: string, raw: unknown) {
-  const ticket = required(input.store.get(id));
+async function replyAdmin(input: TicketDependencies, id: string, raw: unknown) {
+  const ticket = required(await input.store.get(id));
   if (ticket.status === "closed") throw new EmbedError("已关闭的工单不能继续回复", 409);
   const { body } = ticketReplySchema.parse(raw);
   return input.store.addMessage({
@@ -66,14 +66,14 @@ function replyAdmin(input: TicketDependencies, id: string, raw: unknown) {
   });
 }
 
-function updateStatus(input: TicketDependencies, id: string, raw: unknown) {
+async function updateStatus(input: TicketDependencies, id: string, raw: unknown) {
   const status = z.object({ status: statusSchema }).parse(raw).status;
-  return required(input.store.updateStatus(id, status, input.now().toISOString()));
+  return required(await input.store.updateStatus(id, status, input.now().toISOString()));
 }
 
-function attachmentUser(store: TicketStore, id: string, identity: EmbedIdentity) {
-  const attachment = required(store.attachment(id));
-  if (!store.getForUser(attachment.ticketId, identity)) throw new EmbedError("附件不存在", 404);
+async function attachmentUser(store: TicketStore, id: string, identity: EmbedIdentity) {
+  const attachment = required(await store.attachment(id));
+  if (!await store.getForUser(attachment.ticketId, identity)) throw new EmbedError("附件不存在", 404);
   return attachment;
 }
 

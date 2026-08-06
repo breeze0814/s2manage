@@ -31,13 +31,13 @@ export async function tryReconcileLease(input: Readonly<{
   context: ConnectionContext;
   task: () => Promise<void>;
 }>) {
-  const lease = acquire(input.context, "connection-lifecycle:reconcile");
+  const lease = await acquire(input.context, "connection-lifecycle:reconcile");
   if (!lease) return false;
   try {
     await input.task();
     return true;
   } finally {
-    input.context.leases.release(lease.key, lease.ownerId);
+    await input.context.leases.release(lease.key, lease.ownerId);
   }
 }
 
@@ -46,19 +46,19 @@ async function withLease<T>(input: Readonly<{
   key: string;
   task: () => Promise<T>;
 }>) {
-  const lease = acquire(input.context, input.key);
+  const lease = await acquire(input.context, input.key);
   if (!lease) throw new ConnectionBusyError("真实连接当前已有生命周期操作执行中");
   try {
     return await input.task();
   } finally {
-    input.context.leases.release(lease.key, lease.ownerId);
+    await input.context.leases.release(lease.key, lease.ownerId);
   }
 }
 
-function acquire(context: ConnectionContext, key: string) {
+async function acquire(context: ConnectionContext, key: string) {
   const ownerId = context.leaseId();
   const at = context.now();
-  const acquired = context.leases.tryAcquire({
+  const acquired = await context.leases.tryAcquire({
     key,
     ownerId,
     expiresAt: new Date(at.getTime() + OPERATION_LEASE_DURATION_MS).toISOString(),

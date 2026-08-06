@@ -12,12 +12,18 @@ import { EmbedError, EmbedHeader, EmbedLoading } from "./embed-state";
 import { LotteryWheel } from "./lottery-wheel";
 import { embedRequestJson, useEmbedSession } from "./use-embed-session";
 
+const DEFAULT_POLL_MS = 30_000;
+const REWARD_POLL_MS = 3_000;
+
 export function LotteryEmbedPage() {
   const auth = useEmbedSession("lottery");
   const [items, setItems] = useState<LotteryCampaign[]>([]); const [selected, setSelected] = useState<LotteryCampaign | null>(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [reveal, setReveal] = useState<"won" | "lost" | null>(null);
   const previousStatus = useRef<string | null>(null);
   const selectedId = selected?.id;
+  const rewardPending = selected?.currentEntry?.rewardStatus === "pending"
+    || selected?.currentEntry?.rewardStatus === "processing"
+    || selected?.currentEntry?.rewardStatus === "retryable_failed";
   const load = useCallback(async () => {
     if (!auth.session) return;
     setLoading(true); setError("");
@@ -34,7 +40,7 @@ export function LotteryEmbedPage() {
     finally { setLoading(false); }
   }, [auth.session, selectedId]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!auth.session) return; const timer = window.setInterval(() => { void load(); }, 30_000); return () => window.clearInterval(timer); }, [auth.session, load]);
+  useEffect(() => { if (!auth.session) return; const timer = window.setInterval(() => { void load(); }, rewardPending ? REWARD_POLL_MS : DEFAULT_POLL_MS); return () => window.clearInterval(timer); }, [auth.session, load, rewardPending]);
   if (auth.loading) return <EmbedLoading />;
   if (auth.error || !auth.session) return <EmbedError message={auth.error || "嵌入会话不可用"} />;
   return <div className="min-h-dvh bg-background"><EmbedHeader eyebrow="Lucky Draw" title="抽奖中心" description="即时抽奖立刻返回结果，定时活动到点自动开奖" />
@@ -125,7 +131,7 @@ function RewardResult({ campaign }: Readonly<{ campaign: LotteryCampaign }>) {
   if (!entry?.prizeName) return null;
   return <div className="rounded-md border border-warning/25 bg-warning/10 p-3 text-warning"><strong>中奖奖品：{entry.prizeName}</strong>
     <p className="mt-1 text-xs">{entry.prizeType === "balance" ? "余额" : "订阅"}额度 {entry.prizeValue}</p>
-    <div className="mt-2 flex items-center gap-2 rounded bg-surface px-2 py-1.5"><code className="min-w-0 flex-1 select-all break-all font-mono text-xs text-foreground">{entry.redemptionCode ?? "兑换码缺失"}</code>{entry.redemptionCode ? <CopyCodeButton code={entry.redemptionCode} /> : null}</div>
+    <div className="mt-2 flex items-center gap-2 rounded bg-surface px-2 py-1.5"><code className="min-w-0 flex-1 select-all break-all font-mono text-xs text-foreground">{entry.redemptionCode ?? rewardStatusLabel(entry.rewardStatus)}</code>{entry.redemptionCode ? <CopyCodeButton code={entry.redemptionCode} /> : null}</div>
   </div>;
 }
 
@@ -134,17 +140,18 @@ function ParticipationHistory({ campaign }: Readonly<{ campaign: LotteryCampaign
   return <section aria-labelledby="lottery-participation-history" className="mt-5 border-t border-border pt-5"><h3 id="lottery-participation-history" className="text-sm font-semibold">参与记录</h3>
     <ul className="mt-3 divide-y divide-border border-y border-border">{campaign.myEntries.map((entry) => <li key={entry.id} className="py-3 text-xs">
       <div className="flex items-center justify-between gap-3"><span className="text-muted">{formatDate(entry.createdAt)}</span><EntryStatus status={entry.status} /></div>
-      {entry.prizeName ? <div className="mt-2"><p className="font-medium text-warning">{entry.prizeName}</p>{entry.redemptionCode ? <div className="mt-1 flex items-center gap-2"><code className="min-w-0 flex-1 select-all break-all font-mono text-foreground">{entry.redemptionCode}</code><CopyCodeButton code={entry.redemptionCode} /></div> : null}</div> : null}
+      {entry.prizeName ? <div className="mt-2"><p className="font-medium text-warning">{entry.prizeName}</p><div className="mt-1 flex items-center gap-2"><code className="min-w-0 flex-1 select-all break-all font-mono text-foreground">{entry.redemptionCode ?? rewardStatusLabel(entry.rewardStatus)}</code>{entry.redemptionCode ? <CopyCodeButton code={entry.redemptionCode} /> : null}</div></div> : null}
     </li>)}</ul>
   </section>;
 }
 
-function ResultReveal({ result, campaign, onClose }: Readonly<{ result: "won" | "lost"; campaign: LotteryCampaign | null; onClose: () => void }>) { const won = result === "won"; const entry = campaign?.currentEntry; return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="w-[min(92vw,440px)] p-6 text-center"><span className={`mx-auto flex size-16 items-center justify-center rounded-full ${won ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary-strong"}`}>{won ? <Trophy className="size-8" /> : <Sparkles className="size-8" />}</span><DialogTitle className="mt-4 text-2xl font-semibold">{won ? "恭喜中奖" : "感谢参与"}</DialogTitle><DialogDescription className="mt-2 text-sm text-muted">{won ? `你获得了「${entry?.prizeName || "活动奖品"}」` : "本次未中奖，期待下次好运"}</DialogDescription>{won && entry?.redemptionCode ? <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2"><code className="min-w-0 flex-1 select-all break-all font-mono text-sm">{entry.redemptionCode}</code><CopyCodeButton code={entry.redemptionCode} /></div> : null}<Button type="button" className="mt-6 w-full" autoFocus onClick={onClose}>查看活动详情</Button></DialogContent></Dialog>; }
-function Status({ status }: Readonly<{ status: LotteryCampaign["status"] }>) { const labels = { scheduled: "待开始", open: "参与中", drawing: "开奖处理中", drawn: "已开奖", exhausted: "奖品已抽完", cancelled: "已取消" }; return <span className="shrink-0 rounded-md border border-border bg-surface-muted px-2 py-1 text-xs font-semibold text-muted">{labels[status]}</span>; }
+function ResultReveal({ result, campaign, onClose }: Readonly<{ result: "won" | "lost"; campaign: LotteryCampaign | null; onClose: () => void }>) { const won = result === "won"; const entry = campaign?.currentEntry; return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="w-[min(92vw,440px)] p-6 text-center"><span className={`mx-auto flex size-16 items-center justify-center rounded-full ${won ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary-strong"}`}>{won ? <Trophy className="size-8" /> : <Sparkles className="size-8" />}</span><DialogTitle className="mt-4 text-2xl font-semibold">{won ? "恭喜中奖" : "感谢参与"}</DialogTitle><DialogDescription className="mt-2 text-sm text-muted">{won ? `你获得了「${entry?.prizeName || "活动奖品"}」` : "本次未中奖，期待下次好运"}</DialogDescription>{won && entry ? <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2"><code className="min-w-0 flex-1 select-all break-all font-mono text-sm">{entry.redemptionCode ?? rewardStatusLabel(entry.rewardStatus)}</code>{entry.redemptionCode ? <CopyCodeButton code={entry.redemptionCode} /> : null}</div> : null}<Button type="button" className="mt-6 w-full" autoFocus onClick={onClose}>查看活动详情</Button></DialogContent></Dialog>; }
+function Status({ status }: Readonly<{ status: LotteryCampaign["status"] }>) { const labels = { scheduled: "待开始", open: "参与中", closed: "报名已结束", drawing: "开奖处理中", drawn: "已开奖", exhausted: "奖品已抽完", cancelled: "已取消" }; return <span className="shrink-0 rounded-md border border-border bg-surface-muted px-2 py-1 text-xs font-semibold text-muted">{labels[status]}</span>; }
 function EntryStatus({ status }: Readonly<{ status: NonNullable<LotteryCampaign["currentEntry"]>["status"] }>) { const won = status === "won"; const Icon = won ? Trophy : status === "not_won" || status === "withdrawn" ? XCircle : Clock3; return <span className={`inline-flex items-center gap-1 font-medium ${won ? "text-warning" : "text-muted"}`}><Icon className="size-4" />{{ entered: "已报名", won: "已中奖", not_won: "未中奖", withdrawn: "已撤回" }[status]}</span>; }
 function CopyCodeButton({ code }: Readonly<{ code: string }>) { return <Button type="button" variant="ghost" size="icon-sm" className="shrink-0" aria-label="复制兑换码" title="复制兑换码" onClick={() => void copyCode(code)}><Copy className="size-4" /></Button>; }
 async function runEntryAction(input: Readonly<{ campaignId: string; token: string; method: "POST" | "DELETE"; setPending: (value: "POST" | "DELETE" | null) => void; setError: (value: string) => void }>) { input.setPending(input.method); input.setError(""); try { await embedRequestJson(`/api/embed/lottery/campaigns/${input.campaignId}/entries`, input.token, { method: input.method }); return await embedRequestJson<LotteryCampaign>(`/api/embed/lottery/campaigns/${input.campaignId}`, input.token); } catch (error) { input.setError(message(error)); return null; } finally { input.setPending(null); } }
 function entryActionLabel(campaign: LotteryCampaign) { if (campaign.status === "exhausted") return "奖品已抽完"; if (campaign.currentEntry && campaign.currentEntry.status !== "withdrawn") return campaign.participationMode === "daily" ? (campaign.drawMode === "instant" ? "今日已参与" : "今日已报名") : (campaign.drawMode === "instant" ? "已参与抽奖" : "已报名"); return campaign.drawMode === "instant" ? "立即抽奖" : "报名抽奖"; }
+function rewardStatusLabel(status: NonNullable<LotteryCampaign["currentEntry"]>["rewardStatus"]) { return status === "retryable_failed" ? "奖励发放失败，系统正在重试" : "奖励发放中"; }
 async function copyCode(code: string) { try { await navigator.clipboard.writeText(code); toast.success("兑换码已复制"); } catch (error) { toast.error(message(error)); } }
 function message(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", dateStyle: "short", timeStyle: "short" }).format(new Date(value)); }

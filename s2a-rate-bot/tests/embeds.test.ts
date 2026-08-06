@@ -4,7 +4,7 @@ import type { EmbedConfig, EmbedIdentity, TicketEmbedSettings } from "../src/ser
 import { createLeaderboardService } from "../src/server/embeds/leaderboard-service.ts";
 import { createEmbedIdentityService } from "../src/server/embeds/identity-service.ts";
 import { createLotteryService } from "../src/server/embeds/lottery-service.ts";
-import { createSqliteLotteryStore } from "../src/server/embeds/lottery-store.ts";
+import { createMemoryLotteryStore as createSqliteLotteryStore } from "./support/memory-lottery-store.ts";
 import { createRewardCodeGateway } from "../src/server/embeds/reward-code-gateway.ts";
 import { createActiveEmbedSessionService } from "../src/server/embeds/runtime.ts";
 import { createEmbedSessionService } from "../src/server/embeds/session.ts";
@@ -35,21 +35,21 @@ test("ticket flow preserves ownership, status transitions and protected attachme
     }]);
     assert.equal(ticket.status, "open");
     assert.equal(ticket.messages[0]?.attachments[0]?.originalName, "proof.png");
-    assert.equal(service.listUser(identity("user-2")).length, 0);
-    assert.throws(() => service.getUser(ticket.id, identity("user-2")), /不存在/);
-    const pending = service.replyUser(ticket.id, identity("user-1"), { body: "补充信息" });
+    assert.equal((await service.listUser(identity("user-2"))).length, 0);
+    await assert.rejects(service.getUser(ticket.id, identity("user-2")), /不存在/);
+    const pending = await service.replyUser(ticket.id, identity("user-1"), { body: "补充信息" });
     assert.equal(pending.status, "pending");
-    const replied = service.replyAdmin(ticket.id, { body: "客服回复" });
+    const replied = await service.replyAdmin(ticket.id, { body: "客服回复" });
     assert.equal(replied.status, "replied");
-    const closed = service.updateStatus(ticket.id, { status: "closed" });
+    const closed = await service.updateStatus(ticket.id, { status: "closed" });
     assert.equal(closed.status, "closed");
-    assert.throws(() => service.replyUser(ticket.id, identity("user-1"), { body: "再次回复" }), /不能继续回复/);
-    const attachment = service.attachmentUser(ticket.messages[0]!.attachments[0]!.id, identity("user-1"));
+    await assert.rejects(service.replyUser(ticket.id, identity("user-1"), { body: "再次回复" }), /不能继续回复/);
+    const attachment = await service.attachmentUser(ticket.messages[0]!.attachments[0]!.id, identity("user-1"));
     assert.equal(attachment.contentType, "image/png");
-  } finally { store.close(); }
+  } finally { await store.close(); }
 });
 
-test("instant lottery returns the result and generated reward code immediately", async () => {
+test("instant lottery persists the result before the worker generates its reward code", async () => {
   const store = createSqliteLotteryStore("file::memory:");
   let sequence = 0;
   const rewards = fakeRewards();
@@ -60,7 +60,7 @@ test("instant lottery returns the result and generated reward code immediately",
     random: () => 0,
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "夏日活动", description: "测试活动", drawMode: "instant",
       registrationStart: null, registrationEnd: null, drawAt: null,
       visibleToUsers: true, publicWinners: false,
@@ -69,16 +69,18 @@ test("instant lottery returns the result and generated reward code immediately",
     const winner = await service.enter(campaign.id, identity("user-1"));
     await assert.rejects(service.enter(campaign.id, identity("user-2")), /不可参与/);
     assert.equal(winner.status, "won");
-    assert.equal(winner.redemptionCode, "balance-10-1");
+    assert.equal(winner.redemptionCode, null);
+    assert.equal(winner.rewardStatus, "pending");
     assert.equal((await service.get(campaign.id)).status, "exhausted");
+    await service.processRewards();
     assert.deepEqual(rewards.calls, [{ type: "balance", value: 10, count: 1 }]);
     const firstUserView = await service.get(campaign.id, identity("user-1"));
     assert.equal(firstUserView.currentEntry?.status, "won");
     assert.equal(firstUserView.winners.length, 1);
     assert.equal((await service.get(campaign.id, identity("user-2"))).winners.length, 0);
     assert.equal((await service.get(campaign.id)).winners[0]?.redemptionCode, "balance-10-1");
-    assert.throws(() => service.withdraw(campaign.id, identity("user-1")), /不能撤回/);
-  } finally { store.close(); }
+    await assert.rejects(service.withdraw(campaign.id, identity("user-1")), /不能撤回/);
+  } finally { await store.close(); }
 });
 
 test("administrators control whether a lottery is exposed to users", async () => {
@@ -90,22 +92,22 @@ test("administrators control whether a lottery is exposed to users", async () =>
     now: () => new Date("2026-07-30T10:00:00.000Z"),
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "隐藏活动", description: "管理员暂不发布", drawMode: "instant",
       registrationStart: null, registrationEnd: null, drawAt: null,
       visibleToUsers: false, publicWinners: false,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: 100 }],
     });
-    assert.equal(service.list().length, 1);
-    assert.equal(service.list(identity("user-1")).length, 0);
-    assert.throws(() => service.get(campaign.id, identity("user-1")), /不存在/);
+    assert.equal((await service.list()).length, 1);
+    assert.equal((await service.list(identity("user-1"))).length, 0);
+    await assert.rejects(service.get(campaign.id, identity("user-1")), /不存在/);
     await assert.rejects(service.enter(campaign.id, identity("user-1")), /不存在/);
 
-    const published = service.setVisibility(campaign.id, true);
+    const published = await service.setVisibility(campaign.id, true);
     assert.equal(published.visibleToUsers, true);
-    assert.equal(service.list(identity("user-1")).length, 1);
-    assert.equal(service.get(campaign.id, identity("user-1")).id, campaign.id);
-  } finally { store.close(); }
+    assert.equal((await service.list(identity("user-1"))).length, 1);
+    assert.equal((await service.get(campaign.id, identity("user-1"))).id, campaign.id);
+  } finally { await store.close(); }
 });
 
 test("lottery requires a verified balance strictly greater than ten", async () => {
@@ -115,16 +117,16 @@ test("lottery requires a verified balance strictly greater than ten", async () =
     now: () => new Date("2026-07-30T10:00:00.000Z"),
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "余额门槛", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z",
+      registrationEnd: "2026-07-31T00:00:00.000Z", drawAt: "2026-08-01T00:00:00.000Z",
       visibleToUsers: true, publicWinners: false,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     await assert.rejects(service.enter(campaign.id, identity("user-low", 10)), /大于 10/);
     await assert.rejects(service.enter(campaign.id, identity("user-unknown", null)), /大于 10/);
     assert.equal((await service.enter(campaign.id, identity("user-ok", 10.01))).status, "entered");
-  } finally { store.close(); }
+  } finally { await store.close(); }
 });
 
 test("lottery rechecks the live balance when the user enters", async () => {
@@ -136,9 +138,9 @@ test("lottery rechecks the live balance when the user enters", async () => {
     eligibility: { ...identityEligibility(), currentBalance: async () => liveBalance },
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "实时余额", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z",
+      registrationEnd: "2026-07-31T00:00:00.000Z", drawAt: "2026-08-01T00:00:00.000Z",
       visibleToUsers: true, publicWinners: false,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
@@ -147,10 +149,10 @@ test("lottery rechecks the live balance when the user enters", async () => {
     await assert.rejects(service.enter(campaign.id, staleIdentity), /大于 10/);
     liveBalance = 11;
     assert.equal((await service.enter(campaign.id, staleIdentity)).status, "entered");
-  } finally { store.close(); }
+  } finally { await store.close(); }
 });
 
-test("instant lottery exposes reward generation failures and releases the reserved prize", async () => {
+test("instant lottery persists reward failures for worker retry", async () => {
   const store = createSqliteLotteryStore("file::memory:");
   const service = createLotteryService({
     store, random: () => 0, id: () => crypto.randomUUID(),
@@ -158,14 +160,17 @@ test("instant lottery exposes reward generation failures and releases the reserv
     rewards: { generate: async () => { throw new Error("target redeem API unavailable"); } },
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "失败测试", description: "", drawMode: "instant", registrationStart: null,
       registrationEnd: null, drawAt: null, visibleToUsers: true, publicWinners: false,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: 100 }],
     });
-    await assert.rejects(service.enter(campaign.id, identity("user-1")), /target redeem API unavailable/);
-    assert.deepEqual(store.listEntries(campaign.id), []);
-  } finally { store.close(); }
+    assert.equal((await service.enter(campaign.id, identity("user-1"))).rewardStatus, "pending");
+    await assert.rejects(service.processRewards(), /target redeem API unavailable/);
+    const [entry] = await store.listEntries(campaign.id);
+    assert.equal(entry?.status, "won");
+    assert.equal(entry?.rewardStatus, "retryable_failed");
+  } finally { await store.close(); }
 });
 
 test("instant lottery keeps configured probabilities and does not renormalize exhausted prizes", async () => {
@@ -176,7 +181,7 @@ test("instant lottery keeps configured probabilities and does not renormalize ex
     store, rewards, eligibility: identityEligibility(), random: () => targets.shift() ?? 0, id: () => crypto.randomUUID(),
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "概率测试", description: "", drawMode: "instant", registrationStart: null,
       registrationEnd: null, drawAt: null, visibleToUsers: true, publicWinners: false,
       prizes: [
@@ -187,33 +192,36 @@ test("instant lottery keeps configured probabilities and does not renormalize ex
     assert.equal((await service.enter(campaign.id, identity("user-1"))).status, "won");
     assert.equal((await service.enter(campaign.id, identity("user-2"))).status, "not_won");
     assert.equal((await service.enter(campaign.id, identity("user-3"))).status, "not_won");
+    await service.processRewards();
     assert.deepEqual(rewards.calls, [{ type: "balance", value: 10, count: 1 }]);
     const view = await service.get(campaign.id, identity("user-3"));
     assert.equal(view.prizeInventory.find((item) => item.prizeId === campaign.prizes[1]?.id)?.remaining, 1);
     assert.equal(view.status, "open");
-  } finally { store.close(); }
+  } finally { await store.close(); }
 });
 
 test("reading a due scheduled lottery does not start drawing or call the reward API", async () => {
   const store = createSqliteLotteryStore("file::memory:");
   const rewards = fakeRewards();
+  let now = new Date("2026-07-30T10:00:00.000Z");
   const service = createLotteryService({
-    store, rewards, eligibility: identityEligibility(), now: () => new Date("2026-07-30T10:31:00.000Z"), id: () => crypto.randomUUID(), random: () => 0,
+    store, rewards, eligibility: identityEligibility(), now: () => now, id: () => crypto.randomUUID(), random: () => 0,
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "读取无副作用", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z",
+      registrationEnd: "2026-07-30T10:20:00.000Z", drawAt: "2026-07-30T10:30:00.000Z",
       visibleToUsers: true, publicWinners: true,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     await service.enter(campaign.id, identity("user-1"));
+    now = new Date("2026-07-30T10:31:00.000Z");
     await service.get(campaign.id, identity("user-1"));
-    assert.equal(store.getCampaign(campaign.id)?.status, "open");
+    assert.equal((await store.getCampaign(campaign.id))?.status, "open");
     assert.deepEqual(rewards.calls, []);
     await service.processDue();
-    assert.equal(store.getCampaign(campaign.id)?.status, "drawn");
-  } finally { store.close(); }
+    assert.equal((await store.getCampaign(campaign.id))?.status, "drawn");
+  } finally { await store.close(); }
 });
 
 test("scheduled lottery generates subscription codes at the configured draw time", async () => {
@@ -222,7 +230,7 @@ test("scheduled lottery generates subscription codes at the configured draw time
   const rewards = fakeRewards();
   const service = createLotteryService({ store, rewards, eligibility: identityEligibility(), now: () => now, id: () => crypto.randomUUID(), random: () => 0 });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "定时活动", description: "统一开奖", drawMode: "scheduled",
       registrationStart: null, registrationEnd: "2026-07-30T10:20:00.000Z",
       drawAt: "2026-07-30T10:30:00.000Z", visibleToUsers: true, publicWinners: true,
@@ -232,12 +240,13 @@ test("scheduled lottery generates subscription codes at the configured draw time
     await service.enter(campaign.id, identity("user-2"));
     now = new Date("2026-07-30T10:31:00.000Z");
     await service.processDue();
-    assert.equal(store.getCampaign(campaign.id)?.status, "drawn");
-    assert.deepEqual(store.listEntries(campaign.id).map((entry) => entry.status), ["won", "not_won"]);
+    assert.equal((await store.getCampaign(campaign.id))?.status, "drawn");
+    assert.deepEqual((await store.listEntries(campaign.id)).map((entry) => entry.status), ["won", "not_won"]);
+    await service.processRewards();
     assert.deepEqual(rewards.calls, [{ type: "subscription", value: 30, count: 1 }]);
     const otherView = await service.get(campaign.id, identity("user-3"));
     assert.equal(otherView.winners[0]?.redemptionCode, null);
-  } finally { store.close(); }
+  } finally { await store.close(); }
 });
 
 test("scheduled lottery closes an empty campaign without generating codes", async () => {
@@ -246,42 +255,45 @@ test("scheduled lottery closes an empty campaign without generating codes", asyn
   const rewards = fakeRewards();
   const service = createLotteryService({ store, rewards, eligibility: identityEligibility(), now: () => now, id: () => crypto.randomUUID(), random: () => 0 });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "空活动", description: "无人报名", drawMode: "scheduled",
-      registrationStart: null, registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z",
+      registrationStart: null, registrationEnd: "2026-07-30T10:20:00.000Z", drawAt: "2026-07-30T10:30:00.000Z",
       visibleToUsers: true, publicWinners: true,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     now = new Date("2026-07-30T10:31:00.000Z");
     await service.processDue();
-    assert.equal(store.getCampaign(campaign.id)?.status, "drawn");
+    assert.equal((await store.getCampaign(campaign.id))?.status, "drawn");
     assert.deepEqual(rewards.calls, []);
-  } finally { store.close(); }
+  } finally { await store.close(); }
 });
 
-test("scheduled lottery persists a draw error and resumes the unfinished reward", async () => {
+test("scheduled lottery retries an unfinished reward without redrawing winners", async () => {
   const store = createSqliteLotteryStore("file::memory:");
   let calls = 0;
+  let now = new Date("2026-07-30T10:00:00.000Z");
   const service = createLotteryService({
-    store, id: () => crypto.randomUUID(), now: () => new Date("2026-07-30T10:31:00.000Z"), random: () => 0,
+    store, id: () => crypto.randomUUID(), now: () => now, random: () => 0,
     eligibility: identityEligibility(),
     rewards: { generate: async (request) => { calls += 1; if (calls === 1) throw new Error("redeem service timeout"); return [{ id: 8, code: "CODE-8", ...request }]; } },
   });
   try {
-    const campaign = service.create({
+    const campaign = await service.create({
       name: "可恢复开奖", description: "", drawMode: "scheduled", registrationStart: null,
-      registrationEnd: null, drawAt: "2026-07-30T10:30:00.000Z",
+      registrationEnd: "2026-07-30T10:20:00.000Z", drawAt: "2026-07-30T10:30:00.000Z",
       visibleToUsers: true, publicWinners: true,
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     });
     await service.enter(campaign.id, identity("user-1"));
-    await assert.rejects(service.processDue(), /redeem service timeout/);
-    assert.equal(store.getCampaign(campaign.id)?.status, "drawing");
-    assert.equal(store.getCampaign(campaign.id)?.lastError, "redeem service timeout");
+    now = new Date("2026-07-30T10:31:00.000Z");
     await service.processDue();
-    assert.equal(store.getCampaign(campaign.id)?.status, "drawn");
-    assert.equal(store.listEntries(campaign.id)[0]?.redemptionCode, "CODE-8");
-  } finally { store.close(); }
+    await assert.rejects(service.processRewards(), /redeem service timeout/);
+    assert.equal((await store.getCampaign(campaign.id))?.status, "drawn");
+    assert.equal((await store.getCampaign(campaign.id))?.lastError, "redeem service timeout");
+    now = new Date("2026-07-30T10:33:00.000Z");
+    await service.processRewards();
+    assert.equal((await store.listEntries(campaign.id))[0]?.redemptionCode, "CODE-8");
+  } finally { await store.close(); }
 });
 
 test("reward code gateway sends the configured prize and validates the target response", async () => {
@@ -339,7 +351,7 @@ test("embed session exchange binds source origin and verifies claimed user", asy
   const service = createEmbedIdentityService({
     configs: {
       get: async () => config,
-      getByToken: () => config,
+      getByToken: async () => config,
       updateTickets: async () => config,
       rotate: async () => config,
     },
@@ -418,7 +430,7 @@ function fakeTicketConfigs() {
   };
   return {
     get: async () => config,
-    getByToken: () => config,
+    getByToken: async () => config,
     updateTickets: async () => config,
     rotate: async () => config,
   };

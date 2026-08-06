@@ -46,7 +46,7 @@ test("successful calculation automatically generates a matching balance code", a
   const claims = createSqliteCompensationClaimStore("file::memory:");
   const rewardCalls: unknown[] = [];
   const service = createCompensationService({
-    config: configuredService(), claims,
+    config: await configuredService(), claims,
     liandong: fakeLiandong(order({ totalAmount: 10.4 })),
     rewards: { generate: async (request) => {
       rewardCalls.push(request);
@@ -61,34 +61,34 @@ test("successful calculation automatically generates a matching balance code", a
     assert.equal(claim.redemptionCode, "COMP-500");
     assert.equal(claim.summary.totalCompensationFen, 500);
     assert.deepEqual(rewardCalls, [{ type: "balance", value: 5, count: 1 }]);
-    assert.equal(service.listClaims()[0]?.redemptionCode, "COMP-500");
+    assert.equal((await service.listClaims())[0]?.redemptionCode, "COMP-500");
   } finally { claims.close(); }
 });
 
 test("reward generation failures remain visible in the persisted claim", async () => {
   const claims = createSqliteCompensationClaimStore("file::memory:");
   const service = createCompensationService({
-    config: configuredService(), claims,
+    config: await configuredService(), claims,
     liandong: fakeLiandong(order({})),
     rewards: { generate: async () => { throw new Error("redeem endpoint unavailable"); } },
     id: () => "claim-failed",
   });
   try {
     await assert.rejects(service.calculate(identity(), { orders: "LD-1" }), /redeem endpoint unavailable/);
-    const failed = service.listClaims()[0];
+    const failed = (await service.listClaims())[0];
     assert.equal(failed?.status, "failed");
     assert.equal(failed?.errorMessage, "redeem endpoint unavailable");
     assert.equal(failed?.redemptionCode, null);
   } finally { claims.close(); }
 });
 
-test("compensation embed configuration accepts the new kind and hides credentials", () => {
-  const service = configuredService();
-  const publicSettings = service.getPublic();
+test("compensation embed configuration accepts the new kind and hides credentials", async () => {
+  const service = await configuredService();
+  const publicSettings = await service.getPublic();
   assert.equal(publicSettings.enabled, true);
   assert.equal("username" in publicSettings, false);
   assert.equal("password" in publicSettings, false);
-  assert.equal(service.getAdmin().passwordConfigured, true);
+  assert.equal((await service.getAdmin()).passwordConfigured, true);
 });
 
 test("legacy embed config schema preserves rows and accepts compensation", () => {
@@ -181,13 +181,13 @@ test("runtime Liandong transport honors global proxy and Worker timeout settings
   assert.deepEqual(options, { timeoutMs: 12_000, proxyUrl: "http://127.0.0.1:7890" });
 });
 
-function configuredService() {
+async function configuredService() {
   const store = memoryConfigStore();
   const service = createCompensationConfigService({
     store,
     cipher: { encrypt: (value) => `encrypted:${value}`, decrypt: (value) => value.replace(/^encrypted:/, "") },
   });
-  service.update({
+  await service.update({
     enabled: true,
     activityName: "订单补偿",
     description: "",

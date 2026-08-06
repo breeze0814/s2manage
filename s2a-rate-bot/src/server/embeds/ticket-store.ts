@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 import type {
   EmbedIdentity,
   Ticket,
@@ -30,7 +31,17 @@ export type NewTicket = {
   readonly attachments: readonly TicketUpload[];
 };
 
-export type TicketStore = ReturnType<typeof createSqliteTicketStore>;
+export type TicketStore = {
+  readonly list: (status?: TicketStatus) => Awaitable<Ticket[]>;
+  readonly listForUser: (identity: EmbedIdentity) => Awaitable<Ticket[]>;
+  readonly get: (id: string) => Awaitable<TicketDetail | null>;
+  readonly getForUser: (id: string, identity: EmbedIdentity) => Awaitable<TicketDetail | null>;
+  readonly create: (input: NewTicket) => Awaitable<TicketDetail>;
+  readonly addMessage: (input: AddMessage) => Awaitable<TicketDetail>;
+  readonly updateStatus: (id: string, status: TicketStatus, timestamp: string) => Awaitable<TicketDetail | null>;
+  readonly attachment: (id: string) => Awaitable<TicketAttachmentData | null>;
+  readonly close: () => Awaitable<void>;
+};
 
 export function createSqliteTicketStore(databaseUrl: string) {
   const path = sqlitePath(databaseUrl);
@@ -175,7 +186,7 @@ function requiredDetail(database: DatabaseSync, id: string) {
   return detail;
 }
 
-type AddMessage = {
+export type AddMessage = {
   readonly id: string; readonly ticketId: string; readonly authorType: "customer" | "admin";
   readonly authorName: string; readonly body: string; readonly status: TicketStatus; readonly timestamp: string;
 };

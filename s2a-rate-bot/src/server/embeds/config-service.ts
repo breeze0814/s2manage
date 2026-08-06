@@ -24,7 +24,7 @@ export function createEmbedConfigService(input: {
 }) {
   return {
     get: (kind: EmbedKind) => ensureCurrentConfig(input, kind),
-    getByToken: (token: string) => input.store.getByToken(token.trim()),
+    getByToken: async (token: string) => input.store.getByToken(token.trim()),
     updateTickets: async (raw: unknown) => updateTicketConfig(input, raw),
     rotate: async (kind: EmbedKind) => {
       await ensureCurrentConfig(input, kind);
@@ -44,7 +44,7 @@ export function basicSettings(config: EmbedConfig): BasicEmbedSettings {
 
 async function ensureCurrentConfig(input: ConfigDependencies, kind: EmbedKind) {
   const sourceOrigin = await input.sourceOrigin();
-  const current = input.store.ensure(kind, defaultConfig(kind, sourceOrigin));
+  const current = await input.store.ensure(kind, defaultConfig(kind, sourceOrigin));
   if (current.config.sourceOrigin === sourceOrigin) return current;
   return input.store.update(kind, { ...current.config, sourceOrigin });
 }

@@ -37,7 +37,7 @@ export type ConnectionHealthService = {
   readonly probe: (connectionId: string) => Promise<HealthProbeExecution>;
   readonly act: (connectionId: string, action: unknown) => Promise<ConnectionHealthMonitor>;
   readonly events: (connectionId?: string, limit?: number) => Promise<ConnectionHealthEvent[]>;
-  readonly eventPage: (connectionId?: string, limit?: number, beforeId?: number) => Promise<ReturnType<HealthContext["store"]["eventPage"]>>;
+  readonly eventPage: (connectionId?: string, limit?: number, beforeId?: number) => Promise<Awaited<ReturnType<HealthContext["store"]["eventPage"]>>>;
   readonly nextDueAt: () => Promise<string | null>;
   readonly runDue: () => Promise<boolean>;
 };
@@ -52,9 +52,9 @@ export function createConnectionHealthService(context: HealthContext): Connectio
     assign: (id, policyId) => assignPolicy(context, id, policyId),
     probe: (id) => probeConnection(context, connectionIdSchema.parse(id)),
     act: (id, action) => applyManualAction(context, connectionIdSchema.parse(id), actionSchema.parse(action)),
-    events: async (id, limit = 100) => context.store.eventPage({
+    events: async (id, limit = 100) => (await context.store.eventPage({
       connectionId: parseOptionalConnectionId(id), limit: positiveLimit(limit),
-    }).events.slice(),
+    })).events.slice(),
     eventPage: async (id, limit = 50, beforeId) => context.store.eventPage({
       connectionId: parseOptionalConnectionId(id),
       limit: positiveLimit(limit),
@@ -79,9 +79,9 @@ async function updatePolicy(context: HealthContext, rawId: number, raw: unknown)
 
 async function deletePolicy(context: HealthContext, rawId: number) {
   const id = positiveId(rawId);
-  const count = context.store.assignmentCount(id);
+  const count = await context.store.assignmentCount(id);
   if (count > 0) throw new HealthPolicyConflictError(`健康策略仍被 ${count} 条连接使用`);
-  context.store.deletePolicy(id);
+  await context.store.deletePolicy(id);
 }
 
 async function assignPolicy(context: HealthContext, rawConnectionId: string, rawPolicyId: unknown) {
@@ -99,17 +99,17 @@ async function executeAssignment(
   connectionId: string,
   policyId: number | null,
 ) {
-  const connection = requiredConnection(context, connectionId);
-  const monitor = context.store.monitor(connectionId);
+  const connection = await requiredConnection(context, connectionId);
+  const monitor = await context.store.monitor(connectionId);
   if (policyId === null) return removeAssignment(context, connection, monitor);
   if (connection.status !== "active") {
     throw new HealthPolicyConflictError(`真实连接当前状态不可分配健康策略: ${connection.status}`);
   }
-  requiredPolicy(context, policyId);
+  await requiredPolicy(context, policyId);
   if (monitor?.policy?.id === policyId) return monitor;
   const at = context.now().toISOString();
-  context.store.assign(connection.id, policyId, at);
-  context.store.appendEvent(policyEvent(connection.id, policyId, at));
+  await context.store.assign(connection.id, policyId, at);
+  await context.store.appendEvent(policyEvent(connection.id, policyId, at));
   return requiredMonitor(context, connection.id);
 }
 
@@ -118,24 +118,24 @@ async function removeAssignment(
   connection: RealConnection,
   monitor: ConnectionHealthMonitor | null,
 ) {
-  const owned = context.store.actionState(connection.id);
+  const owned = await context.store.actionState(connection.id);
   if (!monitor && !owned) return null;
   const release = await releaseManagedSchedule(context, connection);
-  if (release) appendReleaseEvent(context, connection.id, monitor, release);
+  if (release) await appendReleaseEvent(context, connection.id, monitor, release);
   const at = context.now().toISOString();
-  context.store.assign(connection.id, null, at);
-  context.store.appendEvent(policyEvent(connection.id, null, at));
+  await context.store.assign(connection.id, null, at);
+  await context.store.appendEvent(policyEvent(connection.id, null, at));
   return null;
 }
 
-function appendReleaseEvent(
+async function appendReleaseEvent(
   context: HealthContext,
   connectionId: string,
   monitor: ConnectionHealthMonitor | null,
   release: Awaited<ReturnType<typeof releaseManagedSchedule>> & {},
 ) {
   const state = monitor?.state ?? "unknown";
-  context.store.appendEvent(actionEvent({
+  await context.store.appendEvent(actionEvent({
     connectionId,
     fromState: state,
     toState: state,
@@ -145,20 +145,20 @@ function appendReleaseEvent(
   }));
 }
 
-function requiredConnection(context: HealthContext, id: string) {
-  const connection = context.connections.get(id);
+async function requiredConnection(context: HealthContext, id: string) {
+  const connection = await context.connections.get(id);
   if (!connection) throw new Error(`真实连接不存在: ${id}`);
   return connection;
 }
 
-function requiredPolicy(context: HealthContext, id: number) {
-  const policy = context.store.getPolicy(id);
+async function requiredPolicy(context: HealthContext, id: number) {
+  const policy = await context.store.getPolicy(id);
   if (!policy) throw new Error(`健康策略不存在: ${id}`);
   return policy;
 }
 
-function requiredMonitor(context: HealthContext, connectionId: string) {
-  const monitor = context.store.monitor(connectionId);
+async function requiredMonitor(context: HealthContext, connectionId: string) {
+  const monitor = await context.store.monitor(connectionId);
   if (!monitor) throw new HealthPolicyConflictError("真实连接尚未分配健康策略");
   return monitor;
 }

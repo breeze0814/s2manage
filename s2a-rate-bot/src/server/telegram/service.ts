@@ -72,18 +72,18 @@ async function testNotification(input: TelegramDependencies, raw: unknown) {
 }
 
 async function pushBalance(input: TelegramDependencies, settings: TelegramRuntimeSettings): Promise<NotificationStats> {
-  const state = input.state.get();
+  const state = await input.state.get();
   if (!balanceDue(state.lastBalancePushAt, input.now())) return skippedStats();
   const sites = (await input.collection.list()).filter((site) => site.enabled);
   const header = `S2A 采集站账户余额\n时间：${formatTime(input.now())}`;
   const messages = messageBatches(header, balanceLines(sites)).map((batch) => batch.text);
   for (const text of messages) await input.client.sendMessage(messageInput(settings, { text }));
-  input.state.markBalancePushed(input.now().toISOString());
+  await input.state.markBalancePushed(input.now().toISOString());
   return successStats(messages.length);
 }
 
 async function pushRateChanges(input: TelegramDependencies, settings: TelegramRuntimeSettings): Promise<NotificationStats> {
-  let cursor = input.state.get().lastRateChangeId;
+  let cursor = (await input.state.get()).lastRateChangeId;
   if (cursor === null) return initializeRateCursor(input);
   let sent = 0;
   while (true) {
@@ -93,7 +93,7 @@ async function pushRateChanges(input: TelegramDependencies, settings: TelegramRu
     for (const batch of messageBatches(header, rateChangeLines(changes))) {
       await input.client.sendMessage(messageInput(settings, { text: batch.text }));
       cursor = batch.lastId;
-      input.state.markRateChangesPushed(cursor);
+      await input.state.markRateChangesPushed(cursor);
       sent += 1;
     }
     if (changes.length < RATE_CHANGE_PAGE_SIZE) return successStats(sent);
@@ -102,7 +102,7 @@ async function pushRateChanges(input: TelegramDependencies, settings: TelegramRu
 
 async function initializeRateCursor(input: TelegramDependencies) {
   const [latest] = await input.collection.changes({ limit: 1 });
-  input.state.markRateChangesPushed(latest?.id ?? 0);
+  await input.state.markRateChangesPushed(latest?.id ?? 0);
   return skippedStats();
 }
 

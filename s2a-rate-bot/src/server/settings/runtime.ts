@@ -1,8 +1,8 @@
 import { createAesGcmSecretCipher } from "../crypto.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
+import { createPostgresSettingsStore } from "./postgres-store.ts";
 import { createSettingsService, type SettingsService } from "./service.ts";
-import { createSqliteSettingsStore } from "./store.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const globalSettings = globalThis as typeof globalThis & { s2aSettingsService?: SettingsService };
 
 export function getRuntimeSettingsService(env: NodeJS.ProcessEnv = process.env) {
@@ -15,8 +15,9 @@ export function getRuntimeSettingsService(env: NodeJS.ProcessEnv = process.env) 
 function buildSettingsService(env: NodeJS.ProcessEnv) {
   const appSecret = env.APP_SECRET;
   if (!appSecret) throw new Error("APP_SECRET is required");
+  const infrastructure = getRuntimeInfrastructure(env);
   return createSettingsService({
-    store: createSqliteSettingsStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL),
+    store: createPostgresSettingsStore(infrastructure.postgres),
     cipher: createAesGcmSecretCipher(appSecret),
   });
 }

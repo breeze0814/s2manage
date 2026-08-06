@@ -16,6 +16,8 @@ export type LotteryFormDraft = {
   prizes: LotteryPrize[];
 };
 
+export type LotteryModePreset = "instant" | "scheduled" | "daily";
+
 export const PRIZE_TYPE_OPTIONS = [
   { value: "balance", label: "余额" },
   { value: "subscription", label: "订阅" },
@@ -59,10 +61,17 @@ export function emptyLotteryPrize(): LotteryPrize {
   return { id: crypto.randomUUID(), name: "", type: "balance", value: DEFAULT_PRIZE_VALUE, quantity: 1, probability: DEFAULT_PROBABILITY };
 }
 
-export function changeLotteryDrawMode(draft: LotteryFormDraft, drawMode: LotteryFormDraft["drawMode"]): LotteryFormDraft {
+export function lotteryModePreset(draft: LotteryFormDraft): LotteryModePreset {
+  if (draft.participationMode === "daily") return "daily";
+  return draft.drawMode;
+}
+
+export function changeLotteryMode(draft: LotteryFormDraft, preset: LotteryModePreset): LotteryFormDraft {
+  const drawMode = preset === "scheduled" ? "scheduled" : "instant";
   return {
     ...draft,
     drawMode,
+    participationMode: preset === "daily" ? "daily" : "once",
     drawAt: drawMode === "instant" ? "" : draft.drawAt,
     prizes: draft.prizes.map((prize) => ({
       ...prize,

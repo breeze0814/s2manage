@@ -52,29 +52,29 @@ export function createTargetGroupService(input: {
 }
 
 async function listGroups(input: TargetDependencies) {
-  return input.store.listGroups().map((group) => groupView(input.store, group));
+  return Promise.all((await input.store.listGroups()).map((group) => groupView(input.store, group)));
 }
 
 async function refreshAllGroups(input: TargetDependencies) {
-  input.store.replaceGroups(await input.client.listGroups());
+  await input.store.replaceGroups(await input.client.listGroups());
   return listGroups(input);
 }
 
 async function refreshGroup(input: TargetDependencies, groupId: number) {
   const group = await remoteGroup(input.client, groupId);
   if (!group) {
-    input.store.removeGroup(groupId);
+    await input.store.removeGroup(groupId);
     return null;
   }
-  input.store.saveGroup(group);
+  await input.store.saveGroup(group);
   return groupView(input.store, group);
 }
 
 async function saveRule(input: TargetDependencies, groupId: number, raw: unknown) {
   const parsed = targetRuleSchema.parse(raw);
-  const group = localGroup(input.store, groupId);
+  const group = await localGroup(input.store, groupId);
   const reconciliation = reconcileBindings(parsed.bindings, await input.sourceRates());
-  const previousRule = input.store.getRule(groupId);
+  const previousRule = await input.store.getRule(groupId);
   const rule: TargetRule = {
     targetGroupId: group.id, targetGroupName: group.name,
     enabled: parsed.enabled && reconciliation.bindings.length > 0,
@@ -85,7 +85,7 @@ async function saveRule(input: TargetDependencies, groupId: number, raw: unknown
     lastAppliedAt: previousRule?.lastAppliedAt ?? null,
     lastError: reconciliation.removed ? STALE_SOURCE_BINDING_ERROR : null,
   };
-  input.store.saveRule(rule, reconciliation.bindings);
+  await input.store.saveRule(rule, reconciliation.bindings);
   return groupView(input.store, group);
 }
 
@@ -93,27 +93,28 @@ async function saveSourceBindings(input: TargetDependencies, raw: unknown) {
   const parsed = sourceBindingsSchema.parse(raw);
   const source = (await input.sourceRates()).find((rate) => rate.sourceSiteId === parsed.sourceSiteId && rate.groupId === parsed.sourceGroupId);
   if (!source) throw new Error(`采集分组不存在: ${bindingKey(parsed)}`);
-  const groups = input.store.listGroups();
+  const groups = await input.store.listGroups();
   const selected = new Set(parsed.targetGroupIds);
   validateTargetSelection(groups, selected, source.groupType ?? source.platform);
-  const updates = groups
-    .map((group) => sourceBindingUpdate(input.store, group, parsed, selected.has(group.id)))
+  const candidates = await Promise.all(groups
+    .map((group) => sourceBindingUpdate(input.store, group, parsed, selected.has(group.id))));
+  const updates = candidates
     .filter((update): update is TargetRuleUpdate => update !== null);
-  input.store.saveRules(updates);
+  await input.store.saveRules(updates);
   return listGroups(input);
 }
 
-function sourceBindingUpdate(
+async function sourceBindingUpdate(
   store: TargetGroupStore,
   group: TargetGroup,
   source: SourceBinding,
   selected: boolean,
-): TargetRuleUpdate | null {
-  const current = store.bindings(group.id);
+): Promise<TargetRuleUpdate | null> {
+  const current = await store.bindings(group.id);
   const hasBinding = current.some((binding) => bindingKey(binding) === bindingKey(source));
   if (selected === hasBinding) return null;
   const bindings = selected ? dedupeBindings([...current, source]) : current.filter((binding) => bindingKey(binding) !== bindingKey(source));
-  const rule = store.getRule(group.id) ?? defaultRule(group);
+  const rule = await store.getRule(group.id) ?? defaultRule(group);
   const disabled = rule.enabled && bindings.length === 0;
   const priorError = rule.lastError === SOURCE_BINDING_REMOVED_ERROR ? null : rule.lastError;
   return { rule: { ...rule, enabled: disabled ? false : rule.enabled, lastError: disabled ? SOURCE_BINDING_REMOVED_ERROR : priorError }, bindings };
@@ -132,8 +133,8 @@ function samePlatform(left?: string | null, right?: string | null) {
 }
 
 async function previewRule(input: TargetDependencies, groupId: number) {
-  const group = localGroup(input.store, groupId);
-  const rule = input.store.getRule(groupId);
+  const group = await localGroup(input.store, groupId);
+  const rule = await input.store.getRule(groupId);
   if (!rule) throw new Error("目标分组尚未配置倍率规则");
   const reconciled = await boundRates(input, groupId, rule);
   return resolveRateUpdate({
@@ -148,23 +149,23 @@ async function applyRule(input: TargetDependencies, groupId: number) {
     const decision = await previewRule(input, groupId);
     if (decision.action === "skip") return decision;
     const updated = await input.client.updateGroupRate(groupId, decision.nextRate);
-    input.store.saveGroup(updated);
-    input.store.recordApplied(groupId, decision.currentRate, updated.rate_multiplier ?? decision.nextRate);
+    await input.store.saveGroup(updated);
+    await input.store.recordApplied(groupId, decision.currentRate, updated.rate_multiplier ?? decision.nextRate);
     return decision;
   } catch (error) {
-    input.store.recordError(groupId, error instanceof Error ? error.message : String(error));
+    await input.store.recordError(groupId, error instanceof Error ? error.message : String(error));
     throw error;
   }
 }
 
 async function boundRates(input: TargetDependencies, groupId: number, rule: TargetRule) {
-  const bindings = input.store.bindings(groupId);
+  const bindings = await input.store.bindings(groupId);
   const rates = await input.sourceRates();
   const reconciliation = reconcileBindings(bindings, rates);
   const reconciledRule = reconciliation.removed
     ? { ...rule, enabled: rule.enabled && reconciliation.bindings.length > 0, lastError: STALE_SOURCE_BINDING_ERROR }
     : rule;
-  if (reconciliation.removed) input.store.saveRule(reconciledRule, reconciliation.bindings);
+  if (reconciliation.removed) await input.store.saveRule(reconciledRule, reconciliation.bindings);
   const rateMap = new Map(rates.map((rate) => [`${rate.sourceSiteId}:${rate.groupId}`, rate.effectiveRate]));
   return { rule: reconciledRule, rates: reconciliation.bindings.map((binding) => rateMap.get(bindingKey(binding))!) };
 }
@@ -174,14 +175,14 @@ async function remoteGroup(client: TargetGroupClient, groupId: number): Promise<
   return group ?? null;
 }
 
-function localGroup(store: TargetGroupStore, groupId: number) {
-  const group = store.getGroup(groupId);
+async function localGroup(store: TargetGroupStore, groupId: number) {
+  const group = await store.getGroup(groupId);
   if (!group) throw new Error(`本地目标分组不存在: ${groupId}，请先刷新`);
   return group;
 }
 
-function groupView(store: TargetGroupStore, group: TargetGroup): TargetGroupView {
-  return { ...group, rule: store.getRule(group.id) ?? defaultRule(group), bindings: store.bindings(group.id) };
+async function groupView(store: TargetGroupStore, group: TargetGroup): Promise<TargetGroupView> {
+  return { ...group, rule: await store.getRule(group.id) ?? defaultRule(group), bindings: await store.bindings(group.id) };
 }
 
 function defaultRule(group: TargetGroup): TargetRule {

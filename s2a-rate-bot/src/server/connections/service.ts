@@ -31,20 +31,20 @@ export type ConnectionService = Readonly<{
   disconnect: (id: string, input: unknown) => Promise<ConnectionView>;
   resourceOptions: (input: unknown) => Promise<ConnectionResourceOptions>;
   events: (connectionId?: string, limit?: number) => Promise<ConnectionLifecycleEvent[]>;
-  eventPage: (connectionId?: string, limit?: number, beforeId?: number) => Promise<ReturnType<ConnectionContext["store"]["eventPage"]>>;
+  eventPage: (connectionId?: string, limit?: number, beforeId?: number) => Promise<Awaited<ReturnType<ConnectionContext["store"]["eventPage"]>>>;
   reconcile: () => Promise<boolean>;
 }>;
 
 export function createConnectionService(context: ConnectionContext): ConnectionService {
   return {
-    list: async () => context.store.list().map(toView),
-    get: async (id) => toView(requiredConnection(context, parseConnectionId(id))),
+    list: async () => (await context.store.list()).map(toView),
+    get: async (id) => toView(await requiredConnection(context, parseConnectionId(id))),
     create: (raw) => createConnection(context, parseCreate(raw)),
     disconnect: (id, raw) => disconnectWithLease(context, parseConnectionId(id), parseDisconnect(raw)),
     resourceOptions: (raw) => listResourceOptions(context, parseResourceOptions(raw)),
-    events: async (id, limit = 100) => context.store.eventPage({
+    events: async (id, limit = 100) => (await context.store.eventPage({
       connectionId: parseOptionalId(id), limit: positiveLimit(limit),
-    }).events.slice(),
+    })).events.slice(),
     eventPage: async (id, limit = 50, beforeId) => context.store.eventPage({
       connectionId: parseOptionalId(id),
       limit: positiveLimit(limit),
@@ -64,7 +64,7 @@ async function createConnection(context: ConnectionContext, parsed: ParsedCreate
     });
   } catch (error) {
     if (!(error instanceof ConnectionBusyError)) throw error;
-    const existing = context.store.findByOperationId(parsed.operationId);
+    const existing = await context.store.findByOperationId(parsed.operationId);
     if (!existing) throw error;
     validateRetry(existing, parsed);
     return toView(existing);
@@ -72,15 +72,15 @@ async function createConnection(context: ConnectionContext, parsed: ParsedCreate
 }
 
 async function createWithinGroupLease(context: ConnectionContext, parsed: ParsedCreate) {
-  const retried = context.store.findByOperationId(parsed.operationId);
+  const retried = await context.store.findByOperationId(parsed.operationId);
   if (retried) return retryOperation(context, parsed, retried);
-  const open = context.store.findOpen(parsed.sourceSiteId, parsed.sourceGroupId);
+  const open = await context.store.findOpen(parsed.sourceSiteId, parsed.sourceGroupId);
   if (open) throw new ConnectionConflictError(`采集分组已存在未结束的真实连接: ${open.id}`);
   const connection = await prepareConnection(context, parsed);
   try {
-    context.store.insert(connection);
+    await context.store.insert(connection);
   } catch (error) {
-    const duplicate = context.store.findByOperationId(parsed.operationId);
+    const duplicate = await context.store.findByOperationId(parsed.operationId);
     if (!duplicate) throw error;
     return retryOperation(context, parsed, duplicate);
   }
@@ -107,7 +107,7 @@ async function retryOperation(
   const restartable = existing.status === "disconnected" && existing.lastError && resourcesGone(existing);
   if (!restartable) throw new ConnectionConflictError(`该幂等操作已处于 ${existing.status} 状态: ${existing.id}`);
   const prepared = await prepareConnection(context, parsed);
-  context.store.restartProvisioning(restartedConnection(existing, prepared));
+  await context.store.restartProvisioning(restartedConnection(existing, prepared));
   return withConnectionLease({
     context, connectionId: existing.id,
     task: () => provisionConnection(context, existing.id),
@@ -139,7 +139,7 @@ async function listResourceOptions(
 
 async function reconcileConnections(context: ConnectionContext) {
   const results = await mapConcurrent({
-    items: context.store.listRecoverable(),
+    items: await context.store.listRecoverable(),
     concurrency: await context.concurrency(),
     task: (connection) => captureReconcile(context, connection.id),
   });
@@ -161,7 +161,7 @@ async function captureReconcile(context: ConnectionContext, connectionId: string
 }
 
 async function reconcileConnection(context: ConnectionContext, connectionId: string) {
-  const connection = requiredConnection(context, connectionId);
+  const connection = await requiredConnection(context, connectionId);
   if (connection.lifecycleAction === "provision") {
     await provisionConnection(context, connectionId);
     return;

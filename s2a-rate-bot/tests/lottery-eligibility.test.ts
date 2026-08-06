@@ -5,7 +5,7 @@ import { DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS } from "../src/core/lottery-elig
 import type { JsonClientRequest } from "../src/adapters/http-client.ts";
 import { createLotteryEligibilityGateway } from "../src/server/embeds/lottery-eligibility-gateway.ts";
 import { createLotteryService } from "../src/server/embeds/lottery-service.ts";
-import { createSqliteLotteryStore } from "../src/server/embeds/lottery-store.ts";
+import { createMemoryLotteryStore as createSqliteLotteryStore } from "./support/memory-lottery-store.ts";
 import type { EmbedIdentity } from "../src/server/embeds/types.ts";
 import { ensureEmbedSchema } from "../src/storage/sqlite-embed-schema.ts";
 
@@ -24,14 +24,14 @@ test("selected lottery eligibility conditions are persisted and must all pass", 
     id: () => crypto.randomUUID(),
   });
   try {
-    const campaign = service.create(campaignInput({
+    const campaign = await service.create(campaignInput({
       eligibilityConditions: [
         { type: "minimum_balance", minimum: 20 },
         { type: "redeemed_today" },
         { type: "invited_today" },
       ],
     }));
-    assert.deepEqual(store.getCampaign(campaign.id)?.eligibilityConditions, campaign.eligibilityConditions);
+    assert.deepEqual((await store.getCampaign(campaign.id))?.eligibilityConditions, campaign.eligibilityConditions);
     await assert.rejects(service.enter(campaign.id, identity()), /当前余额大于 20.*当天已使用兑换码.*当天已成功邀请好友/);
 
     facts = { balance: 21, redeemed: true, invited: false };
@@ -40,11 +40,11 @@ test("selected lottery eligibility conditions are persisted and must all pass", 
     facts = { balance: 21, redeemed: true, invited: true };
     assert.equal((await service.enter(campaign.id, identity())).status, "entered");
 
-    const unrestricted = service.create(campaignInput({ name: "无限制活动", eligibilityConditions: [] }));
+    const unrestricted = await service.create(campaignInput({ name: "无限制活动", eligibilityConditions: [] }));
     facts = { balance: null, redeemed: false, invited: false };
     assert.equal((await service.enter(unrestricted.id, identity("user-2"))).status, "entered");
   } finally {
-    store.close();
+    await store.close();
   }
 });
 
@@ -115,7 +115,7 @@ test("legacy lottery campaigns receive the previous balance threshold during sch
 function campaignInput(overrides: Record<string, unknown> = {}) {
   return {
     name: "条件活动", description: "", drawMode: "scheduled",
-    registrationStart: null, registrationEnd: null, drawAt: "2026-08-01T00:00:00.000Z",
+    registrationStart: null, registrationEnd: "2026-07-31T00:00:00.000Z", drawAt: "2026-08-01T00:00:00.000Z",
     visibleToUsers: true, publicWinners: false,
     prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     ...overrides,

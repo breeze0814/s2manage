@@ -40,7 +40,7 @@ async function authStatus(
   input: AuthDependencies,
   token: string | null | undefined,
 ): Promise<AuthStatus> {
-  const admin = input.store.getAdmin();
+  const admin = await input.store.getAdmin();
   if (!admin) return { initialized: false, authenticated: false, email: null };
   const identity = await input.sessions.verify(token);
   const authenticated = identity?.email === admin.email;
@@ -48,16 +48,16 @@ async function authStatus(
 }
 
 async function setupAdmin(input: AuthDependencies, raw: AuthCredentials) {
-  if (input.store.getAdmin()) throw new Error("管理员账号已初始化");
+  if (await input.store.getAdmin()) throw new Error("管理员账号已初始化");
   const credentials = authCredentialsSchema.parse(raw);
   const passwordHash = await input.passwords.hash(credentials.password);
-  input.store.createAdmin({ email: credentials.email, passwordHash });
+  await input.store.createAdmin({ email: credentials.email, passwordHash });
   return input.sessions.sign({ email: credentials.email });
 }
 
 async function loginAdmin(input: AuthDependencies, raw: AuthCredentials) {
   const credentials = authCredentialsSchema.parse(raw);
-  const admin = input.store.getAdmin();
+  const admin = await input.store.getAdmin();
   const valid = admin && admin.email === credentials.email
     ? await input.passwords.verify(credentials.password, admin.passwordHash)
     : false;

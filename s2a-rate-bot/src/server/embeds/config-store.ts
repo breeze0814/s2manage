@@ -3,14 +3,15 @@ import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, nowIso, sqlitePath } from "../../storage/sqlite-utils.ts";
 import type { EmbedConfig, EmbedKind } from "./types.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type EmbedConfigStore = {
-  readonly get: (kind: EmbedKind) => EmbedConfig | null;
-  readonly getByToken: (token: string) => EmbedConfig | null;
-  readonly ensure: (kind: EmbedKind, config: Record<string, unknown>) => EmbedConfig;
-  readonly update: (kind: EmbedKind, config: Record<string, unknown>) => EmbedConfig;
-  readonly rotate: (kind: EmbedKind) => EmbedConfig;
-  readonly close: () => void;
+  readonly get: (kind: EmbedKind) => Awaitable<EmbedConfig | null>;
+  readonly getByToken: (token: string) => Awaitable<EmbedConfig | null>;
+  readonly ensure: (kind: EmbedKind, config: Record<string, unknown>) => Awaitable<EmbedConfig>;
+  readonly update: (kind: EmbedKind, config: Record<string, unknown>) => Awaitable<EmbedConfig>;
+  readonly rotate: (kind: EmbedKind) => Awaitable<EmbedConfig>;
+  readonly close: () => Awaitable<void>;
 };
 
 export function createSqliteEmbedConfigStore(databaseUrl: string): EmbedConfigStore {

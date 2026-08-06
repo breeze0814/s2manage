@@ -17,6 +17,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await requireAuthenticatedRequest(request);
-    return NextResponse.json(getRuntimeEmbedServices().lottery.create(await readJsonBody(request)));
+    return NextResponse.json(await getRuntimeEmbedServices().lottery.create(await readJsonBody(request)));
   } catch (error) { return embedErrorResponse(error); }
 }

@@ -10,6 +10,6 @@ export async function GET(request: NextRequest) {
   try {
     await requireAuthenticatedRequest(request);
     const status = request.nextUrl.searchParams.get("status") || undefined;
-    return NextResponse.json({ items: getRuntimeEmbedServices().tickets.listAdmin(status) });
+    return NextResponse.json({ items: await getRuntimeEmbedServices().tickets.listAdmin(status) });
   } catch (error) { return embedErrorResponse(error); }
 }

@@ -19,21 +19,21 @@ test("scheduled SQLite maintenance removes expired history and keeps recent reco
   const databasePath = join(directory, "app.db");
   const databaseUrl = `file:${databasePath}`;
   try {
-    seedCollectionHistory(databaseUrl);
-    seedWorkerHistory(databaseUrl);
+    await seedCollectionHistory(databaseUrl);
+    await seedWorkerHistory(databaseUrl);
     seedAccountTestHistory(databasePath);
     seedConnectionEvents(databaseUrl, databasePath);
     ageFirstHistoryRecords(databasePath);
 
     const maintenance = createSqliteMaintenance(databaseUrl);
-    const result = maintenance.runIfDue(NOW);
+    const result = await maintenance.runIfDue(NOW);
     assert.deepEqual(result, {
       collectionRuns: 1, workerRuns: 1, accountTestResults: 1,
       healthEvents: 1, lifecycleEvents: 1,
       cutoff: "2026-07-12T12:00:00.000Z",
       eventCutoff: "2026-06-14T12:00:00.000Z",
     });
-    assert.equal(maintenance.runIfDue(NOW), null);
+    assert.equal(await maintenance.runIfDue(NOW), null);
     maintenance.close();
 
     const database = new DatabaseSync(databasePath);
@@ -51,11 +51,11 @@ test("scheduled SQLite maintenance removes expired history and keeps recent reco
   }
 });
 
-function seedCollectionHistory(databaseUrl: string) {
+async function seedCollectionHistory(databaseUrl: string) {
   const store = createSqliteCollectionStore(databaseUrl);
-  const site = store.create(siteInput());
-  store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 1), startedAt: OLD_TIMESTAMP });
-  store.recordSuccess({ siteId: site.id, refreshVersion: store.beginRefresh(site.id), overview: overview(site.id, 2), startedAt: NOW.toISOString() });
+  const site = await store.create(siteInput());
+  await store.recordSuccess({ siteId: site.id, refreshVersion: await store.beginRefresh(site.id), overview: overview(site.id, 1), startedAt: OLD_TIMESTAMP });
+  await store.recordSuccess({ siteId: site.id, refreshVersion: await store.beginRefresh(site.id), overview: overview(site.id, 2), startedAt: NOW.toISOString() });
   store.close();
 }
 
@@ -87,12 +87,12 @@ function seedAccountTestHistory(databasePath: string) {
   database.close();
 }
 
-function seedWorkerHistory(databaseUrl: string) {
+async function seedWorkerHistory(databaseUrl: string) {
   const store = createSqliteWorkerRunStore(databaseUrl);
-  const oldId = store.start(OLD_TIMESTAMP);
-  store.finish(oldId, summary(OLD_TIMESTAMP));
-  const recentId = store.start(NOW.toISOString());
-  store.finish(recentId, summary(NOW.toISOString()));
+  const oldId = await store.start(OLD_TIMESTAMP);
+  await store.finish(oldId, summary(OLD_TIMESTAMP));
+  const recentId = await store.start(NOW.toISOString());
+  await store.finish(recentId, summary(NOW.toISOString()));
   store.close();
 }
 

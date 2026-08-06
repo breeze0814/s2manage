@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createRuntimeConnectionHealthGateway } from "../connections/health-gateway.ts";
-import { createSqliteConnectionStore } from "../connections/store.ts";
-import { createSqliteRuntimeLeaseStore } from "../runtime-leases/store.ts";
-import { createSqliteTargetAccountStore } from "../target-accounts/store.ts";
+import { createPostgresConnectionStore } from "../connections/postgres-store.ts";
+import { createRedisRuntimeLeaseStore } from "../runtime-leases/redis-store.ts";
+import { createPostgresTargetAccountStore } from "../target-accounts/postgres-store.ts";
 import { createConnectionHealthService, type ConnectionHealthService } from "./service.ts";
-import { createSqliteConnectionHealthStore } from "./store.ts";
+import { createPostgresConnectionHealthStore } from "./postgres-store.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const RUNTIME_VERSION = 3;
 type RuntimeCache = { readonly version: number; readonly service: ConnectionHealthService; readonly close: () => void };
 const runtime = globalThis as typeof globalThis & { s2aConnectionHealthRuntime?: RuntimeCache };
@@ -31,11 +31,11 @@ export function createConnectionHealthRuntime(env: NodeJS.ProcessEnv = process.e
 }
 
 function buildRuntime(env: NodeJS.ProcessEnv): RuntimeCache {
-  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
-  const store = createSqliteConnectionHealthStore(databaseUrl);
-  const connections = createSqliteConnectionStore(databaseUrl);
-  const leases = createSqliteRuntimeLeaseStore(databaseUrl);
-  const snapshots = createSqliteTargetAccountStore(databaseUrl);
+  const infrastructure = getRuntimeInfrastructure(env);
+  const store = createPostgresConnectionHealthStore(infrastructure.postgres);
+  const connections = createPostgresConnectionStore(infrastructure.postgres);
+  const leases = createRedisRuntimeLeaseStore(infrastructure.redis);
+  const snapshots = createPostgresTargetAccountStore(infrastructure.postgres);
   const settings = getRuntimeSettingsService(env);
   const service = createConnectionHealthService({
     store,

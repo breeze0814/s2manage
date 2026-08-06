@@ -96,7 +96,7 @@ test("existing settings database gains a target recharge ratio without losing da
     const modules = await loadSettingsModules();
     const store = modules.store.createSqliteSettingsStore(databaseUrl);
     try {
-      const stored = store.get();
+      const stored = await store.get();
       assert.equal(stored?.targetName, "Existing");
       assert.equal(stored?.targetRechargeRatio, 1);
     } finally {

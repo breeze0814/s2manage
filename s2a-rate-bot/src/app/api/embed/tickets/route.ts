@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const runtime = getRuntimeEmbedServices();
     const identity = await requireEmbedIdentity(request, "tickets", runtime.sessions);
-    return NextResponse.json({ items: runtime.tickets.listUser(identity) }, noStore());
+    return NextResponse.json({ items: await runtime.tickets.listUser(identity) }, noStore());
   } catch (error) { return embedErrorResponse(error); }
 }
 

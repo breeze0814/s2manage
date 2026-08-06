@@ -29,7 +29,7 @@ export function createEmbedIdentityService(input: {
 
 async function exchangeIdentity(input: IdentityDependencies, kind: EmbedKind, raw: unknown) {
   const request = requestSchema.parse(raw);
-  const config = input.configs.getByToken(request.embedToken);
+  const config = await input.configs.getByToken(request.embedToken);
   if (!config || config.kind !== kind) throw new EmbedError("嵌入配置不存在或链接已失效", 404);
   const configuredOrigin = basicSettings(config).sourceOrigin;
   const currentOrigin = await input.upstream.sourceOrigin();

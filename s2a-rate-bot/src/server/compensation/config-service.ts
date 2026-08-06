@@ -62,15 +62,15 @@ export function createCompensationConfigService(input: Readonly<{
   cipher: SecretCipher;
 }>) {
   return {
-    get: (): CompensationSettings => settingsSnapshot(input),
-    getAdmin: (): AdminCompensationSettings => adminSettings(settingsSnapshot(input)),
-    getPublic: (): PublicCompensationSettings => publicSettings(settingsSnapshot(input)),
-    update: (raw: unknown): AdminCompensationSettings => updateSettings(input, raw),
+    get: () => settingsSnapshot(input),
+    getAdmin: async () => adminSettings(await settingsSnapshot(input)),
+    getPublic: async () => publicSettings(await settingsSnapshot(input)),
+    update: (raw: unknown) => updateSettings(input, raw),
   };
 }
 
-function settingsSnapshot(input: ConfigDependencies): CompensationSettings {
-  const stored = input.store.get();
+async function settingsSnapshot(input: ConfigDependencies): Promise<CompensationSettings> {
+  const stored = await input.store.get();
   if (!stored) return defaultSettings();
   return {
     enabled: stored.enabled,
@@ -84,14 +84,14 @@ function settingsSnapshot(input: ConfigDependencies): CompensationSettings {
   };
 }
 
-function updateSettings(input: ConfigDependencies, raw: unknown) {
-  const current = settingsSnapshot(input);
+async function updateSettings(input: ConfigDependencies, raw: unknown) {
+  const current = await settingsSnapshot(input);
   const patch = patchSchema.parse(raw);
   const password = patch.password || current.password;
   if (patch.enabled && (!patch.username || !password)) {
     throw new Error("启用活动前必须配置联动小铺用户名和密码");
   }
-  const stored = input.store.save({
+  const stored = await input.store.save({
     enabled: patch.enabled,
     activityName: patch.activityName,
     description: patch.description,

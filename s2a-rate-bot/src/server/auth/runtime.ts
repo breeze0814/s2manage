@@ -1,9 +1,9 @@
 import { createBcryptPasswordService } from "./password.ts";
 import { createAuthService, type AuthService } from "./service.ts";
 import { createJwtSessionService } from "./session.ts";
-import { createSqliteAuthStore } from "./store.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
+import { createPostgresAuthStore } from "./postgres-store.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const globalAuth = globalThis as typeof globalThis & { s2aAuthService?: AuthService };
 
 export function getRuntimeAuthService(env: NodeJS.ProcessEnv = process.env) {
@@ -16,8 +16,9 @@ export function getRuntimeAuthService(env: NodeJS.ProcessEnv = process.env) {
 function buildAuthService(env: NodeJS.ProcessEnv) {
   const appSecret = env.APP_SECRET;
   if (!appSecret) throw new Error("APP_SECRET is required");
+  const infrastructure = getRuntimeInfrastructure(env);
   return createAuthService({
-    store: createSqliteAuthStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL),
+    store: createPostgresAuthStore(infrastructure.postgres),
     passwords: createBcryptPasswordService(),
     sessions: createJwtSessionService(appSecret),
   });

@@ -125,6 +125,6 @@ export type ConnectionRemoteGateway = {
 export type ConnectionHealthGateway = {
   readonly probe: (accountId: number) => Promise<TargetAccountTestResult>;
   readonly readSchedulable: (accountId: number) => Promise<boolean>;
-  readonly assertSchedulableControl: (accountId: number) => void;
+  readonly assertSchedulableControl: (accountId: number) => void | Promise<void>;
   readonly setSchedulable: (accountId: number, schedulable: boolean) => Promise<void>;
 };

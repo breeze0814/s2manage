@@ -22,8 +22,8 @@ export async function prepareConnection(context: ConnectionContext, parsed: Pars
 }
 
 export async function provisionConnection(context: ConnectionContext, connectionId: string) {
-  const initial = requiredConnection(context, connectionId);
-  beginLifecycle(context, {
+  const initial = await requiredConnection(context, connectionId);
+  await beginLifecycle(context, {
     connection: initial,
     action: "provision",
     stage: "metadata",
@@ -32,19 +32,19 @@ export async function provisionConnection(context: ConnectionContext, connection
     message: "开始恢复真实连接创建流程",
   });
   try {
-    const resolved = await resolveStored(context, requiredConnection(context, connectionId));
-    await provisionMetadata(context, requiredConnection(context, connectionId));
+    const resolved = await resolveStored(context, await requiredConnection(context, connectionId));
+    await provisionMetadata(context, await requiredConnection(context, connectionId));
     if (initial.provisioningMode === "managed") {
-      await provisionManagedResources(context, requiredConnection(context, connectionId), resolved);
+      await provisionManagedResources(context, await requiredConnection(context, connectionId), resolved);
     } else {
-      await validateStoredResources(context, requiredConnection(context, connectionId));
+      await validateStoredResources(context, await requiredConnection(context, connectionId));
     }
-    await provisionPricing(context, requiredConnection(context, connectionId), resolved.groups);
-    context.store.finishProvision({ id: connectionId, error: null, at: context.now().toISOString() });
-    completeStage(context, completeEvent(connectionId, "真实连接创建完成"));
-    return toView(requiredConnection(context, connectionId));
+    await provisionPricing(context, await requiredConnection(context, connectionId), resolved.groups);
+    await context.store.finishProvision({ id: connectionId, error: null, at: context.now().toISOString() });
+    await completeStage(context, completeEvent(connectionId, "真实连接创建完成"));
+    return toView(await requiredConnection(context, connectionId));
   } catch (error) {
-    failLifecycle(context, connectionId, error);
+    await failLifecycle(context, connectionId, error);
     throw error;
   }
 }
@@ -66,7 +66,7 @@ export function validateRetry(connection: RealConnection, parsed: ParsedCreate) 
 
 async function provisionMetadata(context: ConnectionContext, connection: RealConnection) {
   await context.sources.setGroupType(connection.sourceSiteId, connection.sourceGroupId, connection.groupType);
-  completeStage(context, stageEvent(connection.id, "metadata", "采集分组元数据已同步"));
+  await completeStage(context, stageEvent(connection.id, "metadata", "采集分组元数据已同步"));
 }
 
 async function provisionManagedResources(
@@ -74,16 +74,16 @@ async function provisionManagedResources(
   connection: RealConnection,
   resolved: ResolvedConnectionContext,
 ) {
-  const name = ensureResourceName(context, connection);
-  beginStage(context, stageEvent(connection.id, "source", "确保采集站凭据存在"));
+  const name = await ensureResourceName(context, connection);
+  await beginStage(context, stageEvent(connection.id, "source", "确保采集站凭据存在"));
   const credential = await context.remote.ensureSourceCredential({
     siteId: connection.sourceSiteId, groupId: connection.sourceGroupId, name,
   });
   assertResourceId(connection.sourceCredentialId, credential.id, "采集站凭据");
-  context.store.setSourceCredential({ id: connection.id, credentialId: credential.id, at: context.now().toISOString() });
-  completeStage(context, stageEvent(connection.id, "source", "采集站凭据已确认"));
+  await context.store.setSourceCredential({ id: connection.id, credentialId: credential.id, at: context.now().toISOString() });
+  await completeStage(context, stageEvent(connection.id, "source", "采集站凭据已确认"));
   await provisionTarget(context, {
-    connection: requiredConnection(context, connection.id), resolved, apiKey: credential.key, name,
+    connection: await requiredConnection(context, connection.id), resolved, apiKey: credential.key, name,
   });
 }
 
@@ -94,16 +94,16 @@ async function provisionTarget(context: ConnectionContext, input: Readonly<{
   name: string;
 }>) {
   const { connection } = input;
-  beginStage(context, stageEvent(connection.id, "target", "确保目标转发账号存在"));
+  await beginStage(context, stageEvent(connection.id, "target", "确保目标转发账号存在"));
   const target = await context.remote.ensureTargetAccount({
     name: input.name, sourceBaseUrl: input.resolved.site.baseUrl, apiKey: input.apiKey,
     groupType: connection.groupType, targetGroupIds: connection.targetGroupIds,
   });
   if (connection.targetAccountId !== null) assertResourceId(String(connection.targetAccountId), String(target.id), "目标账号");
-  context.store.setTargetAccount({
+  await context.store.setTargetAccount({
     id: connection.id, accountId: target.id, accountName: target.name, at: context.now().toISOString(),
   });
-  completeStage(context, stageEvent(connection.id, "target", "目标转发账号已确认"));
+  await completeStage(context, stageEvent(connection.id, "target", "目标转发账号已确认"));
 }
 
 async function provisionPricing(
@@ -111,7 +111,7 @@ async function provisionPricing(
   connection: RealConnection,
   groups: readonly ConnectionTargetGroup[],
 ) {
-  beginStage(context, stageEvent(connection.id, "pricing", "同步调价映射"));
+  await beginStage(context, stageEvent(connection.id, "pricing", "同步调价映射"));
   if (connection.pricingMappingRequested) {
     const current = mappedGroupIds(groups, connection.sourceSiteId, connection.sourceGroupId);
     const targetGroupIds = [...new Set([...current, ...connection.targetGroupIds])];
@@ -120,9 +120,9 @@ async function provisionPricing(
       sourceGroupId: connection.sourceGroupId,
       targetGroupIds,
     });
-    context.store.setPricingMapping({ id: connection.id, enabled: true, at: context.now().toISOString() });
+    await context.store.setPricingMapping({ id: connection.id, enabled: true, at: context.now().toISOString() });
   }
-  completeStage(context, stageEvent(connection.id, "pricing", "调价映射同步完成"));
+  await completeStage(context, stageEvent(connection.id, "pricing", "调价映射同步完成"));
 }
 
 function initialConnection(input: Readonly<{

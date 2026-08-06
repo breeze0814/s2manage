@@ -128,7 +128,7 @@ export type LotteryCampaign = {
   readonly description: string;
   readonly drawMode: "instant" | "scheduled";
   readonly participationMode: LotteryParticipationMode;
-  readonly status: "scheduled" | "open" | "drawing" | "drawn" | "exhausted" | "cancelled";
+  readonly status: "scheduled" | "open" | "closed" | "drawing" | "drawn" | "exhausted" | "cancelled";
   readonly registrationStart: string | null;
   readonly registrationEnd: string | null;
   readonly drawAt: string | null;
@@ -161,6 +161,7 @@ export type LotteryEntry = {
   readonly prizeValue: number | null;
   readonly redemptionCode: string | null;
   readonly rewardCodeId: number | null;
+  readonly rewardStatus: "pending" | "processing" | "fulfilled" | "retryable_failed" | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };

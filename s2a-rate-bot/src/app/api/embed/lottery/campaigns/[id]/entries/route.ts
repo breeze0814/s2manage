@@ -17,7 +17,7 @@ export async function DELETE(request: NextRequest, { params }: Context) {
   try {
     const runtime = getRuntimeEmbedServices();
     const identity = await requireEmbedIdentity(request, "lottery", runtime.sessions);
-    return NextResponse.json(runtime.lottery.withdraw(params.id, identity), { headers: { "cache-control": "no-store" } });
+    return NextResponse.json(await runtime.lottery.withdraw(params.id, identity), { headers: { "cache-control": "no-store" } });
   } catch (error) { return embedErrorResponse(error); }
 }
 

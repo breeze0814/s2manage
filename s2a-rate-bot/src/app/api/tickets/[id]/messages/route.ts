@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest, { params }: Context) {
   try {
     await requireAuthenticatedRequest(request);
-    return NextResponse.json(getRuntimeEmbedServices().tickets.replyAdmin(params.id, await readJsonBody(request)));
+    return NextResponse.json(await getRuntimeEmbedServices().tickets.replyAdmin(params.id, await readJsonBody(request)));
   } catch (error) { return embedErrorResponse(error); }
 }
 

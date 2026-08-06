@@ -1,6 +1,6 @@
 import type { RealConnection } from "../src/server/connections/types.ts";
 import type { ConnectionStore } from "../src/server/connections/store.ts";
-import type { CollectionStore } from "../src/server/collection/store.ts";
+import { createSqliteCollectionStore } from "../src/server/collection/store.ts";
 
 export const TEST_CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -14,7 +14,7 @@ export function storedSiteInput() {
   };
 }
 
-export function recordVipRate(store: CollectionStore, siteId: number) {
+export function recordVipRate(store: ReturnType<typeof createSqliteCollectionStore>, siteId: number) {
   const startedAt = new Date().toISOString();
   store.recordSuccess({
     siteId, refreshVersion: store.beginRefresh(siteId), startedAt,

@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type RuntimeLease = Readonly<{
   key: string;
@@ -9,12 +10,12 @@ export type RuntimeLease = Readonly<{
 }>;
 
 export type RuntimeLeaseStore = Readonly<{
-  tryAcquire: (lease: RuntimeLease, updatedAt: string) => boolean;
-  release: (key: string, ownerId: string) => void;
-  close: () => void;
+  tryAcquire: (lease: RuntimeLease, updatedAt: string) => Awaitable<boolean>;
+  release: (key: string, ownerId: string) => Awaitable<void>;
+  close: () => Awaitable<void>;
 }>;
 
-export function createSqliteRuntimeLeaseStore(databaseUrl: string): RuntimeLeaseStore {
+export function createSqliteRuntimeLeaseStore(databaseUrl: string) {
   const path = sqlitePath(databaseUrl);
   ensureDatabaseDirectory(path);
   const database = new DatabaseSync(path, { timeout: 5_000 });
@@ -23,7 +24,7 @@ export function createSqliteRuntimeLeaseStore(databaseUrl: string): RuntimeLease
     tryAcquire: (lease, updatedAt) => tryAcquire(database, lease, updatedAt),
     release: (key, ownerId) => release(database, key, ownerId),
     close: () => database.close(),
-  };
+  } satisfies RuntimeLeaseStore;
 }
 
 function tryAcquire(database: DatabaseSync, lease: RuntimeLease, updatedAt: string) {

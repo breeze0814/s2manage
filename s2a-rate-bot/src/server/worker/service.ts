@@ -51,7 +51,7 @@ type WorkerGroup = {
 
 export type WorkerService = {
   readonly runCycle: () => Promise<WorkerCycleResult>;
-  readonly latest: () => WorkerRunRecord | null;
+  readonly latest: () => Promise<WorkerRunRecord | null>;
 };
 
 export function createWorkerService(input: {
@@ -74,20 +74,20 @@ export function createWorkerService(input: {
         running = false;
       }
     },
-    latest: () => input.runs.latest(),
+    latest: async () => input.runs.latest(),
   };
 }
 
 async function runPersistedCycle(input: WorkerDependencies): Promise<WorkerRunSummary> {
   const startedAt = input.now().toISOString();
-  const runId = input.runs.start(startedAt);
+  const runId = await input.runs.start(startedAt);
   let summary: WorkerRunSummary;
   try {
     summary = await executeCycle(input, startedAt);
   } catch (error) {
     summary = failedSummary(startedAt, input.now().toISOString(), error);
   }
-  input.runs.finish(runId, summary);
+  await input.runs.finish(runId, summary);
   return summary;
 }
 

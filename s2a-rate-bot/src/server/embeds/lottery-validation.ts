@@ -61,6 +61,9 @@ function validateCampaign(value: CampaignInput, context: z.RefinementCtx) {
   const start = dateValue(value.registrationStart);
   const end = dateValue(value.registrationEnd);
   const draw = dateValue(value.drawAt);
+  if (value.drawMode === "scheduled" && end === null) addIssue(context, "定时开奖必须设置报名结束时间", "registrationEnd");
+  if (value.participationMode === "daily" && start === null) addIssue(context, "每日参与活动必须设置开始时间", "registrationStart");
+  if (value.participationMode === "daily" && end === null) addIssue(context, "每日参与活动必须设置结束时间", "registrationEnd");
   if (start !== null && end !== null && start >= end) addIssue(context, "活动结束时间必须晚于开始时间", "registrationEnd");
   if (value.drawMode === "scheduled" && draw === null) addIssue(context, "定时开奖必须设置开奖时间", "drawAt");
   if (value.drawMode === "instant" && draw !== null) addIssue(context, "即时开奖不使用开奖时间", "drawAt");
@@ -97,7 +100,7 @@ function validateEligibilityConditions(value: CampaignInput, context: z.Refineme
   }
 }
 
-function addIssue(context: z.RefinementCtx, message: string, path: "registrationEnd" | "drawAt" | "prizes" | "eligibilityConditions") {
+function addIssue(context: z.RefinementCtx, message: string, path: "registrationStart" | "registrationEnd" | "drawAt" | "prizes" | "eligibilityConditions") {
   context.addIssue({ code: "custom", message, path: [path] });
 }
 

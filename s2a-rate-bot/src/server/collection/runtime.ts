@@ -1,10 +1,10 @@
 import { createAesGcmSecretCipher } from "../crypto.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createDefaultCollectionCollector } from "./collector.ts";
 import { createCollectionService, type CollectionService } from "./service.ts";
-import { createSqliteCollectionStore } from "./store.ts";
+import { createPostgresCollectionStore } from "./postgres-store.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const globalCollection = globalThis as typeof globalThis & { s2aCollectionService?: CollectionService };
 
 export function getRuntimeCollectionService(env: NodeJS.ProcessEnv = process.env) {
@@ -12,8 +12,9 @@ export function getRuntimeCollectionService(env: NodeJS.ProcessEnv = process.env
   const secret = env.APP_SECRET;
   if (!secret) throw new Error("APP_SECRET is required");
   const settings = getRuntimeSettingsService(env);
+  const infrastructure = getRuntimeInfrastructure(env);
   const service = createCollectionService({
-    store: createSqliteCollectionStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL),
+    store: createPostgresCollectionStore(infrastructure.postgres),
     cipher: createAesGcmSecretCipher(secret),
     collector: createDefaultCollectionCollector(),
     requestOptions: async () => requestOptions(await settings.get()),

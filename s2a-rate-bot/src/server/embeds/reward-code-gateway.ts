@@ -13,7 +13,7 @@ const rewardCodeSchema = z.object({
 export type RewardCode = z.infer<typeof rewardCodeSchema>;
 export type RewardCodeRequest = Pick<LotteryPrize, "type" | "value"> & { readonly count: number };
 export type RewardCodeGateway = {
-  readonly generate: (request: RewardCodeRequest) => Promise<readonly RewardCode[]>;
+  readonly generate: (request: RewardCodeRequest, idempotencyKey?: string) => Promise<readonly RewardCode[]>;
 };
 
 export function createRewardCodeGateway(input: {
@@ -23,20 +23,21 @@ export function createRewardCodeGateway(input: {
 }): RewardCodeGateway {
   const baseUrl = input.baseUrl.replace(/\/+$/, "");
   const headers = { "x-api-key": input.adminApiKey, accept: "application/json", "content-type": "application/json" };
-  return { generate: async (request) => parseCodes(await input.http.request({
-    url: `${baseUrl}/api/v1/admin/redeem-codes/generate`, method: "POST", headers, body: request,
+  return { generate: async (request, idempotencyKey) => parseCodes(await input.http.request({
+    url: `${baseUrl}/api/v1/admin/redeem-codes/generate`, method: "POST",
+    headers: idempotencyKey ? { ...headers, "idempotency-key": idempotencyKey } : headers, body: request,
   }), request) };
 }
 
 export function createRuntimeRewardCodeGateway(settings: SettingsService): RewardCodeGateway {
-  return { generate: async (request) => {
+  return { generate: async (request, idempotencyKey) => {
     const snapshot = await settings.get();
     if (!snapshot.target) throw new Error("目标站尚未配置，无法生成抽奖兑换码");
     const http = createJsonHttpClient({
       timeoutMs: snapshot.worker.timeoutSeconds * 1_000,
       proxyUrl: snapshot.proxy.enabled ? snapshot.proxy.proxyUrl : null,
     });
-    return createRewardCodeGateway({ ...snapshot.target, http }).generate(request);
+    return createRewardCodeGateway({ ...snapshot.target, http }).generate(request, idempotencyKey);
   } };
 }
 

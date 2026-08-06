@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { lotteryParticipationKey } from "../src/core/lottery-participation.ts";
 import { createLotteryService } from "../src/server/embeds/lottery-service.ts";
-import { createSqliteLotteryStore } from "../src/server/embeds/lottery-store.ts";
+import { createMemoryLotteryStore as createSqliteLotteryStore } from "./support/memory-lottery-store.ts";
 import type { EmbedIdentity } from "../src/server/embeds/types.ts";
 import { ensureEmbedSchema } from "../src/storage/sqlite-embed-schema.ts";
 
@@ -20,22 +20,26 @@ test("daily lottery participation resets at midnight in Asia/Shanghai", async ()
     rewards: rewards(),
   });
   try {
-    const campaign = service.create(campaignInput({ participationMode: "daily" }));
+    const campaign = await service.create(campaignInput({
+      participationMode: "daily",
+      registrationStart: "2026-07-29T16:00:00.000Z",
+      registrationEnd: "2026-08-02T16:00:00.000Z",
+    }));
     const first = await service.enter(campaign.id, identity());
     assert.equal(first.participationKey, "2026-07-30");
     assert.equal((await service.enter(campaign.id, identity())).id, first.id);
-    assert.equal(store.listEntries(campaign.id).length, 1);
+    assert.equal((await store.listEntries(campaign.id)).length, 1);
 
     now = new Date("2026-07-30T16:00:00.000Z");
-    assert.equal(service.get(campaign.id, identity()).currentEntry, null);
+    assert.equal((await service.get(campaign.id, identity())).currentEntry, null);
     const second = await service.enter(campaign.id, identity());
     assert.equal(second.participationKey, "2026-07-31");
     assert.notEqual(second.id, first.id);
-    const view = service.get(campaign.id, identity());
+    const view = await service.get(campaign.id, identity());
     assert.equal(view.currentEntry?.id, second.id);
     assert.deepEqual(view.myEntries.map((entry) => entry.id), [second.id, first.id]);
   } finally {
-    store.close();
+    await store.close();
   }
 });
 
@@ -51,17 +55,17 @@ test("once-per-campaign lottery remains unavailable after the day changes", asyn
     rewards: rewards(),
   });
   try {
-    const campaign = service.create(campaignInput({}));
+    const campaign = await service.create(campaignInput({}));
     assert.equal(campaign.participationMode, "once");
     const first = await service.enter(campaign.id, identity());
     now = new Date("2026-08-02T10:00:00.000Z");
     const repeated = await service.enter(campaign.id, identity());
     assert.equal(repeated.id, first.id);
     assert.equal(repeated.participationKey, "campaign");
-    assert.equal(store.listEntries(campaign.id).length, 1);
-    assert.equal(service.get(campaign.id, identity()).currentEntry?.id, first.id);
+    assert.equal((await store.listEntries(campaign.id)).length, 1);
+    assert.equal((await service.get(campaign.id, identity())).currentEntry?.id, first.id);
   } finally {
-    store.close();
+    await store.close();
   }
 });
 
@@ -77,9 +81,11 @@ test("daily scheduled participation and withdrawal only affect the current day",
     rewards: rewards(),
   });
   try {
-    const campaign = service.create(campaignInput({
+    const campaign = await service.create(campaignInput({
       drawMode: "scheduled",
       participationMode: "daily",
+      registrationStart: "2026-07-29T16:00:00.000Z",
+      registrationEnd: "2026-08-01T16:00:00.000Z",
       drawAt: "2026-08-02T00:00:00.000Z",
       prizes: [{ name: "余额", type: "balance", value: 5, quantity: 1, probability: null }],
     }));
@@ -87,12 +93,12 @@ test("daily scheduled participation and withdrawal only affect the current day",
     now = new Date("2026-07-31T10:00:00.000Z");
     const second = await service.enter(campaign.id, identity());
     assert.notEqual(second.id, first.id);
-    assert.equal(service.withdraw(campaign.id, identity()).id, second.id);
-    assert.deepEqual(store.listEntries(campaign.id).map((entry) => entry.status), ["entered", "withdrawn"]);
+    assert.equal((await service.withdraw(campaign.id, identity())).id, second.id);
+    assert.deepEqual((await store.listEntries(campaign.id)).map((entry) => entry.status), ["entered", "withdrawn"]);
     assert.equal((await service.enter(campaign.id, identity())).id, second.id);
-    assert.deepEqual(store.listEntries(campaign.id).map((entry) => entry.status), ["entered", "entered"]);
+    assert.deepEqual((await store.listEntries(campaign.id)).map((entry) => entry.status), ["entered", "entered"]);
   } finally {
-    store.close();
+    await store.close();
   }
 });
 

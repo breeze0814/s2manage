@@ -1,13 +1,14 @@
 import { createJsonHttpClient } from "../../adapters/http-client.ts";
 import { getRuntimeCollectionService } from "../collection/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
+import { createPostgresConnectionHealthStore } from "../connection-health/postgres-store.ts";
 import { createSub2TargetAccountClient } from "./client.ts";
 import { createTargetAccountService, type TargetAccountService } from "./service.ts";
-import { createSqliteTargetScheduleOwnership } from "./schedule-ownership.ts";
-import { createSqliteTargetAccountStore } from "./store.ts";
+import { createRedisTargetScheduleOwnership } from "./schedule-ownership.ts";
+import { createPostgresTargetAccountStore } from "./postgres-store.ts";
 import type { TargetAccountClient } from "./types.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 // Increment when the cached service contract or its dependencies change.
 const TARGET_ACCOUNT_RUNTIME_VERSION = 3;
 
@@ -32,11 +33,13 @@ export function getRuntimeTargetAccountService(env: NodeJS.ProcessEnv = process.
 }
 
 function buildTargetAccountRuntime(env: NodeJS.ProcessEnv): TargetAccountRuntime {
-  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+  const infrastructure = getRuntimeInfrastructure(env);
   const settings = getRuntimeSettingsService(env);
   const collection = getRuntimeCollectionService(env);
-  const store = createSqliteTargetAccountStore(databaseUrl);
-  const scheduleOwnership = createSqliteTargetScheduleOwnership(databaseUrl);
+  const store = createPostgresTargetAccountStore(infrastructure.postgres);
+  const scheduleOwnership = createRedisTargetScheduleOwnership({
+    health: createPostgresConnectionHealthStore(infrastructure.postgres), redis: infrastructure.redis,
+  });
   const service = createTargetAccountService({
     client: dynamicClient(settings),
     store,

@@ -4,21 +4,21 @@ import type {
   ConnectionLifecycleAction, ConnectionLifecycleStage, RealConnection,
 } from "./types.ts";
 
-export function beginStage(context: ConnectionContext, input: StageEventInput) {
-  context.store.setStage({
+export async function beginStage(context: ConnectionContext, input: StageEventInput) {
+  await context.store.setStage({
     id: input.connectionId,
     stage: input.stage,
     error: null,
     at: context.now().toISOString(),
   });
-  appendEvent(context, { ...input, result: "started" });
+  await appendEvent(context, { ...input, result: "started" });
 }
 
-export function completeStage(context: ConnectionContext, input: StageEventInput) {
-  appendEvent(context, { ...input, result: "success" });
+export async function completeStage(context: ConnectionContext, input: StageEventInput) {
+  await appendEvent(context, { ...input, result: "success" });
 }
 
-export function beginLifecycle(context: ConnectionContext, input: Readonly<{
+export async function beginLifecycle(context: ConnectionContext, input: Readonly<{
   connection: RealConnection;
   action: ConnectionLifecycleAction;
   stage: ConnectionLifecycleStage;
@@ -27,7 +27,7 @@ export function beginLifecycle(context: ConnectionContext, input: Readonly<{
   message: string;
 }>) {
   const at = context.now().toISOString();
-  context.store.setLifecycle({
+  await context.store.setLifecycle({
     id: input.connection.id,
     status: input.action === "provision" ? "provisioning" : "disconnecting",
     action: input.action,
@@ -37,7 +37,7 @@ export function beginLifecycle(context: ConnectionContext, input: Readonly<{
     error: null,
     at,
   });
-  appendEvent(context, {
+  await appendEvent(context, {
     connectionId: input.connection.id,
     action: input.action,
     stage: input.stage,
@@ -46,15 +46,15 @@ export function beginLifecycle(context: ConnectionContext, input: Readonly<{
   });
 }
 
-export function failLifecycle(
+export async function failLifecycle(
   context: ConnectionContext,
   connectionId: string,
   error: unknown,
 ) {
-  const current = requiredConnection(context, connectionId);
+  const current = await requiredConnection(context, connectionId);
   if (!current.lifecycleAction) throw error;
   const message = errorMessage(error);
-  context.store.setLifecycle({
+  await context.store.setLifecycle({
     id: current.id,
     status: "error",
     action: current.lifecycleAction,
@@ -64,7 +64,7 @@ export function failLifecycle(
     error: message,
     at: context.now().toISOString(),
   });
-  appendEvent(context, {
+  await appendEvent(context, {
     connectionId: current.id,
     action: current.lifecycleAction,
     stage: current.lifecycleStage,
@@ -73,8 +73,8 @@ export function failLifecycle(
   });
 }
 
-function appendEvent(context: ConnectionContext, input: LifecycleEventInput) {
-  context.store.appendEvent({ ...input, createdAt: context.now().toISOString() });
+async function appendEvent(context: ConnectionContext, input: LifecycleEventInput) {
+  await context.store.appendEvent({ ...input, createdAt: context.now().toISOString() });
 }
 
 type StageEventInput = Readonly<{

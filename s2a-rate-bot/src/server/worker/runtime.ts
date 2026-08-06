@@ -1,16 +1,16 @@
 import { getRuntimeCollectionService } from "../collection/runtime.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { getRuntimeTargetGroupService } from "../target-groups/runtime.ts";
 import { createWorkerService } from "./service.ts";
-import { createSqliteWorkerRunStore } from "./store.ts";
+import { createPostgresWorkerRunStore } from "./postgres-store.ts";
 import { writeWorkerLog } from "../logging/business-logger.ts";
-import { createSqliteMaintenance } from "../../storage/sqlite-maintenance.ts";
+import { createPostgresMaintenance } from "../../storage/postgres-maintenance.ts";
 import { getRuntimeTelegramNotificationService } from "../telegram/runtime.ts";
 import { getRuntimeEmbedServices } from "../embeds/runtime.ts";
 import { createConnectionHealthRuntime } from "../connection-health/runtime.ts";
 import { createConnectionRuntime } from "../connections/runtime.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 type RuntimeWorkerService = ReturnType<typeof buildRuntimeWorkerService>;
 const globalWorker = globalThis as typeof globalThis & { s2aWorkerService?: RuntimeWorkerService };
 
@@ -22,12 +22,12 @@ export function getRuntimeWorkerService(env: NodeJS.ProcessEnv = process.env) {
 }
 
 function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
-  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+  const infrastructure = getRuntimeInfrastructure(env);
   const settings = getRuntimeSettingsService(env);
   const collection = getRuntimeCollectionService(env);
   const targetGroups = getRuntimeTargetGroupService(env);
-  const runs = createSqliteWorkerRunStore(databaseUrl);
-  const maintenance = createSqliteMaintenance(databaseUrl);
+  const runs = createPostgresWorkerRunStore(infrastructure.postgres);
+  const maintenance = createPostgresMaintenance(infrastructure.postgres);
   const notifications = getRuntimeTelegramNotificationService(env);
   const embeds = getRuntimeEmbedServices(env);
   const connectionHealth = createConnectionHealthRuntime(env);
@@ -37,10 +37,7 @@ function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
     collection,
     targetGroups,
     notifications,
-    scheduled: { run: () => runScheduledTasks([
-      () => embeds.lottery.processDue(),
-      () => connections.service.reconcile(),
-    ]) },
+    scheduled: { run: async () => { await connections.service.reconcile(); } },
     runs,
     now: () => new Date(),
   });
@@ -48,15 +45,20 @@ function buildRuntimeWorkerService(env: NodeJS.ProcessEnv) {
     ...worker,
     runCycle: async () => runMaintainedCycle(worker.runCycle, maintenance),
     runHealthCycle: () => connectionHealth.service.runDue(),
+    runLotteryCycle: () => runScheduledTasks([
+      () => embeds.lottery.processDue(),
+      () => embeds.lottery.processRewards(),
+    ]),
     nextHealthDueAt: () => connectionHealth.service.nextDueAt(),
     intervalSeconds: async () => (await settings.get()).worker.intervalSeconds,
-    close: () => {
+    close: async () => {
       connections.close();
       connectionHealth.close();
-      embeds.close();
       notifications.close();
-      maintenance.close();
-      runs.close();
+      await maintenance.close();
+      await runs.close();
+      await embeds.close();
+      await infrastructure.close();
     },
   };
 }
@@ -69,10 +71,10 @@ async function runScheduledTasks(tasks: readonly (() => Promise<unknown>)[]) {
 
 async function runMaintainedCycle(
   runCycle: () => ReturnType<ReturnType<typeof createWorkerService>["runCycle"]>,
-  maintenance: ReturnType<typeof createSqliteMaintenance>,
+  maintenance: ReturnType<typeof createPostgresMaintenance>,
 ) {
   const result = await loggedWorkerCycle(runCycle);
-  const cleanup = maintenance.runIfDue();
+  const cleanup = await maintenance.runIfDue();
   if (cleanup) await writeWorkerLog({ event: "database_cleanup_completed", ...cleanup });
   return result;
 }

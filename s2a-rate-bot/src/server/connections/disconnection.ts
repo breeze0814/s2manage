@@ -11,14 +11,14 @@ export async function disconnectConnection(
   connectionId: string,
   request: ParsedDisconnect,
 ) {
-  const connection = requiredConnection(context, connectionId);
+  const connection = await requiredConnection(context, connectionId);
   if (completedRequest(connection, request)) return toView(connection);
   validateRequest(connection, request);
   return executeDisconnect(context, connection, request);
 }
 
 export async function resumeDisconnect(context: ConnectionContext, connectionId: string) {
-  const connection = requiredConnection(context, connectionId);
+  const connection = await requiredConnection(context, connectionId);
   if (connection.lifecycleAction !== "disconnect") {
     throw new ConnectionConflictError(`真实连接没有待恢复的断开动作: ${connection.id}`);
   }
@@ -33,7 +33,7 @@ async function executeDisconnect(
   connection: RealConnection,
   request: ParsedDisconnect,
 ) {
-  beginLifecycle(context, {
+  await beginLifecycle(context, {
     connection,
     action: "disconnect",
     stage: "health",
@@ -45,41 +45,41 @@ async function executeDisconnect(
     await releaseHealth(context, connection.id);
     if (request.mode === "full") await deleteManagedResources(context, connection.id);
     await removePricing(context, connection.id, request.removePricingMapping);
-    context.store.finishDisconnect({ id: connection.id, error: null, at: context.now().toISOString() });
-    completeStage(context, stageEvent(connection.id, "complete", "真实连接断开完成"));
-    return toView(requiredConnection(context, connection.id));
+    await context.store.finishDisconnect({ id: connection.id, error: null, at: context.now().toISOString() });
+    await completeStage(context, stageEvent(connection.id, "complete", "真实连接断开完成"));
+    return toView(await requiredConnection(context, connection.id));
   } catch (error) {
-    failLifecycle(context, connection.id, error);
+    await failLifecycle(context, connection.id, error);
     throw error;
   }
 }
 
 async function releaseHealth(context: ConnectionContext, connectionId: string) {
   await context.health.release(connectionId);
-  completeStage(context, stageEvent(connectionId, "health", "健康策略和调度所有权已释放"));
+  await completeStage(context, stageEvent(connectionId, "health", "健康策略和调度所有权已释放"));
 }
 
 async function deleteManagedResources(context: ConnectionContext, connectionId: string) {
-  beginStage(context, stageEvent(connectionId, "remote", "删除托管远端资源"));
+  await beginStage(context, stageEvent(connectionId, "remote", "删除托管远端资源"));
   await deleteTarget(context, connectionId);
   await deleteSource(context, connectionId);
-  completeStage(context, stageEvent(connectionId, "remote", "托管远端资源已删除"));
+  await completeStage(context, stageEvent(connectionId, "remote", "托管远端资源已删除"));
 }
 
 async function deleteTarget(context: ConnectionContext, connectionId: string) {
-  const current = requiredConnection(context, connectionId);
+  const current = await requiredConnection(context, connectionId);
   if (current.targetAccountId === null || current.targetAccountDeleted) return;
   await context.remote.deleteTargetAccount(current.targetAccountId);
-  context.store.setResourceDeleted({
+  await context.store.setResourceDeleted({
     id: connectionId, resource: "target", at: context.now().toISOString(),
   });
 }
 
 async function deleteSource(context: ConnectionContext, connectionId: string) {
-  const current = requiredConnection(context, connectionId);
+  const current = await requiredConnection(context, connectionId);
   if (!current.sourceCredentialId || current.sourceCredentialDeleted) return;
   await context.remote.deleteSourceCredential(current.sourceSiteId, current.sourceCredentialId);
-  context.store.setResourceDeleted({
+  await context.store.setResourceDeleted({
     id: connectionId, resource: "source", at: context.now().toISOString(),
   });
 }
@@ -89,9 +89,9 @@ async function removePricing(
   connectionId: string,
   requested: boolean,
 ) {
-  const connection = requiredConnection(context, connectionId);
+  const connection = await requiredConnection(context, connectionId);
   if (!requested || !connection.pricingMappingEnabled) return;
-  beginStage(context, stageEvent(connectionId, "pricing", "移除调价映射"));
+  await beginStage(context, stageEvent(connectionId, "pricing", "移除调价映射"));
   const groups = await context.pricing.groups();
   const current = mappedGroupIds(groups, connection.sourceSiteId, connection.sourceGroupId);
   const removed = new Set(connection.targetGroupIds);
@@ -100,8 +100,8 @@ async function removePricing(
     sourceGroupId: connection.sourceGroupId,
     targetGroupIds: current.filter((id) => !removed.has(id)),
   });
-  context.store.setPricingMapping({ id: connectionId, enabled: false, at: context.now().toISOString() });
-  completeStage(context, stageEvent(connectionId, "pricing", "调价映射已移除"));
+  await context.store.setPricingMapping({ id: connectionId, enabled: false, at: context.now().toISOString() });
+  await completeStage(context, stageEvent(connectionId, "pricing", "调价映射已移除"));
 }
 
 function validateRequest(connection: RealConnection, request: ParsedDisconnect) {

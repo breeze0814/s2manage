@@ -1,20 +1,21 @@
 import { createJsonHttpClient } from "../../adapters/http-client.ts";
 import { getRuntimeCollectionService } from "../collection/runtime.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createSub2TargetGroupClient } from "./client.ts";
 import { createTargetGroupService, type TargetGroupService } from "./service.ts";
-import { createSqliteTargetGroupStore } from "./store.ts";
+import { createPostgresTargetGroupStore } from "./postgres-store.ts";
 import type { TargetGroupClient } from "./types.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const globalTargetGroups = globalThis as typeof globalThis & { s2aTargetGroupService?: TargetGroupService };
 
 export function getRuntimeTargetGroupService(env: NodeJS.ProcessEnv = process.env) {
   if (env === process.env && globalTargetGroups.s2aTargetGroupService) return globalTargetGroups.s2aTargetGroupService;
   const settings = getRuntimeSettingsService(env);
   const collection = getRuntimeCollectionService(env);
+  const infrastructure = getRuntimeInfrastructure(env);
   const service = createTargetGroupService({
-    store: createSqliteTargetGroupStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL),
+    store: createPostgresTargetGroupStore(infrastructure.postgres),
     client: dynamicClient(settings),
     sourceRates: () => collection.rates(),
   });

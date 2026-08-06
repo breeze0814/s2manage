@@ -39,7 +39,7 @@ test("package scripts and dependencies describe only the Next.js app and generic
   }
 });
 
-test("SQLite schema and deployment documentation contain only the rebuilt runtime", () => {
+test("deployment uses PostgreSQL and Redis while retaining SQLite only for migration", () => {
   const schema = readFileSync(new URL("src/storage/sqlite-schema.ts", ROOT), "utf8");
   const readme = readFileSync(new URL("README.md", ROOT), "utf8");
   const environment = readFileSync(new URL(".env.example", ROOT), "utf8");
@@ -51,5 +51,9 @@ test("SQLite schema and deployment documentation contain only the rebuilt runtim
   assert.match(readme, /APP_SECRET/);
   assert.doesNotMatch(readme, /QQBot/);
   assert.match(environment, /^APP_SECRET=/m);
-  assert.match(environment, /^DATABASE_URL=file:/m);
+  assert.match(environment, /^POSTGRES_URL=postgresql:/m);
+  assert.match(environment, /^REDIS_URL=redis:/m);
+  assert.match(environment, /^SQLITE_MIGRATION_URL=file:/m);
+  assert.doesNotMatch(environment, /^DATABASE_URL=/m);
+  assert.match(readme, /npm run migrate:postgres/);
 });

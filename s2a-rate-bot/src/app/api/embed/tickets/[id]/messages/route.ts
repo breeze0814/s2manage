@@ -10,7 +10,7 @@ export async function POST(request: NextRequest, { params }: Context) {
   try {
     const runtime = getRuntimeEmbedServices();
     const identity = await requireEmbedIdentity(request, "tickets", runtime.sessions);
-    const ticket = runtime.tickets.replyUser(params.id, identity, await readJsonBody(request));
+    const ticket = await runtime.tickets.replyUser(params.id, identity, await readJsonBody(request));
     return NextResponse.json(ticket, { headers: { "cache-control": "no-store" } });
   } catch (error) { return embedErrorResponse(error); }
 }

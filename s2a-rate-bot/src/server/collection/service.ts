@@ -28,13 +28,13 @@ export type CollectionService = {
   readonly update: (id: number, input: unknown) => Promise<CollectionSiteView>;
   readonly delete: (id: number) => Promise<void>;
   readonly list: () => Promise<CollectionSiteView[]>;
-  readonly rates: (siteId?: number) => Promise<ReturnType<CollectionStore["rates"]>>;
-  readonly catalog: (siteId?: number) => Promise<ReturnType<CollectionStore["catalog"]>>;
-  readonly setRatePlatform: (siteId: number, groupId: string, platform: unknown) => Promise<ReturnType<CollectionStore["setRatePlatform"]>>;
-  readonly setRateGroupType: (siteId: number, groupId: string, groupType: unknown) => Promise<ReturnType<CollectionStore["setRateGroupType"]>>;
+  readonly rates: (siteId?: number) => Promise<Awaited<ReturnType<CollectionStore["rates"]>>>;
+  readonly catalog: (siteId?: number) => Promise<Awaited<ReturnType<CollectionStore["catalog"]>>>;
+  readonly setRatePlatform: (siteId: number, groupId: string, platform: unknown) => Promise<Awaited<ReturnType<CollectionStore["setRatePlatform"]>>>;
+  readonly setRateGroupType: (siteId: number, groupId: string, groupType: unknown) => Promise<Awaited<ReturnType<CollectionStore["setRateGroupType"]>>>;
   readonly runtimeSite: (id: number) => Promise<CollectionSiteRuntime>;
-  readonly changes: (query?: CollectionChangesQuery) => Promise<ReturnType<CollectionStore["changes"]>>;
-  readonly runs: (query?: CollectionRunsQuery) => Promise<ReturnType<CollectionStore["runs"]>>;
+  readonly changes: (query?: CollectionChangesQuery) => Promise<Awaited<ReturnType<CollectionStore["changes"]>>>;
+  readonly runs: (query?: CollectionRunsQuery) => Promise<Awaited<ReturnType<CollectionStore["runs"]>>>;
   readonly refresh: (id: number) => Promise<CollectionSiteView>;
   readonly refreshAll: () => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
   readonly refreshAllWithProgress: (onProgress: (event: CollectionRefreshProgressEvent) => void) => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
@@ -55,12 +55,12 @@ export function createCollectionService(input: {
     create: (raw) => createSite(input, raw),
     update: (id, raw) => updateSite(input, id, raw),
     delete: async (id) => input.store.delete(id),
-    list: async () => input.store.list().map((site) => siteView(site, input.cipher)),
+    list: async () => (await input.store.list()).map((site) => siteView(site, input.cipher)),
     rates: async (siteId) => input.store.rates(siteId),
     catalog: async (siteId) => input.store.catalog(siteId),
     setRatePlatform: async (siteId, groupId, platform) => input.store.setRatePlatform(siteId, groupId, ratePlatformSchema.parse(platform)),
     setRateGroupType: async (siteId, groupId, groupType) => input.store.setRateGroupType(siteId, groupId, rateGroupTypeSchema.parse(groupType)),
-    runtimeSite: async (id) => runtimeSite(requiredSite(input.store, id), input.cipher),
+    runtimeSite: async (id) => runtimeSite(await requiredSite(input.store, id), input.cipher),
     changes: async (query) => input.store.changes(query),
     runs: async (query) => input.store.runs(query),
     refresh: (id) => refreshSite(input, id),
@@ -74,42 +74,42 @@ const rateGroupTypeSchema = z.enum(["openai", "anthropic", "gemini", "antigravit
 
 async function createSite(input: CollectionDependencies, raw: unknown) {
   const site = collectionSiteSchema.parse(raw);
-  return siteView(input.store.create(encryptedSite(site, input.cipher)), input.cipher);
+  return siteView(await input.store.create(encryptedSite(site, input.cipher)), input.cipher);
 }
 
 async function updateSite(input: CollectionDependencies, id: number, raw: unknown) {
-  const current = requiredSite(input.store, id);
+  const current = await requiredSite(input.store, id);
   const parsed = collectionSiteSchema.parse(mergeStoredSecrets(raw, current, input.cipher));
   const site = encryptedSite(parsed, input.cipher, current);
-  return siteView(input.store.update(id, site), input.cipher);
+  return siteView(await input.store.update(id, site), input.cipher);
 }
 
 async function refreshSite(input: CollectionDependencies, id: number) {
-  const stored = requiredSite(input.store, id);
+  const stored = await requiredSite(input.store, id);
   if (!stored.enabled) throw new Error("采集站已停用");
   const site = runtimeSite(stored, input.cipher);
-  const refreshVersion = input.store.beginRefresh(id);
+  const refreshVersion = await input.store.beginRefresh(id);
   const options = await input.requestOptions();
   const startedAt = new Date().toISOString();
   try {
     const overview = await input.collector.collect({ site, ...options });
-    input.store.recordSuccess({
+    await input.store.recordSuccess({
       siteId: id,
       refreshVersion,
       overview,
       startedAt,
       credentials: encryptedCredentials(overview, input.cipher),
     });
-    return siteView(requiredSite(input.store, id), input.cipher);
+    return siteView(await requiredSite(input.store, id), input.cipher);
   } catch (error) {
     if (error instanceof CollectionRefreshSupersededError) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    recordRefreshFailure(input.store, { siteId: id, refreshVersion, message, startedAt, originalError: error });
+    await recordRefreshFailure(input.store, { siteId: id, refreshVersion, message, startedAt, originalError: error });
     throw error;
   }
 }
 
-function recordRefreshFailure(
+async function recordRefreshFailure(
   store: CollectionStore,
   input: Readonly<{
     siteId: number;
@@ -120,7 +120,7 @@ function recordRefreshFailure(
   }>,
 ) {
   try {
-    store.recordFailure({
+    await store.recordFailure({
       siteId: input.siteId,
       refreshVersion: input.refreshVersion,
       error: input.message,
@@ -141,7 +141,7 @@ function encryptedCredentials(overview: Awaited<ReturnType<CollectionCollector["
 }
 
 async function refreshAllSites(input: CollectionDependencies, onProgress?: (event: CollectionRefreshProgressEvent) => void) {
-  const sites = input.store.list().filter((site) => site.enabled);
+  const sites = (await input.store.list()).filter((site) => site.enabled);
   let completed = 0;
   const results = await Promise.all(sites.map(async (site) => {
     onProgress?.({ type: "started", id: site.id, name: site.name, total: sites.length });
@@ -212,8 +212,8 @@ function siteView(site: CollectionSiteStored, cipher: SecretCipher): CollectionS
   return { ...view, hasPassword: Boolean(password), hasAccessToken: Boolean(accessToken), hasRefreshToken: Boolean(refreshToken) };
 }
 
-function requiredSite(store: CollectionStore, id: number) {
-  const site = store.get(id);
+async function requiredSite(store: CollectionStore, id: number) {
+  const site = await store.get(id);
   if (!site) throw new Error(`采集站不存在: ${id}`);
   return site;
 }

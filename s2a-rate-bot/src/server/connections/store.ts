@@ -7,30 +7,31 @@ import type {
 import {
   insertLifecycleEvent, readLifecycleEventPage, type LifecycleEventQuery,
 } from "./event-store.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type ConnectionStore = Readonly<{
-  get: (id: string) => RealConnection | null;
-  findByOperationId: (operationId: string) => RealConnection | null;
-  findOpen: (siteId: number, groupId: string) => RealConnection | null;
-  list: () => RealConnection[];
-  listRecoverable: () => RealConnection[];
-  insert: (connection: RealConnection) => void;
-  restartProvisioning: (connection: RealConnection) => void;
-  setResourceName: (change: ResourceNameChange) => void;
-  setSourceCredential: (change: SourceCredentialChange) => void;
-  setTargetAccount: (change: TargetAccountChange) => void;
-  setPricingMapping: (change: BooleanChange) => void;
-  setLifecycle: (change: LifecycleChange) => void;
-  setStage: (change: StageChange) => void;
-  setResourceDeleted: (change: ResourceDeletedChange) => void;
-  finishProvision: (change: CompletionChange) => void;
-  finishDisconnect: (change: CompletionChange) => void;
-  appendEvent: (event: NewConnectionLifecycleEvent) => void;
-  eventPage: (query: LifecycleEventQuery) => ReturnType<typeof readLifecycleEventPage>;
-  close: () => void;
+  get: (id: string) => Awaitable<RealConnection | null>;
+  findByOperationId: (operationId: string) => Awaitable<RealConnection | null>;
+  findOpen: (siteId: number, groupId: string) => Awaitable<RealConnection | null>;
+  list: () => Awaitable<RealConnection[]>;
+  listRecoverable: () => Awaitable<RealConnection[]>;
+  insert: (connection: RealConnection) => Awaitable<void>;
+  restartProvisioning: (connection: RealConnection) => Awaitable<void>;
+  setResourceName: (change: ResourceNameChange) => Awaitable<void>;
+  setSourceCredential: (change: SourceCredentialChange) => Awaitable<void>;
+  setTargetAccount: (change: TargetAccountChange) => Awaitable<void>;
+  setPricingMapping: (change: BooleanChange) => Awaitable<void>;
+  setLifecycle: (change: LifecycleChange) => Awaitable<void>;
+  setStage: (change: StageChange) => Awaitable<void>;
+  setResourceDeleted: (change: ResourceDeletedChange) => Awaitable<void>;
+  finishProvision: (change: CompletionChange) => Awaitable<void>;
+  finishDisconnect: (change: CompletionChange) => Awaitable<void>;
+  appendEvent: (event: NewConnectionLifecycleEvent) => Awaitable<void>;
+  eventPage: (query: LifecycleEventQuery) => Awaitable<ReturnType<typeof readLifecycleEventPage>>;
+  close: () => Awaitable<void>;
 }>;
 
-export function createSqliteConnectionStore(databaseUrl: string): ConnectionStore {
+export function createSqliteConnectionStore(databaseUrl: string) {
   const path = sqlitePath(databaseUrl);
   ensureDatabaseDirectory(path);
   const database = new DatabaseSync(path, { timeout: 5_000 });
@@ -38,7 +39,7 @@ export function createSqliteConnectionStore(databaseUrl: string): ConnectionStor
   return connectionStore(database);
 }
 
-function connectionStore(database: DatabaseSync): ConnectionStore {
+function connectionStore(database: DatabaseSync) {
   return {
     get: (id) => readOne(database, "id", id),
     findByOperationId: (id) => readOne(database, "operation_id", id),
@@ -59,7 +60,7 @@ function connectionStore(database: DatabaseSync): ConnectionStore {
     appendEvent: (event) => insertLifecycleEvent(database, event),
     eventPage: (query) => readLifecycleEventPage(database, query),
     close: () => database.close(),
-  };
+  } satisfies ConnectionStore;
 }
 
 function readOne(database: DatabaseSync, column: "id" | "operation_id", value: string) {
@@ -230,17 +231,17 @@ function flagValue(value: unknown) { return Number(value) === 1; }
 function nullableText(value: unknown) { return value === null || value === undefined ? null : String(value); }
 function nullableNumber(value: unknown) { return value === null || value === undefined ? null : Number(value); }
 
-type ResourceNameChange = Readonly<{ id: string; resourceName: string; at: string }>;
-type SourceCredentialChange = Readonly<{ id: string; credentialId: string; at: string }>;
-type TargetAccountChange = Readonly<{ id: string; accountId: number; accountName: string; at: string }>;
-type BooleanChange = Readonly<{ id: string; enabled: boolean; at: string }>;
-type LifecycleChange = Readonly<{
+export type ResourceNameChange = Readonly<{ id: string; resourceName: string; at: string }>;
+export type SourceCredentialChange = Readonly<{ id: string; credentialId: string; at: string }>;
+export type TargetAccountChange = Readonly<{ id: string; accountId: number; accountName: string; at: string }>;
+export type BooleanChange = Readonly<{ id: string; enabled: boolean; at: string }>;
+export type LifecycleChange = Readonly<{
   id: string; status: RealConnection["status"]; action: RealConnection["lifecycleAction"];
   stage: RealConnection["lifecycleStage"]; mode: RealConnection["disconnectMode"];
   removePricing: boolean; error: string | null; at: string;
 }>;
-type StageChange = Readonly<{ id: string; stage: RealConnection["lifecycleStage"]; error: string | null; at: string }>;
-type ResourceDeletedChange = Readonly<{ id: string; resource: "source" | "target"; at: string }>;
-type CompletionChange = Readonly<{ id: string; error: string | null; at: string }>;
+export type StageChange = Readonly<{ id: string; stage: RealConnection["lifecycleStage"]; error: string | null; at: string }>;
+export type ResourceDeletedChange = Readonly<{ id: string; resource: "source" | "target"; at: string }>;
+export type CompletionChange = Readonly<{ id: string; error: string | null; at: string }>;
 type SqlValue = string | number | bigint | Uint8Array | null;
 type Row = Record<string, unknown>;

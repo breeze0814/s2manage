@@ -6,34 +6,35 @@ import { compareRateSnapshots, type PendingRateChange } from "./rate-changes.ts"
 import { readChanges, readRuns, type CollectionChangesQuery, type CollectionRunRecord, type CollectionRunsQuery } from "./history.ts";
 import { readRateCatalog, readRates, setRateGroupType, setRatePlatform } from "./rate-catalog.ts";
 import type { CollectionOverview, CollectionRateChange, CollectionSiteStored } from "./types.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 const MISSING_BINDINGS_RULE_ERROR = "绑定的采集分组已删除，倍率规则已自动停用";
 
 export type CollectionStore = {
-  readonly create: (site: Omit<CollectionSiteStored, "id" | StatusFields>) => CollectionSiteStored;
-  readonly update: (id: number, site: Omit<CollectionSiteStored, "id" | StatusFields>) => CollectionSiteStored;
-  readonly get: (id: number) => CollectionSiteStored | null;
-  readonly list: () => CollectionSiteStored[];
-  readonly delete: (id: number) => void;
-  readonly beginRefresh: (siteId: number) => number;
-  readonly recordSuccess: (input: RefreshSuccess) => void;
-  readonly recordFailure: (input: RefreshFailure) => void;
-  readonly rates: (siteId?: number) => SourceRateSnapshot[];
-  readonly catalog: (siteId?: number) => SourceRateSnapshot[];
-  readonly setRatePlatform: (siteId: number, groupId: string, platform: string | null) => SourceRateSnapshot;
-  readonly setRateGroupType: (siteId: number, groupId: string, groupType: string | null) => SourceRateSnapshot;
-  readonly changes: (query?: CollectionChangesQuery) => CollectionRateChange[];
-  readonly runs: (query?: CollectionRunsQuery) => CollectionRunRecord[];
-  readonly close: () => void;
+  readonly create: (site: SiteWrite) => Awaitable<CollectionSiteStored>;
+  readonly update: (id: number, site: SiteWrite) => Awaitable<CollectionSiteStored>;
+  readonly get: (id: number) => Awaitable<CollectionSiteStored | null>;
+  readonly list: () => Awaitable<CollectionSiteStored[]>;
+  readonly delete: (id: number) => Awaitable<void>;
+  readonly beginRefresh: (siteId: number) => Awaitable<number>;
+  readonly recordSuccess: (input: RefreshSuccess) => Awaitable<void>;
+  readonly recordFailure: (input: RefreshFailure) => Awaitable<void>;
+  readonly rates: (siteId?: number) => Awaitable<SourceRateSnapshot[]>;
+  readonly catalog: (siteId?: number) => Awaitable<SourceRateSnapshot[]>;
+  readonly setRatePlatform: (siteId: number, groupId: string, platform: string | null) => Awaitable<SourceRateSnapshot>;
+  readonly setRateGroupType: (siteId: number, groupId: string, groupType: string | null) => Awaitable<SourceRateSnapshot>;
+  readonly changes: (query?: CollectionChangesQuery) => Awaitable<CollectionRateChange[]>;
+  readonly runs: (query?: CollectionRunsQuery) => Awaitable<CollectionRunRecord[]>;
+  readonly close: () => Awaitable<void>;
 };
 
 type StatusFields = "accountLabel" | "balance" | "todayConsume" | "historyRecharge" | "lastRunAt" | "lastSuccessAt" | "lastStatus" | "lastError" | "consecutiveFailures" | "refreshVersion";
-type SiteWrite = Omit<CollectionSiteStored, "id" | StatusFields>;
+export type SiteWrite = Omit<CollectionSiteStored, "id" | StatusFields>;
 export type EncryptedCredentials = { readonly accessTokenEnc?: string; readonly refreshTokenEnc?: string };
-type RefreshSuccess = RefreshIdentity & { readonly overview: CollectionOverview; readonly credentials?: EncryptedCredentials };
-type RefreshFailure = RefreshIdentity & { readonly error: string };
+export type RefreshSuccess = RefreshIdentity & { readonly overview: CollectionOverview; readonly credentials?: EncryptedCredentials };
+export type RefreshFailure = RefreshIdentity & { readonly error: string };
 type RefreshIdentity = { readonly siteId: number; readonly refreshVersion: number; readonly startedAt: string };
 
-export function createSqliteCollectionStore(databaseUrl: string): CollectionStore {
+export function createSqliteCollectionStore(databaseUrl: string) {
   const path = sqlitePath(databaseUrl);
   ensureDatabaseDirectory(path);
   const database = new DatabaseSync(path, { timeout: 5_000 });
@@ -41,7 +42,7 @@ export function createSqliteCollectionStore(databaseUrl: string): CollectionStor
   return collectionStore(database);
 }
 
-function collectionStore(database: DatabaseSync): CollectionStore {
+function collectionStore(database: DatabaseSync) {
   return {
     create: (site) => createSite(database, site),
     update: (id, site) => updateSite(database, id, site),
@@ -51,14 +52,14 @@ function collectionStore(database: DatabaseSync): CollectionStore {
     beginRefresh: (siteId) => beginRefresh(database, siteId),
     recordSuccess: (input) => recordSuccess(database, input),
     recordFailure: (input) => recordFailure(database, input),
-    rates: (siteId) => readRates(database, siteId),
-    catalog: (siteId) => readRateCatalog(database, siteId),
+    rates: (siteId?: number) => readRates(database, siteId),
+    catalog: (siteId?: number) => readRateCatalog(database, siteId),
     setRatePlatform: (siteId, groupId, platform) => setRatePlatform(database, { siteId, groupId, platform }),
     setRateGroupType: (siteId, groupId, groupType) => setRateGroupType(database, { siteId, groupId, groupType }),
-    changes: (query) => readChanges(database, query),
-    runs: (query) => readRuns(database, query),
+    changes: (query?: CollectionChangesQuery) => readChanges(database, query),
+    runs: (query?: CollectionRunsQuery) => readRuns(database, query),
     close: () => database.close(),
-  };
+  } satisfies CollectionStore;
 }
 
 function createSite(database: DatabaseSync, site: SiteWrite) {

@@ -2,18 +2,19 @@ import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, nowIso, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
 import type { TargetAccount, TargetAccountBinding, TargetAccountTestState, TargetAccountView } from "./types.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type TargetAccountStore = {
-  readonly get: (accountId: number) => TargetAccountView | null;
-  readonly list: () => TargetAccountView[];
-  readonly replaceAll: (accounts: readonly TargetAccount[]) => void;
-  readonly updateSchedulable: (accountId: number, schedulable: boolean) => void;
-  readonly saveBinding: (accountId: number, binding: TargetAccountBinding | null) => void;
-  readonly recordTest: (accountId: number, state: TargetAccountTestState) => void;
-  readonly close: () => void;
+  readonly get: (accountId: number) => Awaitable<TargetAccountView | null>;
+  readonly list: () => Awaitable<TargetAccountView[]>;
+  readonly replaceAll: (accounts: readonly TargetAccount[]) => Awaitable<void>;
+  readonly updateSchedulable: (accountId: number, schedulable: boolean) => Awaitable<void>;
+  readonly saveBinding: (accountId: number, binding: TargetAccountBinding | null) => Awaitable<void>;
+  readonly recordTest: (accountId: number, state: TargetAccountTestState) => Awaitable<void>;
+  readonly close: () => Awaitable<void>;
 };
 
-export function createSqliteTargetAccountStore(databaseUrl: string): TargetAccountStore {
+export function createSqliteTargetAccountStore(databaseUrl: string) {
   const path = sqlitePath(databaseUrl);
   ensureDatabaseDirectory(path);
   const database = new DatabaseSync(path, { timeout: 5_000 });
@@ -26,7 +27,7 @@ export function createSqliteTargetAccountStore(databaseUrl: string): TargetAccou
     saveBinding: (accountId, binding) => saveBinding(database, accountId, binding),
     recordTest: (accountId, state) => recordTest(database, accountId, state),
     close: () => database.close(),
-  };
+  } satisfies TargetAccountStore;
 }
 
 const ACCOUNT_VIEW_SELECT = `SELECT accounts.*,

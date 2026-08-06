@@ -10,7 +10,7 @@ export async function GET(request: NextRequest, { params }: Context) {
   try {
     const runtime = getRuntimeEmbedServices();
     const identity = await requireEmbedIdentity(request, "tickets", runtime.sessions);
-    return NextResponse.json(runtime.tickets.getUser(params.id, identity), { headers: { "cache-control": "no-store" } });
+    return NextResponse.json(await runtime.tickets.getUser(params.id, identity), { headers: { "cache-control": "no-store" } });
   } catch (error) { return embedErrorResponse(error); }
 }
 

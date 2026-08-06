@@ -17,24 +17,24 @@ export function createRuntimeConnectionHealthGateway(
     assertSchedulableControl: (accountId) => assertSchedulableControl(input.snapshots, accountId),
     setSchedulable: async (accountId, schedulable) => {
       await (await targetClient(input.settings)).setSchedulable(accountId, schedulable);
-      input.snapshots.updateSchedulable(accountId, schedulable);
+      await input.snapshots.updateSchedulable(accountId, schedulable);
     },
   };
 }
 
 async function readSchedulable(input: RuntimeHealthGatewayInput, accountId: number) {
   const accounts = await (await targetClient(input.settings)).listAccounts();
-  input.snapshots.replaceAll(accounts);
+  await input.snapshots.replaceAll(accounts);
   const account = accounts.find((item) => item.id === accountId);
   if (!account) throw new Error(`目标账号不存在: ${accountId}`);
   return account.schedulable;
 }
 
-function assertSchedulableControl(
+async function assertSchedulableControl(
   snapshots: Pick<TargetAccountStore, "get">,
   accountId: number,
 ) {
-  const account = snapshots.get(accountId);
+  const account = await snapshots.get(accountId);
   if (!account) throw new Error(`目标账号本地快照不存在: ${accountId}`);
   if (account.binding?.autoManageSchedulable) {
     throw new HealthPolicyConflictError(`目标账号 ${accountId} 已启用账号测试自动调度，不能由连接健康治理接管`);

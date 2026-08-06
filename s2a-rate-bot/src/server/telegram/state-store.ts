@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, nowIso, sqlitePath } from "../../storage/sqlite-utils.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type TelegramNotificationState = {
   readonly lastBalancePushAt: string | null;
@@ -8,10 +9,10 @@ export type TelegramNotificationState = {
 };
 
 export type TelegramStateStore = {
-  readonly get: () => TelegramNotificationState;
-  readonly markBalancePushed: (timestamp: string) => void;
-  readonly markRateChangesPushed: (changeId: number) => void;
-  readonly close: () => void;
+  readonly get: () => Awaitable<TelegramNotificationState>;
+  readonly markBalancePushed: (timestamp: string) => Awaitable<void>;
+  readonly markRateChangesPushed: (changeId: number) => Awaitable<void>;
+  readonly close: () => Awaitable<void>;
 };
 
 export function createSqliteTelegramStateStore(databaseUrl: string): TelegramStateStore {

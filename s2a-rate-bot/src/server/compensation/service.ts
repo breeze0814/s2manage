@@ -30,13 +30,13 @@ export function createCompensationService(input: Readonly<{
   const id = input.id ?? randomUUID;
   return {
     calculate: (identity: EmbedIdentity, raw: unknown) => calculateClaim({ input, identity, raw, now, id }),
-    testConnection: async () => (await input.liandong.login(requireCredentials(input.config.get()))).profile,
+    testConnection: async () => (await input.liandong.login(requireCredentials(await input.config.get()))).profile,
     listClaims: () => input.claims.list(),
   };
 }
 
 async function calculateClaim(context: CalculationContext) {
-  const settings = requireActive(context.input.config.get());
+  const settings = requireActive(await context.input.config.get());
   const tradeNumbers = parseTradeNumbers(context.raw);
   const session = await context.input.liandong.login(settings);
   const results = await performLookups({
@@ -44,7 +44,7 @@ async function calculateClaim(context: CalculationContext) {
   });
   const summary = summarizeCompensations(assessments(results));
   const createdAt = context.now().toISOString();
-  const claim = context.input.claims.create(pendingClaim({
+  const claim = await context.input.claims.create(pendingClaim({
     id: context.id(), identity: context.identity, session, results, summary, createdAt,
   }));
   return issueReward(context.input, claim, context.now);
@@ -64,7 +64,7 @@ async function issueReward(input: ServiceDependencies, claim: CompensationClaim,
     if (!reward) throw new Error("目标站未返回补偿兑换码");
     return input.claims.complete(claim.id, reward, now().toISOString());
   } catch (error) {
-    input.claims.fail(claim.id, errorMessage(error), now().toISOString());
+    await input.claims.fail(claim.id, errorMessage(error), now().toISOString());
     throw error;
   }
 }

@@ -1,25 +1,25 @@
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createAesGcmSecretCipher } from "../crypto.ts";
-import { createSqliteCompensationClaimStore } from "../compensation/claim-store.ts";
+import { createPostgresCompensationClaimStore } from "../compensation/claim-postgres-store.ts";
 import { createCompensationConfigService } from "../compensation/config-service.ts";
-import { createSqliteCompensationConfigStore } from "../compensation/config-store.ts";
+import { createPostgresCompensationConfigStore } from "../compensation/config-postgres-store.ts";
 import { createRuntimeLiandongTransport } from "../compensation/http.ts";
 import { createLiandongGateway } from "../compensation/liandong-gateway.ts";
 import { createCompensationService } from "../compensation/service.ts";
-import { createSqliteEmbedConfigStore } from "./config-store.ts";
+import { createPostgresEmbedConfigStore } from "./config-postgres-store.ts";
 import { basicSettings, createEmbedConfigService, type EmbedConfigService } from "./config-service.ts";
 import { createEmbedIdentityService } from "./identity-service.ts";
 import { createLeaderboardService } from "./leaderboard-service.ts";
 import { createLotteryService } from "./lottery-service.ts";
 import { createRuntimeLotteryEligibilityGateway } from "./lottery-eligibility-gateway.ts";
-import { createSqliteLotteryStore } from "./lottery-store.ts";
+import { createPostgresLotteryStore } from "./lottery-postgres-store.ts";
 import { createRuntimeRewardCodeGateway } from "./reward-code-gateway.ts";
-import { createEmbedSessionService, type EmbedSessionService } from "./session.ts";
+import { createRedisEmbedSessionService, type EmbedSessionService } from "./session.ts";
 import { createTicketService } from "./ticket-service.ts";
-import { createSqliteTicketStore } from "./ticket-store.ts";
+import { createPostgresTicketStore } from "./ticket-postgres-store.ts";
 import { createEmbedUpstreamGateway } from "./upstream.ts";
+import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 
-const DEFAULT_DATABASE_URL = "file:./data/s2a-rate-bot.db";
 const globalEmbeds = globalThis as typeof globalThis & { s2aEmbedRuntime?: ReturnType<typeof buildEmbedRuntime> };
 
 export function getRuntimeEmbedServices(env: NodeJS.ProcessEnv = process.env) {
@@ -32,17 +32,17 @@ export function getRuntimeEmbedServices(env: NodeJS.ProcessEnv = process.env) {
 function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
   const secret = env.APP_SECRET;
   if (!secret) throw new Error("APP_SECRET is required");
+  const infrastructure = getRuntimeInfrastructure(env);
   const settings = getRuntimeSettingsService(env);
-  const databaseUrl = env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
   const cipher = createAesGcmSecretCipher(secret);
-  const store = createSqliteEmbedConfigStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
-  const ticketsStore = createSqliteTicketStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
-  const lotteryStore = createSqliteLotteryStore(env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
-  const compensationConfigStore = createSqliteCompensationConfigStore(databaseUrl);
-  const compensationClaimStore = createSqliteCompensationClaimStore(databaseUrl);
+  const store = createPostgresEmbedConfigStore(infrastructure.postgres);
+  const ticketsStore = createPostgresTicketStore(infrastructure.postgres);
+  const lotteryStore = createPostgresLotteryStore(infrastructure.postgres.pool);
+  const compensationConfigStore = createPostgresCompensationConfigStore(infrastructure.postgres);
+  const compensationClaimStore = createPostgresCompensationClaimStore(infrastructure.postgres);
   const upstream = createEmbedUpstreamGateway(settings);
   const configs = createEmbedConfigService({ store, sourceOrigin: upstream.sourceOrigin });
-  const sessions = createActiveEmbedSessionService(createEmbedSessionService(secret), configs);
+  const sessions = createActiveEmbedSessionService(createRedisEmbedSessionService(infrastructure.redis), configs);
   const identities = createEmbedIdentityService({ configs, sessions, upstream });
   const tickets = createTicketService({ store: ticketsStore, configs });
   const leaderboard = createLeaderboardService({ upstream });
@@ -63,9 +63,10 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
   });
   return {
     configs, identities, sessions, tickets, leaderboard, lottery, compensationConfig, compensation,
-    close: () => {
-      compensationClaimStore.close(); compensationConfigStore.close(); lotteryStore.close();
+    close: async () => {
+      compensationClaimStore.close(); compensationConfigStore.close();
       ticketsStore.close(); store.close();
+      await lotteryStore.close();
     },
   };
 }

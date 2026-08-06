@@ -6,30 +6,31 @@ import type {
   ConnectionHealthState, NewHealthEvent,
 } from "./types.ts";
 import { insertHealthEvent, readHealthEventPage, type HealthEventQuery } from "./event-store.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type ConnectionHealthStore = {
-  readonly listPolicies: () => ConnectionHealthPolicy[];
-  readonly getPolicy: (id: number) => ConnectionHealthPolicy | null;
-  readonly createPolicy: (policy: Omit<ConnectionHealthPolicy, "id" | "createdAt" | "updatedAt">, at: string) => ConnectionHealthPolicy;
-  readonly updatePolicy: (input: PolicyUpdate) => ConnectionHealthPolicy;
-  readonly deletePolicy: (id: number) => void;
-  readonly assignmentCount: (policyId: number) => number;
-  readonly assign: (connectionId: string, policyId: number | null, at: string) => void;
-  readonly monitor: (connectionId: string) => ConnectionHealthMonitor | null;
-  readonly listMonitors: () => ConnectionHealthMonitor[];
-  readonly listDue: (at: string) => ConnectionHealthMonitor[];
-  readonly nextDueAt: () => string | null;
-  readonly saveStateAndEvent: (state: ConnectionHealthState, event: NewHealthEvent) => void;
-  readonly appendEvent: (event: NewHealthEvent) => void;
-  readonly eventPage: (query: HealthEventQuery) => ReturnType<typeof readHealthEventPage>;
-  readonly actionState: (connectionId: string) => ConnectionHealthActionState | null;
-  readonly actionStateByAccount: (accountId: number) => ConnectionHealthActionState | null;
-  readonly saveActionState: (state: ConnectionHealthActionState) => void;
-  readonly deleteActionState: (connectionId: string) => void;
-  readonly close: () => void;
+  readonly listPolicies: () => Awaitable<ConnectionHealthPolicy[]>;
+  readonly getPolicy: (id: number) => Awaitable<ConnectionHealthPolicy | null>;
+  readonly createPolicy: (policy: PolicyWrite, at: string) => Awaitable<ConnectionHealthPolicy>;
+  readonly updatePolicy: (input: PolicyUpdate) => Awaitable<ConnectionHealthPolicy>;
+  readonly deletePolicy: (id: number) => Awaitable<void>;
+  readonly assignmentCount: (policyId: number) => Awaitable<number>;
+  readonly assign: (connectionId: string, policyId: number | null, at: string) => Awaitable<void>;
+  readonly monitor: (connectionId: string) => Awaitable<ConnectionHealthMonitor | null>;
+  readonly listMonitors: () => Awaitable<ConnectionHealthMonitor[]>;
+  readonly listDue: (at: string) => Awaitable<ConnectionHealthMonitor[]>;
+  readonly nextDueAt: () => Awaitable<string | null>;
+  readonly saveStateAndEvent: (state: ConnectionHealthState, event: NewHealthEvent) => Awaitable<void>;
+  readonly appendEvent: (event: NewHealthEvent) => Awaitable<void>;
+  readonly eventPage: (query: HealthEventQuery) => Awaitable<ReturnType<typeof readHealthEventPage>>;
+  readonly actionState: (connectionId: string) => Awaitable<ConnectionHealthActionState | null>;
+  readonly actionStateByAccount: (accountId: number) => Awaitable<ConnectionHealthActionState | null>;
+  readonly saveActionState: (state: ConnectionHealthActionState) => Awaitable<void>;
+  readonly deleteActionState: (connectionId: string) => Awaitable<void>;
+  readonly close: () => Awaitable<void>;
 };
 
-export function createSqliteConnectionHealthStore(databaseUrl: string): ConnectionHealthStore {
+export function createSqliteConnectionHealthStore(databaseUrl: string) {
   const path = sqlitePath(databaseUrl);
   ensureDatabaseDirectory(path);
   const database = new DatabaseSync(path, { timeout: 5_000 });
@@ -37,7 +38,7 @@ export function createSqliteConnectionHealthStore(databaseUrl: string): Connecti
   return healthStore(database);
 }
 
-function healthStore(database: DatabaseSync): ConnectionHealthStore {
+function healthStore(database: DatabaseSync) {
   return {
     listPolicies: () => listPolicies(database),
     getPolicy: (id) => getPolicy(database, id),
@@ -56,9 +57,9 @@ function healthStore(database: DatabaseSync): ConnectionHealthStore {
     actionState: (id) => readActionState(database, "connection_id", id),
     actionStateByAccount: (id) => readActionState(database, "account_id", id),
     saveActionState: (state) => saveActionState(database, state),
-    deleteActionState: (id) => database.prepare("DELETE FROM connection_health_action_states WHERE connection_id=?").run(id),
+    deleteActionState: (id) => { database.prepare("DELETE FROM connection_health_action_states WHERE connection_id=?").run(id); },
     close: () => database.close(),
-  };
+  } satisfies ConnectionHealthStore;
 }
 
 function listPolicies(database: DatabaseSync) {
@@ -250,8 +251,8 @@ function requiredChange(result: { readonly changes: number | bigint }, message: 
 function text(value: unknown) { return value === null || value === undefined ? null : String(value); }
 function number(value: unknown) { return value === null || value === undefined ? null : Number(value); }
 function nullableFlag(value: unknown) { return value === null || value === undefined ? null : Number(value) === 1; }
-type PolicyWrite = Omit<ConnectionHealthPolicy, "id" | "createdAt" | "updatedAt">;
-type PolicyUpdate = Readonly<{
+export type PolicyWrite = Omit<ConnectionHealthPolicy, "id" | "createdAt" | "updatedAt">;
+export type PolicyUpdate = Readonly<{
   id: number;
   policy: PolicyWrite;
   at: string;

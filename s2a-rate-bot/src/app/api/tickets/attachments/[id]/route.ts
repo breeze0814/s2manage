@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest, { params }: Context) {
   try {
     await requireAuthenticatedRequest(request);
-    const file = getRuntimeEmbedServices().tickets.attachmentAdmin(params.id);
+    const file = await getRuntimeEmbedServices().tickets.attachmentAdmin(params.id);
     return new Response(Buffer.from(file.data), {
       headers: { "content-type": file.contentType, "content-length": String(file.sizeBytes), "cache-control": "private, no-store" },
     });

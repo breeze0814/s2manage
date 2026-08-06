@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: Context) {
 export async function PATCH(request: NextRequest, { params }: Context) {
   try {
     await requireAuthenticatedRequest(request);
-    return NextResponse.json(getRuntimeEmbedServices().lottery.update(params.id, await readJsonBody(request)));
+    return NextResponse.json(await getRuntimeEmbedServices().lottery.update(params.id, await readJsonBody(request)));
   } catch (error) { return embedErrorResponse(error); }
 }
 

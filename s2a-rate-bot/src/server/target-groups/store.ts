@@ -4,21 +4,22 @@ import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
 import { ensureDatabaseDirectory, flag, nowIso, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
 import type { SourceBinding, TargetGroup, TargetRule } from "./types.ts";
 import { ruleParametersSchema } from "./rule-parameters.ts";
+import type { Awaitable } from "../infrastructure/postgres-context.ts";
 
 export type TargetGroupStore = {
-  readonly getGroup: (groupId: number) => TargetGroup | null;
-  readonly listGroups: () => TargetGroup[];
-  readonly replaceGroups: (groups: readonly TargetGroup[]) => void;
-  readonly removeGroup: (groupId: number) => void;
-  readonly saveGroup: (group: TargetGroup) => void;
-  readonly getRule: (groupId: number) => TargetRule | null;
-  readonly listRules: () => TargetRule[];
-  readonly bindings: (groupId: number) => SourceBinding[];
-  readonly saveRule: (rule: TargetRule, bindings: readonly SourceBinding[]) => void;
-  readonly saveRules: (updates: readonly TargetRuleUpdate[]) => void;
-  readonly recordApplied: (groupId: number, fromRate: number | null, toRate: number) => void;
-  readonly recordError: (groupId: number, error: string) => void;
-  readonly close: () => void;
+  readonly getGroup: (groupId: number) => Awaitable<TargetGroup | null>;
+  readonly listGroups: () => Awaitable<TargetGroup[]>;
+  readonly replaceGroups: (groups: readonly TargetGroup[]) => Awaitable<void>;
+  readonly removeGroup: (groupId: number) => Awaitable<void>;
+  readonly saveGroup: (group: TargetGroup) => Awaitable<void>;
+  readonly getRule: (groupId: number) => Awaitable<TargetRule | null>;
+  readonly listRules: () => Awaitable<TargetRule[]>;
+  readonly bindings: (groupId: number) => Awaitable<SourceBinding[]>;
+  readonly saveRule: (rule: TargetRule, bindings: readonly SourceBinding[]) => Awaitable<void>;
+  readonly saveRules: (updates: readonly TargetRuleUpdate[]) => Awaitable<void>;
+  readonly recordApplied: (groupId: number, fromRate: number | null, toRate: number) => Awaitable<void>;
+  readonly recordError: (groupId: number, error: string) => Awaitable<void>;
+  readonly close: () => Awaitable<void>;
 };
 
 export type TargetRuleUpdate = {
@@ -26,7 +27,7 @@ export type TargetRuleUpdate = {
   readonly bindings: readonly SourceBinding[];
 };
 
-export function createSqliteTargetGroupStore(databaseUrl: string): TargetGroupStore {
+export function createSqliteTargetGroupStore(databaseUrl: string) {
   const path = sqlitePath(databaseUrl);
   ensureDatabaseDirectory(path);
   const database = new DatabaseSync(path, { timeout: 5_000 });
@@ -34,7 +35,7 @@ export function createSqliteTargetGroupStore(databaseUrl: string): TargetGroupSt
   return targetGroupStore(database);
 }
 
-function targetGroupStore(database: DatabaseSync): TargetGroupStore {
+function targetGroupStore(database: DatabaseSync) {
   return {
     getGroup: (groupId) => readGroup(database, groupId),
     listGroups: () => listGroups(database),
@@ -49,7 +50,7 @@ function targetGroupStore(database: DatabaseSync): TargetGroupStore {
     recordApplied: (groupId, fromRate, toRate) => recordApplied(database, { groupId, fromRate, toRate }),
     recordError: (groupId, error) => recordError(database, groupId, error),
     close: () => database.close(),
-  };
+  } satisfies TargetGroupStore;
 }
 
 function readGroup(database: DatabaseSync, groupId: number): TargetGroup | null {
