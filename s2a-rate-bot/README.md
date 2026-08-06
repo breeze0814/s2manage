@@ -52,7 +52,8 @@ npm run dev
 项目提供本地 PostgreSQL/Redis Compose 配置。先在 `.env` 中填写 `.env.example` 的 `POSTGRES_*`、`REDIS_*` 和两个连接 URL，再启动基础设施：
 
 ```bash
-docker compose -f compose.dev.yml --env-file .env up -d
+docker compose -f compose.dev.yml --env-file .env up -d --wait
+npm run check:infrastructure
 ```
 
 从旧 SQLite 数据库迁移全部业务数据：
@@ -163,14 +164,30 @@ PM2 已作为项目依赖安装，命令会直接使用 `node_modules/.bin/pm2`�
 
 ### 自动部署脚本
 
-项目根目录提供 `deploy.sh`，会依次拉取最新代码、安装依赖、构建项目，并启动或平滑重载 PM2 的 Web 与 Worker 进程：
+项目根目录提供 `deploy.sh`。PM2 模式默认使用 `.env` 中配置的外部 PostgreSQL/Redis，不会启动本地数据库容器：
 
 ```bash
 chmod +x deploy.sh
-./deploy.sh
+./deploy.sh --pm2
 ```
 
-执行前必须准备好项目根目录的 `.env`。脚本使用 `git pull --ff-only`，存在无法快进的提交或其他命令执行失败时会立即终止，并保留明确的错误输出。
+部署脚本会依次拉取最新代码、安装依赖、检查运行时连接、构建项目，最后启动或平滑重载 PM2 的 Web 与 Worker 进程。
+
+需要由 Docker Compose 管理 PostgreSQL/Redis 时使用 Docker 模式。应用 Web/Worker 仍由 PM2 管理，数据库数据卷不会随容器更新被删除：
+
+```bash
+./deploy.sh --docker
+```
+
+Docker 模式要求安装 Docker Compose，并在 `.env` 中同时配置 `POSTGRES_*`、`REDIS_*` 以及应用使用的两个连接 URL。PM2 模式只要求外部服务对应的 `POSTGRES_URL` 和 `REDIS_URL`。
+
+首次从 SQLite 切换到 PostgreSQL 时，显式执行一次数据导入。脚本会在导入前停止已有 PM2 服务，防止迁移期间继续写入旧 SQLite：
+
+```bash
+./deploy.sh --pm2 --migrate-sqlite
+```
+
+`--migrate-sqlite` 要求 `.env` 配置 `SQLITE_MIGRATION_URL`，不应作为日常部署参数重复使用。脚本使用 `git pull --ff-only`，存在无法快进的提交、基础设施不健康或其他命令执行失败时会立即终止，并保留明确的错误输出。
 
 ## 验证命令
 

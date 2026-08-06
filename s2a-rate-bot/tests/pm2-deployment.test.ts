@@ -24,13 +24,21 @@ test("PM2 deploys the web and Worker as separate managed processes", () => {
   assert.match(pkg, /node --env-file=\.env scripts\/start-next\.cjs start/);
 });
 
-test("deployment script pulls builds and reloads PM2 services", () => {
+test("deployment script provisions infrastructure and reloads PM2 services", () => {
   const deploy = source("deploy.sh");
   assert.match(deploy, /set -Eeuo pipefail/);
   assert.match(deploy, /git pull --ff-only/);
   assert.match(deploy, /npm ci/);
+  assert.match(deploy, /docker compose .* up -d --wait/);
+  assert.match(deploy, /npm run check:infrastructure/);
   assert.match(deploy, /npm run build/);
-  assert.match(deploy, /reload .*--update-env/);
+  assert.match(deploy, /deployment_mode="pm2"/);
+  assert.match(deploy, /startOrReload .*--update-env/);
+  assert.match(deploy, /--pm2/);
+  assert.match(deploy, /--docker/);
+  assert.match(deploy, /deployment_mode.*docker/);
+  assert.match(deploy, /--migrate-sqlite/);
+  assert.match(deploy, /npm run migrate:postgres/);
   assert.match(deploy, /PM2_BIN.* save/);
 });
 
