@@ -2,6 +2,8 @@ import type { CompensationAssessment, CompensationRule, CompensationSummary } fr
 
 export type LiandongCredentials = Readonly<{ username: string; password: string }>;
 
+export type CompensationOrderSource = "json" | "url";
+
 export type LiandongMerchantProfile = Readonly<{
   id: number;
   username: string;
@@ -36,6 +38,7 @@ export type CompensationSettings = Readonly<{
   enabled: boolean;
   activityName: string;
   description: string;
+  orderSource: CompensationOrderSource;
   baseUrl: string;
   username: string;
   password: string;
@@ -45,6 +48,12 @@ export type CompensationSettings = Readonly<{
 
 export type PublicCompensationSettings = Omit<CompensationSettings, "baseUrl" | "username" | "password">;
 export type AdminCompensationSettings = Omit<CompensationSettings, "password"> & { readonly passwordConfigured: boolean };
+
+export type CompensationOrderSourceCheck = Readonly<{
+  source: CompensationOrderSource;
+  name: string;
+  orderCount: number | null;
+}>;
 
 export type CompensationResult = Readonly<{
   lineNumber: number;

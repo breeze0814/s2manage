@@ -1,7 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS } from "../core/lottery-eligibility.ts";
+import { ensureSqliteCompensationSchema } from "./sqlite-compensation-schema.ts";
 
-export const EMBED_SCHEMA_VERSION = 31;
+export const EMBED_SCHEMA_VERSION = 33;
 const DEFAULT_LOTTERY_ELIGIBILITY_JSON = JSON.stringify(DEFAULT_LOTTERY_ELIGIBILITY_CONDITIONS);
 
 export function ensureEmbedSchema(database: DatabaseSync) {
@@ -12,6 +13,7 @@ export function ensureEmbedSchema(database: DatabaseSync) {
   ensureLotteryCampaignColumns(database);
   ensureLotteryRewardColumns(database);
   migrateLotteryEntryParticipation(database);
+  ensureSqliteCompensationSchema(database);
 }
 
 const EMBED_TABLES = [
@@ -106,36 +108,6 @@ const EMBED_TABLES = [
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS embed_lottery_entries_campaign
     ON embed_lottery_entries (campaign_id, status, created_at)`,
-  `CREATE TABLE IF NOT EXISTS embed_compensation_settings (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
-    activity_name TEXT NOT NULL,
-    description TEXT NOT NULL,
-    base_url TEXT NOT NULL,
-    username TEXT NOT NULL,
-    password_enc TEXT NOT NULL,
-    rules_json TEXT NOT NULL CHECK (json_valid(rules_json)),
-    updated_at TEXT NOT NULL
-  ) STRICT`,
-  `CREATE TABLE IF NOT EXISTS embed_compensation_claims (
-    id TEXT PRIMARY KEY,
-    src_host TEXT NOT NULL,
-    sub2api_user_id TEXT NOT NULL,
-    masked_email TEXT NOT NULL,
-    store_name TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
-    results_json TEXT NOT NULL CHECK (json_valid(results_json)),
-    eligible_order_count INTEGER NOT NULL,
-    invalid_order_count INTEGER NOT NULL,
-    total_compensation_fen INTEGER NOT NULL,
-    redemption_code TEXT,
-    reward_code_id INTEGER,
-    error_message TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  ) STRICT`,
-  `CREATE INDEX IF NOT EXISTS embed_compensation_claims_recent
-    ON embed_compensation_claims (created_at DESC, id DESC)`,
 ] as const;
 
 function migrateEmbedConfigKind(database: DatabaseSync) {

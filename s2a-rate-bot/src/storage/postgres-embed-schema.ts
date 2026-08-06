@@ -27,7 +27,8 @@ CREATE INDEX IF NOT EXISTS embed_ticket_attachments_message
   ON embed_ticket_attachments (message_id,created_at,id);
 CREATE TABLE IF NOT EXISTS embed_compensation_settings (
   id integer PRIMARY KEY CHECK (id = 1), enabled integer NOT NULL CHECK (enabled IN (0,1)),
-  activity_name text NOT NULL, description text NOT NULL, base_url text NOT NULL,
+  activity_name text NOT NULL, description text NOT NULL,
+  order_source text NOT NULL DEFAULT 'url' CHECK (order_source IN ('json','url')), base_url text NOT NULL,
   username text NOT NULL, password_enc text NOT NULL, rules_json text NOT NULL, updated_at text NOT NULL
 );
 CREATE TABLE IF NOT EXISTS embed_compensation_claims (
@@ -40,4 +41,13 @@ CREATE TABLE IF NOT EXISTS embed_compensation_claims (
 );
 CREATE INDEX IF NOT EXISTS embed_compensation_claims_recent
   ON embed_compensation_claims (created_at DESC,id DESC);
+CREATE TABLE IF NOT EXISTS embed_compensation_order_redemptions (
+  trade_no text PRIMARY KEY,
+  claim_id text NOT NULL REFERENCES embed_compensation_claims(id) ON DELETE RESTRICT,
+  status text NOT NULL CHECK (status IN ('reserved','redeemed')),
+  reserved_at text NOT NULL,
+  redeemed_at text
+);
+CREATE INDEX IF NOT EXISTS embed_compensation_order_redemptions_claim
+  ON embed_compensation_order_redemptions (claim_id);
 `;

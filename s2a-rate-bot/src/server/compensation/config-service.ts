@@ -9,6 +9,7 @@ import type {
 } from "./types.ts";
 
 const DEFAULT_BASE_URL = "https://www.ldxp.cn";
+const baseUrlSchema = z.string().trim().url("联动小铺地址无效");
 const DEFAULT_RULES: readonly CompensationRule[] = Object.freeze([
   Object.freeze({
     id: "third-prize",
@@ -48,7 +49,8 @@ const configSchema = z.object({
   enabled: z.boolean(),
   activityName: z.string().trim().min(1, "活动名称不能为空"),
   description: z.string().trim(),
-  baseUrl: z.string().trim().url("联动小铺地址无效").transform(trimUrl),
+  orderSource: z.enum(["json", "url"]),
+  baseUrl: z.string().trim(),
   username: z.string().trim(),
   password: z.string().optional(),
   rules: z.array(ruleSchema).min(1, "至少配置一条补偿规则"),
@@ -76,6 +78,7 @@ async function settingsSnapshot(input: ConfigDependencies): Promise<Compensation
     enabled: stored.enabled,
     activityName: stored.activityName,
     description: stored.description,
+    orderSource: stored.orderSource,
     baseUrl: stored.baseUrl,
     username: stored.username,
     password: stored.passwordEnc ? input.cipher.decrypt(stored.passwordEnc) : "",
@@ -88,14 +91,16 @@ async function updateSettings(input: ConfigDependencies, raw: unknown) {
   const current = await settingsSnapshot(input);
   const patch = patchSchema.parse(raw);
   const password = patch.password || current.password;
-  if (patch.enabled && (!patch.username || !password)) {
+  const baseUrl = patch.orderSource === "url" ? trimUrl(baseUrlSchema.parse(patch.baseUrl)) : patch.baseUrl;
+  if (patch.enabled && patch.orderSource === "url" && (!patch.username || !password)) {
     throw new Error("启用活动前必须配置联动小铺用户名和密码");
   }
   const stored = await input.store.save({
     enabled: patch.enabled,
     activityName: patch.activityName,
     description: patch.description,
-    baseUrl: patch.baseUrl,
+    orderSource: patch.orderSource,
+    baseUrl,
     username: patch.username,
     passwordEnc: password ? input.cipher.encrypt(password) : "",
     rules: patch.rules,
@@ -104,6 +109,9 @@ async function updateSettings(input: ConfigDependencies, raw: unknown) {
 }
 
 function validateRules(value: z.infer<typeof configSchema>, context: z.RefinementCtx) {
+  if (value.orderSource === "url" && !baseUrlSchema.safeParse(value.baseUrl).success) {
+    context.addIssue({ code: "custom", message: "联动小铺地址无效", path: ["baseUrl"] });
+  }
   const ids = new Set<string>();
   for (const [index, rule] of value.rules.entries()) {
     if (ids.has(rule.id)) context.addIssue({ code: "custom", message: "规则 ID 不能重复", path: ["rules", index, "id"] });
@@ -123,6 +131,7 @@ function storedSnapshot(stored: StoredCompensationSettings, password: string): C
     enabled: stored.enabled,
     activityName: stored.activityName,
     description: stored.description,
+    orderSource: stored.orderSource,
     baseUrl: stored.baseUrl,
     username: stored.username,
     password,
@@ -146,6 +155,7 @@ function defaultSettings(): CompensationSettings {
     enabled: false,
     activityName: "联动小铺订单补偿",
     description: "",
+    orderSource: "url",
     baseUrl: DEFAULT_BASE_URL,
     username: "",
     password: "",

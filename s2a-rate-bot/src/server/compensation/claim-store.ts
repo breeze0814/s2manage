@@ -1,11 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
 import { initializeSqliteSchema } from "../../storage/sqlite-schema.ts";
-import { ensureDatabaseDirectory, sqlitePath } from "../../storage/sqlite-utils.ts";
+import { ensureDatabaseDirectory, sqlitePath, transaction } from "../../storage/sqlite-utils.ts";
 import type { CompensationClaim } from "./types.ts";
 import type { Awaitable } from "../infrastructure/postgres-context.ts";
+import { CompensationOrderConflictError } from "./errors.ts";
 
 export type CompensationClaimStore = Readonly<{
-  create: (claim: CompensationClaim) => Awaitable<CompensationClaim>;
+  create: (claim: CompensationClaim, tradeNumbers: readonly string[]) => Awaitable<CompensationClaim>;
   complete: (id: string, reward: Readonly<{ code: string; id: number }> | null, updatedAt: string) => Awaitable<CompensationClaim>;
   fail: (id: string, errorMessage: string, updatedAt: string) => Awaitable<CompensationClaim>;
   list: () => Awaitable<readonly CompensationClaim[]>;
@@ -18,7 +19,7 @@ export function createSqliteCompensationClaimStore(databaseUrl: string): Compens
   const database = new DatabaseSync(path, { timeout: 5_000 });
   initializeSqliteSchema(database);
   return {
-    create: (claim) => createClaim(database, claim),
+    create: (claim, tradeNumbers) => createClaim(database, claim, tradeNumbers),
     complete: (id, reward, updatedAt) => completeClaim({ database, id, reward, updatedAt }),
     fail: (id, message, updatedAt) => failClaim({ database, id, message, updatedAt }),
     list: () => listClaims(database),
@@ -26,7 +27,18 @@ export function createSqliteCompensationClaimStore(databaseUrl: string): Compens
   };
 }
 
-function createClaim(database: DatabaseSync, claim: CompensationClaim) {
+function createClaim(database: DatabaseSync, claim: CompensationClaim, tradeNumbers: readonly string[]) {
+  let created: CompensationClaim | null = null;
+  transaction(database, () => {
+    insertClaim(database, claim);
+    reserveOrders(database, claim, tradeNumbers);
+    created = requiredClaim(database, claim.id);
+  });
+  if (!created) throw new Error("补偿发码记录创建失败");
+  return created;
+}
+
+function insertClaim(database: DatabaseSync, claim: CompensationClaim) {
   database.prepare(`INSERT INTO embed_compensation_claims
     (id, src_host, sub2api_user_id, masked_email, store_name, status, results_json,
       eligible_order_count, invalid_order_count, total_compensation_fen,
@@ -36,7 +48,15 @@ function createClaim(database: DatabaseSync, claim: CompensationClaim) {
       claim.status, JSON.stringify(claim.results), claim.summary.eligibleOrderCount,
       claim.summary.invalidOrderCount, claim.summary.totalCompensationFen,
       claim.redemptionCode, claim.rewardCodeId, claim.errorMessage, claim.createdAt, claim.updatedAt);
-  return requiredClaim(database, claim.id);
+}
+
+function reserveOrders(database: DatabaseSync, claim: CompensationClaim, tradeNumbers: readonly string[]) {
+  const statement = database.prepare(`INSERT OR IGNORE INTO embed_compensation_order_redemptions
+    (trade_no, claim_id, status, reserved_at, redeemed_at) VALUES (?, ?, 'reserved', ?, NULL)`);
+  for (const tradeNumber of tradeNumbers) {
+    const result = statement.run(tradeNumber, claim.id, claim.createdAt);
+    if (result.changes !== 1) throw new CompensationOrderConflictError(tradeNumber);
+  }
 }
 
 function completeClaim(input: Readonly<{
@@ -45,12 +65,29 @@ function completeClaim(input: Readonly<{
   reward: Readonly<{ code: string; id: number }> | null;
   updatedAt: string;
 }>) {
+  let completed: CompensationClaim | null = null;
+  transaction(input.database, () => {
+    updateCompletedClaim(input);
+    if (input.reward) markOrdersRedeemed(input.database, input.id, input.updatedAt);
+    completed = requiredClaim(input.database, input.id);
+  });
+  if (!completed) throw new Error("补偿发码记录完成失败");
+  return completed;
+}
+
+function updateCompletedClaim(input: Parameters<typeof completeClaim>[0]) {
   const result = input.database.prepare(`UPDATE embed_compensation_claims
     SET status = 'completed', redemption_code = ?, reward_code_id = ?,
       error_message = NULL, updated_at = ? WHERE id = ? AND status = 'pending'`)
     .run(input.reward?.code ?? null, input.reward?.id ?? null, input.updatedAt, input.id);
   if (result.changes !== 1) throw new Error("补偿发码记录状态已变化");
-  return requiredClaim(input.database, input.id);
+}
+
+function markOrdersRedeemed(database: DatabaseSync, claimId: string, redeemedAt: string) {
+  const result = database.prepare(`UPDATE embed_compensation_order_redemptions
+    SET status = 'redeemed', redeemed_at = ? WHERE claim_id = ? AND status = 'reserved'`)
+    .run(redeemedAt, claimId);
+  if (result.changes < 1) throw new Error("补偿订单占用记录不存在");
 }
 
 function failClaim(input: Readonly<{
@@ -59,11 +96,18 @@ function failClaim(input: Readonly<{
   message: string;
   updatedAt: string;
 }>) {
-  const result = input.database.prepare(`UPDATE embed_compensation_claims
-    SET status = 'failed', error_message = ?, updated_at = ?
-    WHERE id = ? AND status = 'pending'`).run(input.message, input.updatedAt, input.id);
-  if (result.changes !== 1) throw new Error("补偿发码记录状态已变化");
-  return requiredClaim(input.database, input.id);
+  let failed: CompensationClaim | null = null;
+  transaction(input.database, () => {
+    const result = input.database.prepare(`UPDATE embed_compensation_claims
+      SET status = 'failed', error_message = ?, updated_at = ?
+      WHERE id = ? AND status = 'pending'`).run(input.message, input.updatedAt, input.id);
+    if (result.changes !== 1) throw new Error("补偿发码记录状态已变化");
+    input.database.prepare(`DELETE FROM embed_compensation_order_redemptions
+      WHERE claim_id = ? AND status = 'reserved'`).run(input.id);
+    failed = requiredClaim(input.database, input.id);
+  });
+  if (!failed) throw new Error("补偿发码记录失败状态保存失败");
+  return failed;
 }
 
 function listClaims(database: DatabaseSync) {

@@ -20,7 +20,7 @@ export async function findLiandongOrder(input: Readonly<{
     headers: protocolHeaders(input.merchantToken),
     body: orderQuery(input.tradeNo),
   });
-  const page = parseOrderPage(payload);
+  const page = parseLiandongOrderPage(payload, { allowDataOnly: false });
   if (page.total === 0) return null;
   const order = page.list.find((item) => item.tradeNo === input.tradeNo);
   if (!order) throw new Error("接口返回了结果，但没有与输入订单号精确匹配的记录");
@@ -60,10 +60,19 @@ function orderEndpoint(baseUrl: string) {
   return new URL(ORDER_LIST_PATH, `${url.origin}/`).toString();
 }
 
-function parseOrderPage(payload: unknown) {
+export function parseLiandongOrderPage(
+  payload: unknown,
+  options: Readonly<{ allowDataOnly?: boolean }> = {},
+) {
   const response = record(payload, "响应");
-  if (response.code !== SUCCESS_CODE) {
+  const allowDataOnly = options.allowDataOnly ?? true;
+  const hasCode = Object.prototype.hasOwnProperty.call(response, "code");
+  if (hasCode && response.code !== SUCCESS_CODE) {
     throw new Error(optionalText(response.msg) || `订单查询失败，code=${String(response.code)}`);
+  }
+  if (!hasCode && !allowDataOnly) throw new Error("联动订单接口响应缺少 code 字段");
+  if (!hasCode && !Object.prototype.hasOwnProperty.call(response, "data")) {
+    throw new Error("订单快照响应缺少 data 字段");
   }
   const data = record(response.data, "响应 data");
   if (!Array.isArray(data.list)) throw new Error("订单查询响应 data.list 不是数组");

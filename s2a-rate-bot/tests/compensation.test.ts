@@ -48,6 +48,7 @@ test("successful calculation automatically generates a matching balance code", a
   const service = createCompensationService({
     config: await configuredService(), claims,
     liandong: fakeLiandong(order({ totalAmount: 10.4 })),
+    jsonOrders: unusedJsonOrders(),
     rewards: { generate: async (request) => {
       rewardCalls.push(request);
       return [{ id: 42, code: "COMP-500", type: "balance", value: 5 }];
@@ -70,6 +71,7 @@ test("reward generation failures remain visible in the persisted claim", async (
   const service = createCompensationService({
     config: await configuredService(), claims,
     liandong: fakeLiandong(order({})),
+    jsonOrders: unusedJsonOrders(),
     rewards: { generate: async () => { throw new Error("redeem endpoint unavailable"); } },
     id: () => "claim-failed",
   });
@@ -88,6 +90,7 @@ test("compensation embed configuration accepts the new kind and hides credential
   assert.equal(publicSettings.enabled, true);
   assert.equal("username" in publicSettings, false);
   assert.equal("password" in publicSettings, false);
+  assert.equal(publicSettings.orderSource, "url");
   assert.equal((await service.getAdmin()).passwordConfigured, true);
 });
 
@@ -191,6 +194,7 @@ async function configuredService() {
     enabled: true,
     activityName: "订单补偿",
     description: "",
+    orderSource: "url",
     baseUrl: "https://www.ldxp.cn",
     username: "merchant",
     password: "password",
@@ -219,6 +223,10 @@ function fakeLiandong(found: LiandongOrder) {
     }),
     findOrder: async (_settings: CompensationSettings, _session: unknown, tradeNo: string) => tradeNo === "LD-1" ? found : null,
   };
+}
+
+function unusedJsonOrders() {
+  return { load: async () => { throw new Error("URL 模式不应读取 JSON 订单文件"); } };
 }
 
 function identity(): EmbedIdentity {

@@ -10,7 +10,7 @@ const COMMON_TABLES = [
   "connection_health_policies", "connection_health_assignments", "connection_health_states",
   "connection_health_events", "connection_health_action_states", "embed_configs", "embed_tickets",
   "embed_ticket_messages", "embed_ticket_attachments", "embed_compensation_settings",
-  "embed_compensation_claims",
+  "embed_compensation_claims", "embed_compensation_order_redemptions",
 ] as const;
 
 const SERIAL_TABLES = [

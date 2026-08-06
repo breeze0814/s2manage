@@ -1,10 +1,10 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { ensurePostgresLotterySchema } from "./postgres-lottery-schema.ts";
 import { POSTGRES_CONNECTION_SCHEMA } from "./postgres-connection-schema.ts";
 import { POSTGRES_CORE_SCHEMA } from "./postgres-core-schema.ts";
 import { POSTGRES_EMBED_SCHEMA } from "./postgres-embed-schema.ts";
 
-const APPLICATION_SCHEMA_VERSION = 2;
+const APPLICATION_SCHEMA_VERSION = 4;
 const APPLICATION_SCHEMA_LOCK = "s2a-rate-bot:application-schema";
 
 export async function ensurePostgresSchema(pool: Pool) {
@@ -24,6 +24,10 @@ export async function ensurePostgresSchema(pool: Pool) {
     if (version < 2) await client.query(`CREATE TABLE IF NOT EXISTS app_runtime_metadata (
       key text PRIMARY KEY, value text NOT NULL, updated_at text NOT NULL
     )`);
+    if (version < 3) await client.query(`ALTER TABLE embed_compensation_settings
+      ADD COLUMN IF NOT EXISTS order_source text NOT NULL DEFAULT 'url'
+      CHECK (order_source IN ('json','url'))`);
+    if (version < 4) await migrateCompensationRedemptions(client);
     await client.query(`INSERT INTO app_schema_migrations (name,version) VALUES ($1,$2)
       ON CONFLICT (name) DO UPDATE SET version=EXCLUDED.version,updated_at=now()`,
     ["application", APPLICATION_SCHEMA_VERSION]);
@@ -33,4 +37,30 @@ export async function ensurePostgresSchema(pool: Pool) {
     throw error;
   } finally { client.release(); }
   await ensurePostgresLotterySchema(pool);
+}
+
+async function migrateCompensationRedemptions(client: Pick<PoolClient, "query">) {
+  await client.query(`CREATE TABLE IF NOT EXISTS embed_compensation_order_redemptions (
+    trade_no text PRIMARY KEY,
+    claim_id text NOT NULL REFERENCES embed_compensation_claims(id) ON DELETE RESTRICT,
+    status text NOT NULL CHECK (status IN ('reserved','redeemed')),
+    reserved_at text NOT NULL,
+    redeemed_at text
+  )`);
+  await client.query(`CREATE INDEX IF NOT EXISTS embed_compensation_order_redemptions_claim
+    ON embed_compensation_order_redemptions (claim_id)`);
+  await client.query(`WITH historical AS (
+    SELECT DISTINCT ON (item.value->>'requestedTradeNo') item.value->>'requestedTradeNo' AS trade_no,
+      claim.id AS claim_id, claim.created_at AS reserved_at, claim.updated_at AS redeemed_at
+    FROM embed_compensation_claims claim
+    CROSS JOIN LATERAL jsonb_array_elements(claim.results_json::jsonb) AS item(value)
+    WHERE claim.status='completed' AND claim.redemption_code IS NOT NULL
+      AND item.value->>'status'='found' AND item.value->'compensation'->>'eligible'='true'
+      AND (item.value->'compensation'->>'compensationFen')::numeric > 0
+      AND COALESCE(item.value->>'requestedTradeNo','') <> ''
+    ORDER BY item.value->>'requestedTradeNo',claim.updated_at,claim.id
+  ) INSERT INTO embed_compensation_order_redemptions
+    (trade_no,claim_id,status,reserved_at,redeemed_at)
+    SELECT trade_no,claim_id,'redeemed',reserved_at,redeemed_at FROM historical
+    ON CONFLICT (trade_no) DO NOTHING`);
 }

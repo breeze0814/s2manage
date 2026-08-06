@@ -1,10 +1,11 @@
 import type { CompensationRule } from "../../core/compensation";
-import type { AdminCompensationSettings } from "../../server/compensation/types";
+import type { AdminCompensationSettings, CompensationOrderSource } from "../../server/compensation/types";
 
 export type CompensationConfigDraft = Readonly<{
   enabled: boolean;
   activityName: string;
   description: string;
+  orderSource: CompensationOrderSource;
   baseUrl: string;
   username: string;
   password: string;
@@ -23,6 +24,7 @@ export function configDraft(settings: AdminCompensationSettings): CompensationCo
     enabled: settings.enabled,
     activityName: settings.activityName,
     description: settings.description,
+    orderSource: settings.orderSource,
     baseUrl: settings.baseUrl,
     username: settings.username,
     password: "",

@@ -8,6 +8,7 @@ export type StoredCompensationSettings = Readonly<{
   enabled: boolean;
   activityName: string;
   description: string;
+  orderSource: "json" | "url";
   baseUrl: string;
   username: string;
   passwordEnc: string;
@@ -41,6 +42,7 @@ function readSettings(database: DatabaseSync): StoredCompensationSettings | null
     enabled: row.enabled === 1,
     activityName: row.activity_name,
     description: row.description,
+    orderSource: row.order_source,
     baseUrl: row.base_url,
     username: row.username,
     passwordEnc: row.password_enc,
@@ -55,14 +57,14 @@ function saveSettings(
 ) {
   const updatedAt = nowIso();
   database.prepare(`INSERT INTO embed_compensation_settings
-    (id, enabled, activity_name, description, base_url, username, password_enc, rules_json, updated_at)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, enabled, activity_name, description, order_source, base_url, username, password_enc, rules_json, updated_at)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled,
       activity_name = excluded.activity_name, description = excluded.description,
-      base_url = excluded.base_url, username = excluded.username,
+      order_source = excluded.order_source, base_url = excluded.base_url, username = excluded.username,
       password_enc = excluded.password_enc, rules_json = excluded.rules_json,
       updated_at = excluded.updated_at`)
-    .run(flag(settings.enabled), settings.activityName, settings.description, settings.baseUrl,
+    .run(flag(settings.enabled), settings.activityName, settings.description, settings.orderSource, settings.baseUrl,
       settings.username, settings.passwordEnc, JSON.stringify(settings.rules), updatedAt);
   return requiredSettings(database);
 }
@@ -83,6 +85,7 @@ type SettingsRow = Readonly<{
   enabled: number;
   activity_name: string;
   description: string;
+  order_source: "json" | "url";
   base_url: string;
   username: string;
   password_enc: string;

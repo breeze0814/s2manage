@@ -8,12 +8,14 @@ import type { EmbedIdentity } from "../embeds/types.ts";
 import type { RewardCodeGateway } from "../embeds/reward-code-gateway.ts";
 import type { CompensationClaimStore } from "./claim-store.ts";
 import type { CompensationConfigService } from "./config-service.ts";
+import type { JsonOrderGateway } from "./json-order-gateway.ts";
 import type { LiandongGateway } from "./liandong-gateway.ts";
 import type {
   CompensationClaim,
+  CompensationOrderSourceCheck,
   CompensationResult,
   CompensationSettings,
-  LiandongSession,
+  LiandongOrder,
 } from "./types.ts";
 
 export type CompensationService = ReturnType<typeof createCompensationService>;
@@ -22,6 +24,7 @@ export function createCompensationService(input: Readonly<{
   config: CompensationConfigService;
   claims: CompensationClaimStore;
   liandong: LiandongGateway;
+  jsonOrders: JsonOrderGateway;
   rewards: RewardCodeGateway;
   now?: () => Date;
   id?: () => string;
@@ -30,7 +33,7 @@ export function createCompensationService(input: Readonly<{
   const id = input.id ?? randomUUID;
   return {
     calculate: (identity: EmbedIdentity, raw: unknown) => calculateClaim({ input, identity, raw, now, id }),
-    testConnection: async () => (await input.liandong.login(requireCredentials(await input.config.get()))).profile,
+    testConnection: () => testOrderSource(input),
     listClaims: () => input.claims.list(),
   };
 }
@@ -38,15 +41,17 @@ export function createCompensationService(input: Readonly<{
 async function calculateClaim(context: CalculationContext) {
   const settings = requireActive(await context.input.config.get());
   const tradeNumbers = parseTradeNumbers(context.raw);
-  const session = await context.input.liandong.login(settings);
+  const lookup = await openLookup(context.input, settings);
   const results = await performLookups({
-    gateway: context.input.liandong, settings, session, tradeNumbers,
+    lookup, settings, tradeNumbers,
   });
   const summary = summarizeCompensations(assessments(results));
   const createdAt = context.now().toISOString();
-  const claim = await context.input.claims.create(pendingClaim({
-    id: context.id(), identity: context.identity, session, results, summary, createdAt,
-  }));
+  const claim = await context.input.claims.create(
+    pendingClaim({ id: context.id(), identity: context.identity,
+      storeName: lookup.storeName, results, summary, createdAt }),
+    redeemableTradeNumbers(results),
+  );
   return issueReward(context.input, claim, context.now);
 }
 
@@ -54,19 +59,21 @@ async function issueReward(input: ServiceDependencies, claim: CompensationClaim,
   if (claim.summary.totalCompensationFen === 0) {
     return input.claims.complete(claim.id, null, now().toISOString());
   }
+  let reward: Readonly<{ code: string; id: number }>;
   try {
     const rewards = await input.rewards.generate({
       type: "balance",
       value: claim.summary.totalCompensationFen / 100,
       count: 1,
     });
-    const reward = rewards[0];
-    if (!reward) throw new Error("目标站未返回补偿兑换码");
-    return input.claims.complete(claim.id, reward, now().toISOString());
+    const generated = rewards[0];
+    if (!generated) throw new Error("目标站未返回补偿兑换码");
+    reward = generated;
   } catch (error) {
     await input.claims.fail(claim.id, errorMessage(error), now().toISOString());
     throw error;
   }
+  return input.claims.complete(claim.id, reward, now().toISOString());
 }
 
 async function performLookups(input: LookupContext) {
@@ -79,7 +86,7 @@ async function performLookups(input: LookupContext) {
 
 async function lookupOrder(input: LookupOrderContext): Promise<CompensationResult> {
   try {
-    const order = await input.gateway.findOrder(input.settings, input.session, input.tradeNumber.value);
+    const order = await input.lookup.findOrder(input.tradeNumber.value);
     if (!order) return lookupMessage(input.tradeNumber, "not_found", "当前店铺未查询到该订单");
     return Object.freeze({
       lineNumber: input.tradeNumber.lineNumber,
@@ -97,7 +104,7 @@ async function lookupOrder(input: LookupOrderContext): Promise<CompensationResul
 function pendingClaim(input: Readonly<{
   id: string;
   identity: EmbedIdentity;
-  session: LiandongSession;
+  storeName: string;
   results: readonly CompensationResult[];
   summary: ReturnType<typeof summarizeCompensations>;
   createdAt: string;
@@ -107,7 +114,7 @@ function pendingClaim(input: Readonly<{
     srcHost: input.identity.srcHost,
     sub2apiUserId: input.identity.sub2apiUserId,
     maskedEmail: maskEmail(input.identity.sub2apiEmail),
-    storeName: input.session.profile.nickname || input.session.profile.username,
+    storeName: input.storeName,
     status: "pending",
     results: input.results,
     summary: input.summary,
@@ -134,6 +141,14 @@ function assessments(results: readonly CompensationResult[]): readonly Compensat
   return Object.freeze(results.flatMap((item) => item.compensation ? [item.compensation] : []));
 }
 
+function redeemableTradeNumbers(results: readonly CompensationResult[]) {
+  return Object.freeze(results.flatMap((item) => (
+    item.status === "found" && item.compensation?.eligible && item.compensation.compensationFen > 0
+      ? [item.requestedTradeNo]
+      : []
+  )));
+}
+
 function lookupMessage(tradeNumber: TradeNumber, status: "not_found" | "error", message: string) {
   return Object.freeze({
     lineNumber: tradeNumber.lineNumber,
@@ -143,12 +158,35 @@ function lookupMessage(tradeNumber: TradeNumber, status: "not_found" | "error", 
   });
 }
 
-function requireActive(settings: CompensationSettings) {
-  if (!settings.enabled) throw new Error("订单补偿活动当前未开放");
-  return requireCredentials(settings);
+async function testOrderSource(input: ServiceDependencies): Promise<CompensationOrderSourceCheck> {
+  const settings = await input.config.get();
+  const lookup = await openLookup(input, settings);
+  return Object.freeze({ source: settings.orderSource, name: lookup.storeName, orderCount: lookup.orderCount });
 }
 
-function requireCredentials(settings: CompensationSettings) {
+async function openLookup(input: ServiceDependencies, settings: CompensationSettings): Promise<OrderLookup> {
+  if (settings.orderSource === "json") {
+    const catalog = await input.jsonOrders.load();
+    return Object.freeze({
+      storeName: catalog.sourceName,
+      orderCount: catalog.orderCount,
+      findOrder: async (tradeNo: string) => catalog.findOrder(tradeNo),
+    });
+  }
+  const session = await input.liandong.login(requireUrlCredentials(settings));
+  return Object.freeze({
+    storeName: session.profile.nickname || session.profile.username,
+    orderCount: null,
+    findOrder: (tradeNo: string) => input.liandong.findOrder(settings, session, tradeNo),
+  });
+}
+
+function requireActive(settings: CompensationSettings) {
+  if (!settings.enabled) throw new Error("订单补偿活动当前未开放");
+  return settings;
+}
+
+function requireUrlCredentials(settings: CompensationSettings) {
   if (!settings.username || !settings.password) throw new Error("联动小铺账号尚未配置完整");
   return settings;
 }
@@ -169,9 +207,13 @@ type CalculationContext = Readonly<{
   id: () => string;
 }>;
 type LookupContext = Readonly<{
-  gateway: LiandongGateway;
+  lookup: OrderLookup;
   settings: CompensationSettings;
-  session: LiandongSession;
   tradeNumbers: readonly TradeNumber[];
 }>;
 type LookupOrderContext = Omit<LookupContext, "tradeNumbers"> & Readonly<{ tradeNumber: TradeNumber }>;
+type OrderLookup = Readonly<{
+  storeName: string;
+  orderCount: number | null;
+  findOrder: (tradeNo: string) => Promise<LiandongOrder | null>;
+}>;

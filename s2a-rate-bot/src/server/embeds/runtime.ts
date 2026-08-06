@@ -4,6 +4,7 @@ import { createPostgresCompensationClaimStore } from "../compensation/claim-post
 import { createCompensationConfigService } from "../compensation/config-service.ts";
 import { createPostgresCompensationConfigStore } from "../compensation/config-postgres-store.ts";
 import { createRuntimeLiandongTransport } from "../compensation/http.ts";
+import { createRuntimeJsonOrderGateway } from "../compensation/json-order-gateway.ts";
 import { createLiandongGateway } from "../compensation/liandong-gateway.ts";
 import { createCompensationService } from "../compensation/service.ts";
 import { createPostgresEmbedConfigStore } from "./config-postgres-store.ts";
@@ -59,6 +60,7 @@ function buildEmbedRuntime(env: NodeJS.ProcessEnv) {
     config: compensationConfig,
     claims: compensationClaimStore,
     liandong: createLiandongGateway(createRuntimeLiandongTransport(settings)),
+    jsonOrders: createRuntimeJsonOrderGateway(),
     rewards: createRuntimeRewardCodeGateway(settings),
   });
   return {

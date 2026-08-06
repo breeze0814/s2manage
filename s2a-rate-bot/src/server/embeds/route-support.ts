@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { AuthRequiredError } from "../auth/route-support.ts";
+import { CompensationOrderConflictError } from "../compensation/errors.ts";
 import { RequestBodyError } from "../http/request-body.ts";
 import type { EmbedSessionService } from "./session.ts";
 import { EmbedError, type EmbedKind } from "./types.ts";
@@ -19,9 +20,11 @@ export async function requireEmbedIdentity(
 export function embedErrorResponse(error: unknown) {
   const status = error instanceof EmbedError
     ? error.status
-    : error instanceof AuthRequiredError
+    : error instanceof CompensationOrderConflictError
       ? error.status
-      : error instanceof ZodError || error instanceof RequestBodyError ? 400 : 500;
+      : error instanceof AuthRequiredError
+        ? error.status
+        : error instanceof ZodError || error instanceof RequestBodyError ? 400 : 500;
   const message = error instanceof ZodError
     ? error.issues[0]?.message ?? "输入无效"
     : error instanceof Error ? error.message : String(error);
