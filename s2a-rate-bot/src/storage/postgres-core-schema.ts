@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   telegram_bot_token_enc text NOT NULL DEFAULT '', telegram_chat_id text NOT NULL DEFAULT '',
   telegram_hourly_balance_enabled integer NOT NULL DEFAULT 0 CHECK (telegram_hourly_balance_enabled IN (0,1)),
   telegram_rate_change_enabled integer NOT NULL DEFAULT 0 CHECK (telegram_rate_change_enabled IN (0,1)),
+  notification_channels_enc text NOT NULL DEFAULT '',
   proxy_enabled integer NOT NULL CHECK (proxy_enabled IN (0,1)), proxy_url text NOT NULL,
   worker_interval_seconds integer NOT NULL, worker_timeout_seconds integer NOT NULL,
   worker_concurrency integer NOT NULL, updated_at text NOT NULL

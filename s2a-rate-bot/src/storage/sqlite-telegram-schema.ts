@@ -1,12 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const TELEGRAM_SCHEMA_VERSION = 19;
+export const TELEGRAM_SCHEMA_VERSION = 20;
 
 const APP_SETTING_COLUMNS = [
   ["telegram_bot_token_enc", "TEXT NOT NULL DEFAULT ''"],
   ["telegram_chat_id", "TEXT NOT NULL DEFAULT ''"],
   ["telegram_hourly_balance_enabled", "INTEGER NOT NULL DEFAULT 0 CHECK (telegram_hourly_balance_enabled IN (0, 1))"],
   ["telegram_rate_change_enabled", "INTEGER NOT NULL DEFAULT 0 CHECK (telegram_rate_change_enabled IN (0, 1))"],
+  ["notification_channels_enc", "TEXT NOT NULL DEFAULT ''"],
 ] as const;
 
 const WORKER_RUN_COLUMNS = [

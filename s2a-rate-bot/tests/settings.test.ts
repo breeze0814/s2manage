@@ -64,14 +64,32 @@ test("settings service encrypts target and Telegram credentials at rest", async 
     }
 
     const database = new DatabaseSync(databasePath);
-    const row = database.prepare("SELECT target_admin_key_enc, telegram_bot_token_enc FROM app_settings WHERE id = 1").get() as {
-      target_admin_key_enc: string; telegram_bot_token_enc: string;
+    const row = database.prepare("SELECT target_admin_key_enc, telegram_bot_token_enc, notification_channels_enc FROM app_settings WHERE id = 1").get() as {
+      target_admin_key_enc: string; telegram_bot_token_enc: string; notification_channels_enc: string;
     };
     database.close();
     assert.notEqual(row.target_admin_key_enc, "target-admin-secret");
     assert.match(row.target_admin_key_enc, /^enc:v1:/);
     assert.notEqual(row.telegram_bot_token_enc, settingsInput().telegram.botToken);
     assert.match(row.telegram_bot_token_enc, /^enc:v1:/);
+    assert.equal(row.notification_channels_enc, "");
+  });
+});
+
+test("notification channels round-trip with encrypted credentials and legacy Telegram fallback", async () => {
+  await withTempDatabase(async (databaseUrl) => {
+    const modules = await loadSettingsModules();
+    const store = modules.store.createSqliteSettingsStore(databaseUrl);
+    const service = modules.service.createSettingsService({ store, cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET) });
+    await service.save(settingsInput());
+    const saved = await service.saveNotificationChannels?.({
+      dingtalk: [{ id: "ding", name: "Ding", enabled: true, webhook: "https://example.test/hook", secret: "signing-secret" }],
+      wecom: [], qq: [], feishu: [], telegram: [],
+    });
+    assert.equal(saved?.dingtalk[0]?.webhook, "https://example.test/hook");
+    assert.equal((await service.getNotificationChannels?.())?.dingtalk[0]?.secret, "signing-secret");
+    assert.equal((await service.getNotificationChannels?.())?.telegram.length, 0);
+    store.close();
   });
 });
 

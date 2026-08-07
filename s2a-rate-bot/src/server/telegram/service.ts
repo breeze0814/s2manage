@@ -3,6 +3,7 @@ import type { TelegramBotClient, TelegramMessageInput } from "../../adapters/tel
 import type { CollectionChangesQuery } from "../collection/history.ts";
 import type { CollectionRateChange, CollectionSiteView } from "../collection/types.ts";
 import type { TelegramStateStore } from "./state-store.ts";
+import type { NotificationDispatcher } from "../notifications/dispatcher.ts";
 
 const BALANCE_INTERVAL_MS = 60 * 60 * 1_000;
 const RATE_CHANGE_PAGE_SIZE = 100;
@@ -41,6 +42,7 @@ export function createTelegramNotificationService(input: {
   readonly collection: TelegramCollection;
   readonly state: TelegramStateStore;
   readonly client: TelegramBotClient;
+  readonly dispatcher?: NotificationDispatcher;
   readonly now: () => Date;
 }): TelegramNotificationService {
   return {
@@ -77,7 +79,7 @@ async function pushBalance(input: TelegramDependencies, settings: TelegramRuntim
   const sites = (await input.collection.list()).filter((site) => site.enabled);
   const header = `S2A 采集站账户余额\n时间：${formatTime(input.now())}`;
   const messages = messageBatches(header, balanceLines(sites)).map((batch) => batch.text);
-  for (const text of messages) await input.client.sendMessage(messageInput(settings, { text }));
+  for (const text of messages) await sendNotification(input, settings, text);
   await input.state.markBalancePushed(input.now().toISOString());
   return successStats(messages.length);
 }
@@ -91,7 +93,7 @@ async function pushRateChanges(input: TelegramDependencies, settings: TelegramRu
     if (!changes.length) return sent ? successStats(sent) : skippedStats();
     const header = `S2A 分组倍率变动\n时间：${formatTime(input.now())}`;
     for (const batch of messageBatches(header, rateChangeLines(changes))) {
-      await input.client.sendMessage(messageInput(settings, { text: batch.text }));
+      await sendNotification(input, settings, batch.text);
       cursor = batch.lastId;
       await input.state.markRateChangesPushed(cursor);
       sent += 1;
@@ -148,6 +150,13 @@ function rateDescription(change: CollectionRateChange) {
 function messageInput(settings: TelegramRuntimeSettings, values: Readonly<{ text: string; botToken?: string; chatId?: string }>): TelegramMessageInput {
   return { botToken: values.botToken ?? settings.botToken, chatId: values.chatId ?? settings.chatId,
     text: values.text, timeoutMs: settings.timeoutMs, proxyUrl: settings.proxyUrl };
+}
+
+async function sendNotification(input: TelegramDependencies, settings: TelegramRuntimeSettings, text: string) {
+  if (!input.dispatcher) return input.client.sendMessage(messageInput(settings, { text }));
+  const result = await input.dispatcher.send(text);
+  if (result.failed.length) throw new Error(result.failed.join("; "));
+  if (result.sent === 0) throw new Error("未配置启用的通知机器人");
 }
 
 async function captureTask(label: string, task: () => Promise<NotificationStats>) {

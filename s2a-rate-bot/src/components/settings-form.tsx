@@ -11,6 +11,8 @@ import { Switch } from "./ui/switch";
 import { WorkerStatusPanel } from "./worker-status-panel";
 import { TelegramSettingsFields, type TelegramFormValue } from "./telegram-settings-fields";
 import { SettingsNavigation, type SettingsSection } from "./settings-navigation";
+import { NotificationChannelsFields } from "./notification-channels-fields";
+import type { NotificationChannelSettings } from "../server/notifications/types.ts";
 
 type PendingAction = "save" | "testTarget" | "testTelegram" | null;
 
@@ -27,7 +29,10 @@ type SettingsFormState = {
   workerConcurrency: string;
   telegram: TelegramFormValue;
   hasTelegramBotToken: boolean;
+  notificationChannels: NotificationChannelSettings;
 };
+
+const EMPTY_NOTIFICATION_CHANNELS: NotificationChannelSettings = { dingtalk: [], wecom: [], qq: [], feishu: [], telegram: [] };
 
 const EMPTY_FORM: SettingsFormState = {
   targetName: "",
@@ -42,6 +47,7 @@ const EMPTY_FORM: SettingsFormState = {
   workerConcurrency: "3",
   telegram: { botToken: "", chatId: "", hourlyBalanceEnabled: false, rateChangeEnabled: false },
   hasTelegramBotToken: false,
+  notificationChannels: EMPTY_NOTIFICATION_CHANNELS,
 };
 
 export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ presentation?: "page" | "dialog"; onSaved?: () => void }>) {
@@ -170,10 +176,17 @@ function LoadingSettings({ presentation }: Readonly<{ presentation: "page" | "di
 
 async function loadSettings(input: StateActions) {
   try {
-    const response = await fetch("/api/settings", { cache: "no-store" });
+    const [response, channelsResponse] = await Promise.all([
+      fetch("/api/settings", { cache: "no-store" }),
+      fetch("/api/settings/notification-channels", { cache: "no-store" }),
+    ]);
     if (!response.ok) throw new Error(await responseError(response));
-    const data = await response.json() as SettingsResponse;
-    input.setForm(formFromResponse(data));
+    if (!channelsResponse.ok) throw new Error(await responseError(channelsResponse));
+    const [data, channels] = await Promise.all([
+      response.json() as Promise<SettingsResponse>,
+      channelsResponse.json() as Promise<NotificationChannelSettings>,
+    ]);
+    input.setForm(formFromResponse(data, channels));
   } catch (error) {
     toast.error(errorMessage(error));
   } finally {
@@ -187,7 +200,10 @@ async function saveSettings(input: SaveActions) {
     const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(settingsPayload(input.form)) });
     if (!response.ok) throw new Error(await responseError(response));
     const data = await response.json() as SettingsResponse;
-    input.setForm(formFromResponse(data));
+    const channelsResponse = await fetch("/api/settings/notification-channels", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(input.form.notificationChannels) });
+    if (!channelsResponse.ok) throw new Error(await responseError(channelsResponse));
+    const channels = await channelsResponse.json() as NotificationChannelSettings;
+    input.setForm(formFromResponse(data, channels));
     toast.success("全局配置已保存");
     input.onSaved?.();
   } catch (error) {
@@ -215,7 +231,8 @@ function sectionPanel(input: Readonly<{ section: SettingsSection; form: Settings
   if (input.section === "target") return <TargetFields form={input.form} update={input.update} />;
   if (input.section === "proxy") return <ProxyFields form={input.form} update={input.update} />;
   if (input.section === "worker") return <WorkerFields form={input.form} update={input.update} />;
-  return <SettingsCard title="Telegram Bot" description="向指定会话推送采集站余额和倍率变动"><TelegramSettingsFields value={input.form.telegram} hasBotToken={input.form.hasTelegramBotToken} testing={input.pending === "testTelegram"} disabled={input.pending !== null} onChange={(value) => input.update("telegram", value)} onTest={() => { void testTelegram({ form: input.form, setPending: input.setPending }); }} /></SettingsCard>;
+  if (input.section === "telegram") return <SettingsCard title="通知策略" description="控制余额和倍率变化通知，并兼容旧版 Telegram 配置"><TelegramSettingsFields value={input.form.telegram} hasBotToken={input.form.hasTelegramBotToken} testing={input.pending === "testTelegram"} disabled={input.pending !== null} onChange={(value) => input.update("telegram", value)} onTest={() => { void testTelegram({ form: input.form, setPending: input.setPending }); }} /></SettingsCard>;
+  return <SettingsCard title="通知机器人" description="配置钉钉、企业微信、QQ、飞书和 Telegram 机器人"><NotificationChannelsFields value={input.form.notificationChannels} disabled={input.pending !== null} onChange={(value) => input.update("notificationChannels", value)} /></SettingsCard>;
 }
 
 async function testTelegram(input: Pick<SaveActions, "form" | "setPending">) {
@@ -247,7 +264,7 @@ function settingsPayload(form: SettingsFormState) {
   };
 }
 
-function formFromResponse(data: SettingsResponse): SettingsFormState {
+function formFromResponse(data: SettingsResponse, notificationChannels: NotificationChannelSettings): SettingsFormState {
   return {
     targetName: data.target?.name ?? "",
     targetBaseUrl: data.target?.baseUrl ?? "",
@@ -261,6 +278,7 @@ function formFromResponse(data: SettingsResponse): SettingsFormState {
     workerConcurrency: String(data.worker.concurrency),
     telegram: data.telegram,
     hasTelegramBotToken: data.hasTelegramBotToken,
+    notificationChannels,
   };
 }
 

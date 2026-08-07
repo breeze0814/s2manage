@@ -34,6 +34,7 @@ const CREATE_TABLES = [
     telegram_chat_id TEXT NOT NULL DEFAULT '',
     telegram_hourly_balance_enabled INTEGER NOT NULL DEFAULT 0 CHECK (telegram_hourly_balance_enabled IN (0, 1)),
     telegram_rate_change_enabled INTEGER NOT NULL DEFAULT 0 CHECK (telegram_rate_change_enabled IN (0, 1)),
+    notification_channels_enc TEXT NOT NULL DEFAULT '',
     proxy_enabled INTEGER NOT NULL CHECK (proxy_enabled IN (0, 1)),
     proxy_url TEXT NOT NULL,
     worker_interval_seconds INTEGER NOT NULL,

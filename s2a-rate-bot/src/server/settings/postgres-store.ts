@@ -15,7 +15,7 @@ async function saveSettings(context: PostgresContext, settings: StoredSettings) 
   await execute(context, `INSERT INTO app_settings (id,target_name,target_base_url,target_admin_key_enc,
     target_recharge_ratio,proxy_enabled,proxy_url,worker_interval_seconds,worker_timeout_seconds,
     worker_concurrency,telegram_bot_token_enc,telegram_chat_id,telegram_hourly_balance_enabled,
-    telegram_rate_change_enabled,updated_at) VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    telegram_rate_change_enabled,notification_channels_enc,updated_at) VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
     ON CONFLICT(id) DO UPDATE SET target_name=EXCLUDED.target_name,target_base_url=EXCLUDED.target_base_url,
     target_admin_key_enc=EXCLUDED.target_admin_key_enc,target_recharge_ratio=EXCLUDED.target_recharge_ratio,
     proxy_enabled=EXCLUDED.proxy_enabled,proxy_url=EXCLUDED.proxy_url,
@@ -23,12 +23,13 @@ async function saveSettings(context: PostgresContext, settings: StoredSettings) 
     worker_concurrency=EXCLUDED.worker_concurrency,telegram_bot_token_enc=EXCLUDED.telegram_bot_token_enc,
     telegram_chat_id=EXCLUDED.telegram_chat_id,
     telegram_hourly_balance_enabled=EXCLUDED.telegram_hourly_balance_enabled,
-    telegram_rate_change_enabled=EXCLUDED.telegram_rate_change_enabled,updated_at=EXCLUDED.updated_at`, [
+    telegram_rate_change_enabled=EXCLUDED.telegram_rate_change_enabled,
+    notification_channels_enc=EXCLUDED.notification_channels_enc,updated_at=EXCLUDED.updated_at`, [
     settings.targetName, settings.targetBaseUrl, settings.targetAdminKeyEnc, settings.targetRechargeRatio,
     flag(settings.proxyEnabled), settings.proxyUrl, settings.workerIntervalSeconds,
     settings.workerTimeoutSeconds, settings.workerConcurrency, settings.telegramBotTokenEnc,
     settings.telegramChatId, flag(settings.telegramHourlyBalanceEnabled),
-    flag(settings.telegramRateChangeEnabled), new Date().toISOString(),
+    flag(settings.telegramRateChangeEnabled), settings.notificationChannelsEnc, new Date().toISOString(),
   ]);
 }
 
@@ -43,6 +44,7 @@ function mapSettings(value: SettingsRow | null): StoredSettings | null {
     telegramBotTokenEnc: String(value.telegram_bot_token_enc), telegramChatId: String(value.telegram_chat_id),
     telegramHourlyBalanceEnabled: Number(value.telegram_hourly_balance_enabled) === 1,
     telegramRateChangeEnabled: Number(value.telegram_rate_change_enabled) === 1,
+    notificationChannelsEnc: String(value.notification_channels_enc ?? ""),
   };
 }
 

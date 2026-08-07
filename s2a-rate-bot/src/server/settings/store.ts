@@ -17,6 +17,7 @@ export type StoredSettings = {
   readonly telegramChatId: string;
   readonly telegramHourlyBalanceEnabled: boolean;
   readonly telegramRateChangeEnabled: boolean;
+  readonly notificationChannelsEnc: string;
 };
 
 export type SettingsStore = {
@@ -50,6 +51,7 @@ function readSettings(database: DatabaseSync): StoredSettings | null {
     telegramChatId: String(row.telegram_chat_id),
     telegramHourlyBalanceEnabled: Number(row.telegram_hourly_balance_enabled) === 1,
     telegramRateChangeEnabled: Number(row.telegram_rate_change_enabled) === 1,
+    notificationChannelsEnc: String(row.notification_channels_enc ?? ""),
   };
 }
 
@@ -58,11 +60,11 @@ function saveSettings(database: DatabaseSync, settings: StoredSettings) {
     INSERT INTO app_settings (id, target_name, target_base_url, target_admin_key_enc,
       target_recharge_ratio, proxy_enabled, proxy_url, worker_interval_seconds,
       worker_timeout_seconds, worker_concurrency, telegram_bot_token_enc, telegram_chat_id,
-      telegram_hourly_balance_enabled, telegram_rate_change_enabled, updated_at)
+      telegram_hourly_balance_enabled, telegram_rate_change_enabled, notification_channels_enc, updated_at)
     VALUES (1, :targetName, :targetBaseUrl, :targetAdminKeyEnc, :targetRechargeRatio,
       :proxyEnabled, :proxyUrl, :workerIntervalSeconds, :workerTimeoutSeconds,
       :workerConcurrency, :telegramBotTokenEnc, :telegramChatId,
-      :telegramHourlyBalanceEnabled, :telegramRateChangeEnabled, :updatedAt)
+      :telegramHourlyBalanceEnabled, :telegramRateChangeEnabled, :notificationChannelsEnc, :updatedAt)
     ON CONFLICT(id) DO UPDATE SET target_name = excluded.target_name,
       target_base_url = excluded.target_base_url, target_admin_key_enc = excluded.target_admin_key_enc,
       target_recharge_ratio = excluded.target_recharge_ratio,
@@ -74,6 +76,7 @@ function saveSettings(database: DatabaseSync, settings: StoredSettings) {
       telegram_chat_id = excluded.telegram_chat_id,
       telegram_hourly_balance_enabled = excluded.telegram_hourly_balance_enabled,
       telegram_rate_change_enabled = excluded.telegram_rate_change_enabled,
+      notification_channels_enc = excluded.notification_channels_enc,
       updated_at = excluded.updated_at
   `).run({ ...settings, proxyEnabled: flag(settings.proxyEnabled),
     telegramHourlyBalanceEnabled: flag(settings.telegramHourlyBalanceEnabled),
