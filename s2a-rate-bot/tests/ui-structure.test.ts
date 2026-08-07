@@ -32,6 +32,7 @@ test("App Router contains the system top-level pages", () => {
     "src/app/page.tsx",
     "src/app/groups/page.tsx",
     "src/app/sources/page.tsx",
+    "src/app/channel-monitors/page.tsx",
     "src/app/accounts/page.tsx",
     "src/app/settings/page.tsx",
     "src/app/logs/page.tsx",
@@ -50,11 +51,13 @@ test("application shell uses route-backed top navigation and a settings dialog a
   assert.match(shell, /href:\s*"\/groups"/);
   assert.match(shell, /href:\s*"\/"/);
   assert.match(shell, /href:\s*"\/sources"/);
+  assert.match(shell, /href:\s*"\/channel-monitors"/);
   assert.match(shell, /href:\s*"\/accounts"/);
   assert.match(shell, /href:\s*"\/logs"/);
   assert.doesNotMatch(shell, /href:\s*"\/settings"/);
   assert.match(shell, /分组倍率/);
   assert.match(shell, /倍率采集/);
+  assert.match(shell, /渠道监控/);
   assert.match(shell, /账号调度/);
   assert.match(shell, /系统日志/);
   assert.match(shell, /SettingsDialog/);
@@ -91,6 +94,7 @@ test("top-level page titles use consistent Chinese hierarchy", () => {
     ["src/components/home/home-dashboard.tsx", "系统概览", "采集站、目标分组、倍率变化与 Worker 运行状态"],
     ["src/components/groups/groups-dashboard.tsx", "分组倍率", "配置目标分组绑定、计算规则与应用状态"],
     ["src/components/sources/sources-dashboard.tsx", "倍率采集", "管理采集站与最近一次成功倍率快照"],
+    ["src/components/channel-monitors/channel-monitors-dashboard.tsx", "渠道监控", "按采集站查看渠道可用率、状态与延迟趋势"],
     ["src/components/accounts/accounts-dashboard.tsx", "账号调度", "查看账号状态、倍率绑定与调度可用性"],
     ["src/components/logs/logs-dashboard.tsx", "系统日志", "外部 API 调用与 Worker 执行记录"],
     ["src/components/settings-form.tsx", "全局配置", "目标站、代理、Worker 与 Telegram 通知设置"],

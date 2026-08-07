@@ -54,8 +54,7 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(table, /data-refresh-site/);
   assert.match(table, /data-edit-site/);
   assert.match(table, /data-delete-site/);
-  assert.match(table, /data-channel-monitors/);
-  assert.match(table, /site\.siteType === "sub2api"/);
+  assert.doesNotMatch(table, /data-channel-monitors/);
   assert.match(table, /data-open-site-website/);
   assert.match(table, /href=\{site\.websiteUrl\}/);
   assert.match(table, /target="_blank"/);
@@ -102,21 +101,32 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.match(table, /bg-surface/);
 });
 
-test("Sub2API source cards open the live channel monitor timeline", () => {
-  const dashboard = source("src/components/sources/sources-dashboard.tsx");
-  const table = source("src/components/sources/source-site-table.tsx");
-  const dialog = source("src/components/sources/source-channel-monitors-dialog.tsx");
+test("channel monitoring is a top-level page with one horizontal tab per source site", () => {
+  const shell = source("src/components/app-shell.tsx");
+  const dashboard = source("src/components/channel-monitors/channel-monitors-dashboard.tsx");
+  const view = source("src/components/sources/source-channel-monitors-view.tsx");
+  const sourcesDashboard = source("src/components/sources/sources-dashboard.tsx");
+  const sourceTable = source("src/components/sources/source-site-table.tsx");
 
-  assert.match(dashboard, /SourceChannelMonitorsDialog/);
-  assert.match(dashboard, /onMonitors=\{setMonitorSite\}/);
-  assert.match(table, /Activity/);
-  assert.match(table, /渠道监控/);
-  assert.match(dialog, /\/api\/sources\/\$\{siteId\}\/channel-monitors/);
-  assert.match(dialog, /7日可用率/);
-  assert.match(dialog, /响应延迟/);
-  assert.match(dialog, /网络延迟/);
-  assert.match(dialog, /<svg/);
-  assert.match(dialog, /Asia\/Shanghai/);
+  source("src/app/channel-monitors/page.tsx");
+  assert.match(shell, /href: "\/channel-monitors"/);
+  assert.match(shell, /label: "渠道监控"/);
+  assert.match(dashboard, /role="tablist"/);
+  assert.match(dashboard, /sites\.map/);
+  assert.match(dashboard, /role="tab"/);
+  assert.match(dashboard, /overflow-x-auto/);
+  assert.match(dashboard, /aria-selected=\{selected\}/);
+  assert.match(dashboard, /ArrowRight/);
+  assert.match(dashboard, /ArrowLeft/);
+  assert.match(dashboard, /SourceChannelMonitorsView/);
+  assert.doesNotMatch(sourcesDashboard, /SourceChannelMonitors/);
+  assert.doesNotMatch(sourceTable, /data-channel-monitors|渠道监控/);
+  assert.match(view, /\/api\/sources\/\$\{siteId\}\/channel-monitors/);
+  assert.match(view, /7日可用率/);
+  assert.match(view, /响应延迟/);
+  assert.match(view, /网络延迟/);
+  assert.match(view, /<svg/);
+  assert.match(view, /Asia\/Shanghai/);
 });
 
 test("aggregated source rate table combines group and site in one column", () => {

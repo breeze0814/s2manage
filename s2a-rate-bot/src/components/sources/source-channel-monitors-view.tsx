@@ -1,16 +1,12 @@
 "use client";
 
-import { Activity, Clock3, Loader2, RefreshCw, Timer, Wifi, X } from "lucide-react";
+import { Activity, Clock3, Loader2, RefreshCw, Timer, Wifi } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 import { Tag, type TagTone } from "../ui/tag";
 import type { SourceChannelMonitor, SourceChannelMonitorPoint, SourceSiteView } from "./types";
 
-export function SourceChannelMonitorsDialog({ site, onOpenChange }: Readonly<{
-  site: SourceSiteView | null;
-  onOpenChange: (site: SourceSiteView | null) => void;
-}>) {
+export function SourceChannelMonitorsView({ site }: Readonly<{ site: SourceSiteView }>) {
   const [monitors, setMonitors] = useState<SourceChannelMonitor[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +14,6 @@ export function SourceChannelMonitorsDialog({ site, onOpenChange }: Readonly<{
   const requestVersion = useRef(0);
 
   const load = useCallback(async () => {
-    if (!site) return;
     const version = ++requestVersion.current;
     setLoading(true);
     setError(null);
@@ -36,10 +31,6 @@ export function SourceChannelMonitorsDialog({ site, onOpenChange }: Readonly<{
   }, [site]);
 
   useEffect(() => {
-    if (!site) {
-      requestVersion.current += 1;
-      return;
-    }
     setMonitors([]);
     setUpdatedAt(null);
     void load();
@@ -47,11 +38,10 @@ export function SourceChannelMonitorsDialog({ site, onOpenChange }: Readonly<{
   }, [site, load]);
 
   return (
-    <Dialog open={site !== null} onOpenChange={(open) => { if (!open) onOpenChange(null); }}>
-      <DialogContent className="flex max-h-[90dvh] w-[min(96vw,1180px)] flex-col overflow-hidden">
-        <header className="shrink-0 border-b border-border bg-surface-muted/30 px-5 py-4 pr-16 sm:px-6 sm:py-5">
-          <DialogTitle className="flex items-center gap-2 text-lg font-semibold"><Activity className="size-5 text-primary" />渠道监控</DialogTitle>
-          <DialogDescription className="mt-1 truncate text-sm leading-6 text-muted" title={site?.baseUrl}>{site ? `${site.name} · ${site.baseUrl}` : ""}</DialogDescription>
+    <section className="min-w-0 overflow-hidden">
+        <header className="shrink-0 border-b border-border bg-surface-muted/30 px-5 py-4 sm:px-6 sm:py-5">
+          <h2 className="flex items-center gap-2 text-lg font-semibold"><Activity className="size-5 text-primary" />{site.name}</h2>
+          <p className="mt-1 truncate text-sm leading-6 text-muted" title={site.baseUrl}>{site.baseUrl}</p>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col bg-background/40">
@@ -60,7 +50,7 @@ export function SourceChannelMonitorsDialog({ site, onOpenChange }: Readonly<{
               <Tag tone="info">{monitors.length} 个渠道</Tag>
               <span className="text-xs text-muted">{updatedAt ? `更新于 ${formatTime(updatedAt.toISOString())}` : "Asia/Shanghai"}</span>
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={() => void load()} disabled={loading || !site}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
               {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
               刷新监控
             </Button>
@@ -75,9 +65,7 @@ export function SourceChannelMonitorsDialog({ site, onOpenChange }: Readonly<{
           </div>
         </div>
 
-        <DialogClose asChild><Button type="button" variant="ghost" size="icon-sm" aria-label="关闭" title="关闭" className="absolute right-4 top-4 text-muted"><X className="size-3.5" /></Button></DialogClose>
-      </DialogContent>
-    </Dialog>
+    </section>
   );
 }
 
