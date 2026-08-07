@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 export function ensureSqliteCompensationSchema(database: DatabaseSync) {
   for (const statement of COMPENSATION_TABLES) database.exec(statement);
   ensureSettingsOrderSource(database);
+  ensureClaimsSub2apiEmail(database);
   backfillOrderRedemptions(database);
 }
 
@@ -23,6 +24,7 @@ const COMPENSATION_TABLES = [
     id TEXT PRIMARY KEY,
     src_host TEXT NOT NULL,
     sub2api_user_id TEXT NOT NULL,
+    sub2api_email TEXT,
     masked_email TEXT NOT NULL,
     store_name TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
@@ -55,6 +57,12 @@ function ensureSettingsOrderSource(database: DatabaseSync) {
   if (names.has("order_source")) return;
   database.exec(`ALTER TABLE embed_compensation_settings ADD COLUMN order_source
     TEXT NOT NULL DEFAULT 'url' CHECK (order_source IN ('json', 'url'))`);
+}
+
+function ensureClaimsSub2apiEmail(database: DatabaseSync) {
+  const names = tableColumns(database, "embed_compensation_claims");
+  if (names.has("sub2api_email")) return;
+  database.exec("ALTER TABLE embed_compensation_claims ADD COLUMN sub2api_email TEXT");
 }
 
 function backfillOrderRedemptions(database: DatabaseSync) {

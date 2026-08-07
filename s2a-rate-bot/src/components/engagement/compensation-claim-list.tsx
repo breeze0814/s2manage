@@ -24,6 +24,7 @@ export function CompensationClaimList(props: Readonly<{
 
 function ClaimRow({ claim }: Readonly<{ claim: CompensationClaim }>) {
   const Icon = claim.status === "failed" ? AlertTriangle : CheckCircle2;
+  const email = claim.sub2apiEmail || claim.maskedEmail;
   return (
     <li className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(190px,0.8fr)_minmax(180px,1fr)_minmax(220px,1.2fr)] lg:items-center lg:px-5">
       <div className="min-w-0">
@@ -31,7 +32,7 @@ function ClaimRow({ claim }: Readonly<{ claim: CompensationClaim }>) {
         <p className="mt-1 text-xs text-muted">{formatDate(claim.createdAt)} · {claim.storeName}</p>
       </div>
       <div className="min-w-0 text-sm">
-        <p className="truncate" title={claim.maskedEmail}>{claim.maskedEmail}</p>
+        <p className="truncate" title={email}>{email}</p>
         <p className="mt-1 text-xs text-muted">查询 {claim.results.length} 单 · 计入 {claim.summary.eligibleOrderCount} 单 · {formatMoney(claim.summary.totalCompensationFen)}</p>
       </div>
       <ClaimOutcome claim={claim} />

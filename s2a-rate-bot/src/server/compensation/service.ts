@@ -140,6 +140,7 @@ function pendingClaim(input: Readonly<{
     id: input.id,
     srcHost: input.identity.srcHost,
     sub2apiUserId: input.identity.sub2apiUserId,
+    sub2apiEmail: input.identity.sub2apiEmail || null,
     maskedEmail: maskEmail(input.identity.sub2apiEmail),
     storeName: input.storeName,
     status: "pending",

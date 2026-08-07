@@ -68,6 +68,7 @@ export type CompensationClaim = Readonly<{
   id: string;
   srcHost: string;
   sub2apiUserId: string;
+  sub2apiEmail: string | null;
   maskedEmail: string;
   storeName: string;
   status: "pending" | "completed" | "failed";

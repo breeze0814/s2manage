@@ -15,6 +15,7 @@ test("PostgreSQL migration owns and advances every s2a-rate-bot schema", async (
   assert.equal(database.versions.get("application"), POSTGRES_APPLICATION_SCHEMA_VERSION);
   assert.equal(database.versions.get("lottery"), POSTGRES_LOTTERY_SCHEMA_VERSION);
   assert.ok(database.statements.some((sql) => sql.includes("embed_compensation_order_redemptions")));
+  assert.ok(database.statements.some((sql) => sql.includes("ADD COLUMN IF NOT EXISTS sub2api_email")));
   assert.ok(database.statements.some((sql) => sql.includes("CREATE TABLE lottery_campaigns")));
 });
 
@@ -34,7 +35,7 @@ test("PostgreSQL schema check rejects missing and outdated databases", async () 
     /application schema is outdated; run npm run db:migrate/,
   );
   await assert.rejects(
-    assertPostgresSchema(testDatabase({ versions: { application: 4 } }).pool),
+    assertPostgresSchema(testDatabase({ versions: { application: POSTGRES_APPLICATION_SCHEMA_VERSION } }).pool),
     /lottery schema is not initialized; run npm run db:migrate/,
   );
 });

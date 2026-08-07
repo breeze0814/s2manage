@@ -8,7 +8,7 @@ import type { CompensationClaimStore, CompensationOrderRedemption } from "./clai
 import { CompensationOrderConflictError } from "./errors.ts";
 import type { CompensationClaim } from "./types.ts";
 
-type ClaimRow = { id: string; src_host: string; sub2api_user_id: string; masked_email: string;
+type ClaimRow = { id: string; src_host: string; sub2api_user_id: string; sub2api_email: string | null; masked_email: string;
   store_name: string; status: CompensationClaim["status"]; results_json: string;
   eligible_order_count: number; invalid_order_count: number; total_compensation_fen: number;
   redemption_code: string | null; reward_code_id: number | null; error_message: string | null;
@@ -48,10 +48,10 @@ function createClaim(context: PostgresContext, claim: CompensationClaim, tradeNu
 
 async function insertClaim(executor: PostgresExecutor, claim: CompensationClaim) {
   await executor.query(`INSERT INTO embed_compensation_claims
-    (id,src_host,sub2api_user_id,masked_email,store_name,status,results_json,eligible_order_count,
+    (id,src_host,sub2api_user_id,sub2api_email,masked_email,store_name,status,results_json,eligible_order_count,
       invalid_order_count,total_compensation_fen,redemption_code,reward_code_id,error_message,created_at,updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, [claim.id, claim.srcHost,
-    claim.sub2apiUserId, claim.maskedEmail, claim.storeName, claim.status, JSON.stringify(claim.results),
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, [claim.id, claim.srcHost,
+    claim.sub2apiUserId, claim.sub2apiEmail, claim.maskedEmail, claim.storeName, claim.status, JSON.stringify(claim.results),
     claim.summary.eligibleOrderCount, claim.summary.invalidOrderCount, claim.summary.totalCompensationFen,
     claim.redemptionCode, claim.rewardCodeId, claim.errorMessage, claim.createdAt, claim.updatedAt]);
 }
@@ -104,7 +104,8 @@ async function requiredClaim(executor: PostgresExecutor, id: string) {
 
 function mapClaim(value: ClaimRow): CompensationClaim {
   return { id: value.id, srcHost: value.src_host, sub2apiUserId: value.sub2api_user_id,
-    maskedEmail: value.masked_email, storeName: value.store_name, status: value.status,
+    sub2apiEmail: value.sub2api_email, maskedEmail: value.masked_email,
+    storeName: value.store_name, status: value.status,
     results: JSON.parse(value.results_json) as CompensationClaim["results"],
     summary: { eligibleOrderCount: value.eligible_order_count, invalidOrderCount: value.invalid_order_count,
       totalCompensationFen: value.total_compensation_fen }, redemptionCode: value.redemption_code,

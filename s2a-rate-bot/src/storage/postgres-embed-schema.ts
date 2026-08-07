@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS embed_compensation_settings (
 );
 CREATE TABLE IF NOT EXISTS embed_compensation_claims (
   id text PRIMARY KEY, src_host text NOT NULL, sub2api_user_id text NOT NULL,
-  masked_email text NOT NULL, store_name text NOT NULL,
+  sub2api_email text, masked_email text NOT NULL, store_name text NOT NULL,
   status text NOT NULL CHECK (status IN ('pending','completed','failed')), results_json text NOT NULL,
   eligible_order_count integer NOT NULL, invalid_order_count integer NOT NULL,
   total_compensation_fen integer NOT NULL, redemption_code text, reward_code_id integer,

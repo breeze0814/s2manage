@@ -105,6 +105,9 @@ test("schema migration marks historically rewarded orders as redeemed", () => {
       FROM embed_compensation_order_redemptions`).all() as Array<Record<string, unknown>>;
     const rows = values.map((value) => ({ ...value }));
     assert.deepEqual(rows, [{ trade_no: "LD-HISTORY", claim_id: "old-claim", status: "redeemed" }]);
+    const legacy = database.prepare("SELECT sub2api_email FROM embed_compensation_claims")
+      .get() as { sub2api_email: string | null };
+    assert.equal(legacy.sub2api_email, null);
   } finally { database.close(); }
 });
 

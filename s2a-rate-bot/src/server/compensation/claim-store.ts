@@ -55,11 +55,11 @@ function createClaim(database: DatabaseSync, claim: CompensationClaim, tradeNumb
 
 function insertClaim(database: DatabaseSync, claim: CompensationClaim) {
   database.prepare(`INSERT INTO embed_compensation_claims
-    (id, src_host, sub2api_user_id, masked_email, store_name, status, results_json,
+    (id, src_host, sub2api_user_id, sub2api_email, masked_email, store_name, status, results_json,
       eligible_order_count, invalid_order_count, total_compensation_fen,
       redemption_code, reward_code_id, error_message, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(claim.id, claim.srcHost, claim.sub2apiUserId, claim.maskedEmail, claim.storeName,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(claim.id, claim.srcHost, claim.sub2apiUserId, claim.sub2apiEmail, claim.maskedEmail, claim.storeName,
       claim.status, JSON.stringify(claim.results), claim.summary.eligibleOrderCount,
       claim.summary.invalidOrderCount, claim.summary.totalCompensationFen,
       claim.redemptionCode, claim.rewardCodeId, claim.errorMessage, claim.createdAt, claim.updatedAt);
@@ -141,6 +141,7 @@ function mapClaim(row: ClaimRow): CompensationClaim {
     id: row.id,
     srcHost: row.src_host,
     sub2apiUserId: row.sub2api_user_id,
+    sub2apiEmail: row.sub2api_email,
     maskedEmail: row.masked_email,
     storeName: row.store_name,
     status: row.status,
@@ -162,6 +163,7 @@ type ClaimRow = Readonly<{
   id: string;
   src_host: string;
   sub2api_user_id: string;
+  sub2api_email: string | null;
   masked_email: string;
   store_name: string;
   status: CompensationClaim["status"];

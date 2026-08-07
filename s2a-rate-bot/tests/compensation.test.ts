@@ -70,9 +70,11 @@ test("successful calculation automatically generates a matching balance code", a
   try {
     const claim = await service.calculate(identity(), { orders: "LD-1\nLD-404" });
     assert.equal(claim.status, "completed");
+    assert.equal(claim.sub2apiEmail, "user@example.com");
     assert.equal(claim.redemptionCode, "COMP-500");
     assert.equal(claim.summary.totalCompensationFen, 500);
     assert.deepEqual(rewardCalls, [{ type: "balance", value: 5, count: 1 }]);
+    assert.equal((await service.listClaims())[0]?.sub2apiEmail, "user@example.com");
     assert.equal((await service.listClaims())[0]?.redemptionCode, "COMP-500");
   } finally { claims.close(); }
 });

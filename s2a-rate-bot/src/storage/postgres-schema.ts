@@ -5,7 +5,7 @@ import { POSTGRES_CORE_SCHEMA } from "./postgres-core-schema.ts";
 import { POSTGRES_EMBED_SCHEMA } from "./postgres-embed-schema.ts";
 import { assertPostgresSchemaVersion } from "./postgres-schema-state.ts";
 
-export const POSTGRES_APPLICATION_SCHEMA_VERSION = 4;
+export const POSTGRES_APPLICATION_SCHEMA_VERSION = 5;
 const APPLICATION_SCHEMA_LOCK = "s2a-rate-bot:application-schema";
 
 export async function migratePostgresSchema(pool: Pool) {
@@ -29,6 +29,8 @@ export async function migratePostgresSchema(pool: Pool) {
       ADD COLUMN IF NOT EXISTS order_source text NOT NULL DEFAULT 'url'
       CHECK (order_source IN ('json','url'))`);
     if (version < 4) await migrateCompensationRedemptions(client);
+    if (version < 5) await client.query(`ALTER TABLE embed_compensation_claims
+      ADD COLUMN IF NOT EXISTS sub2api_email text`);
     await client.query(`INSERT INTO app_schema_migrations (name,version) VALUES ($1,$2)
       ON CONFLICT (name) DO UPDATE SET version=EXCLUDED.version,updated_at=now()`,
     ["application", POSTGRES_APPLICATION_SCHEMA_VERSION]);
