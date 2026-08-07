@@ -41,7 +41,24 @@ test("an order can only be redeemed once across concurrent claims", async () => 
     await assert.rejects(service.calculate(identity(), { orders: "LD-1" }), /已兑换或正在处理/);
     releaseReward.resolve();
     assert.equal((await first).redemptionCode, "COMP-500");
-    await assert.rejects(service.calculate(identity(), { orders: "LD-1" }), /不能重复兑换/);
+    const replay = await service.calculate(identity(), { orders: "LD-1" });
+    assert.equal(replay.alreadyRedeemed, true);
+    assert.equal(replay.redemptionCode, "COMP-500");
+    assert.equal((await service.listClaims()).length, 1);
+    assert.equal(rewardCalls, 1);
+  } finally { claims.close(); }
+});
+
+test("an existing redemption code is not exposed to another user", async () => {
+  const claims = createSqliteCompensationClaimStore("file::memory:");
+  let rewardCalls = 0;
+  const service = await testService({
+    claims,
+    rewards: { generate: async () => { rewardCalls += 1; return [reward("COMP-500")]; } },
+  });
+  try {
+    await service.calculate(identity(), { orders: "LD-1" });
+    await assert.rejects(service.calculate(identity("user-2"), { orders: "LD-1" }), /不能重复兑换/);
     assert.equal(rewardCalls, 1);
   } finally { claims.close(); }
 });
@@ -154,11 +171,11 @@ function order(): LiandongOrder {
   };
 }
 
-function identity(): EmbedIdentity {
+function identity(userId = "user-1"): EmbedIdentity {
   return {
     kind: "compensation", embedToken: "embed-token", srcHost: "https://sub2api.example.com",
-    srcUrl: "https://sub2api.example.com/console", sub2apiUserId: "user-1",
-    sub2apiEmail: "user@example.com", sub2apiRole: "user", sub2apiBalance: 20,
+    srcUrl: "https://sub2api.example.com/console", sub2apiUserId: userId,
+    sub2apiEmail: `${userId}@example.com`, sub2apiRole: "user", sub2apiBalance: 20,
   };
 }
 

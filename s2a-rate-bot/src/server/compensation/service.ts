@@ -10,6 +10,7 @@ import type { CompensationClaimStore } from "./claim-store.ts";
 import type { CompensationConfigService } from "./config-service.ts";
 import type { JsonOrderGateway } from "./json-order-gateway.ts";
 import type { LiandongGateway } from "./liandong-gateway.ts";
+import { CompensationOrderConflictError } from "./errors.ts";
 import type {
   CompensationClaim,
   CompensationOrderSourceCheck,
@@ -41,18 +42,44 @@ export function createCompensationService(input: Readonly<{
 async function calculateClaim(context: CalculationContext) {
   const settings = requireActive(await context.input.config.get());
   const tradeNumbers = parseTradeNumbers(context.raw);
+  const replay = await completedReplay(context.input.claims, tradeNumbers, context.identity);
+  if (replay) return replay;
   const lookup = await openLookup(context.input, settings);
   const results = await performLookups({
     lookup, settings, tradeNumbers,
   });
   const summary = summarizeCompensations(assessments(results));
   const createdAt = context.now().toISOString();
-  const claim = await context.input.claims.create(
-    pendingClaim({ id: context.id(), identity: context.identity,
-      storeName: lookup.storeName, results, summary, createdAt }),
-    redeemableTradeNumbers(results),
-  );
+  let claim: CompensationClaim;
+  try {
+    claim = await context.input.claims.create(
+      pendingClaim({ id: context.id(), identity: context.identity,
+        storeName: lookup.storeName, results, summary, createdAt }),
+      redeemableTradeNumbers(results),
+    );
+  } catch (error) {
+    if (!(error instanceof CompensationOrderConflictError)) throw error;
+    const racedReplay = await completedReplay(context.input.claims, tradeNumbers, context.identity);
+    if (!racedReplay) throw error;
+    return racedReplay;
+  }
   return issueReward(context.input, claim, context.now);
+}
+
+async function completedReplay(
+  claims: CompensationClaimStore,
+  tradeNumbers: readonly TradeNumber[],
+  identity: EmbedIdentity,
+): Promise<CompensationClaim | null> {
+  const redemptions = await Promise.all(tradeNumbers.map((item) => claims.findRedemption(item.value)));
+  const firstIndex = redemptions.findIndex((item) => item !== null);
+  if (firstIndex < 0) return null;
+  const conflict = () => new CompensationOrderConflictError(tradeNumbers[firstIndex]!.value);
+  const first = redemptions[firstIndex]!;
+  if (redemptions.some((item) => item?.status !== "redeemed" || item.claim.id !== first.claim.id)) throw conflict();
+  if (first.claim.status !== "completed" || !first.claim.redemptionCode) throw conflict();
+  if (first.claim.srcHost !== identity.srcHost || first.claim.sub2apiUserId !== identity.sub2apiUserId) throw conflict();
+  return Object.freeze({ ...first.claim, alreadyRedeemed: true });
 }
 
 async function issueReward(input: ServiceDependencies, claim: CompensationClaim, now: () => Date) {

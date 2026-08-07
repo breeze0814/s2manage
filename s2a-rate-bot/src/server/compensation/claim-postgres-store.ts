@@ -4,7 +4,7 @@ import {
   type PostgresContext,
   type PostgresExecutor,
 } from "../infrastructure/postgres-context.ts";
-import type { CompensationClaimStore } from "./claim-store.ts";
+import type { CompensationClaimStore, CompensationOrderRedemption } from "./claim-store.ts";
 import { CompensationOrderConflictError } from "./errors.ts";
 import type { CompensationClaim } from "./types.ts";
 
@@ -13,16 +13,29 @@ type ClaimRow = { id: string; src_host: string; sub2api_user_id: string; masked_
   eligible_order_count: number; invalid_order_count: number; total_compensation_fen: number;
   redemption_code: string | null; reward_code_id: number | null; error_message: string | null;
   created_at: string; updated_at: string };
+type RedemptionRow = { claim_id: string; status: CompensationOrderRedemption["status"] };
 
 export function createPostgresCompensationClaimStore(context: PostgresContext): CompensationClaimStore {
   return {
     create: (claim, tradeNumbers) => createClaim(context, claim, tradeNumbers),
+    findRedemption: (tradeNumber) => findRedemption(context, tradeNumber),
     complete: (id, reward, updatedAt) => finishClaim(context, { id, reward, updatedAt }),
     fail: (id, message, updatedAt) => failClaim(context, { id, message, updatedAt }),
     list: async () => (await rows<ClaimRow>(context,
       "SELECT * FROM embed_compensation_claims ORDER BY created_at DESC,id DESC")).map(mapClaim),
     close: async () => undefined,
   };
+}
+
+async function findRedemption(context: PostgresContext, tradeNumber: string): Promise<CompensationOrderRedemption | null> {
+  const value = (await rows<RedemptionRow>(context, `SELECT claim_id,status
+    FROM embed_compensation_order_redemptions WHERE trade_no=$1`, [tradeNumber]))[0];
+  if (!value) return null;
+  return Object.freeze({
+    tradeNumber,
+    status: value.status,
+    claim: await requiredClaim(context.pool, value.claim_id),
+  });
 }
 
 function createClaim(context: PostgresContext, claim: CompensationClaim, tradeNumbers: readonly string[]) {

@@ -76,6 +76,7 @@ export type CompensationClaim = Readonly<{
   redemptionCode: string | null;
   rewardCodeId: number | null;
   errorMessage: string | null;
+  alreadyRedeemed?: boolean;
   createdAt: string;
   updatedAt: string;
 }>;

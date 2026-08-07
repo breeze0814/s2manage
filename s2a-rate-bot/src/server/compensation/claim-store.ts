@@ -7,10 +7,17 @@ import { CompensationOrderConflictError } from "./errors.ts";
 
 export type CompensationClaimStore = Readonly<{
   create: (claim: CompensationClaim, tradeNumbers: readonly string[]) => Awaitable<CompensationClaim>;
+  findRedemption: (tradeNumber: string) => Awaitable<CompensationOrderRedemption | null>;
   complete: (id: string, reward: Readonly<{ code: string; id: number }> | null, updatedAt: string) => Awaitable<CompensationClaim>;
   fail: (id: string, errorMessage: string, updatedAt: string) => Awaitable<CompensationClaim>;
   list: () => Awaitable<readonly CompensationClaim[]>;
   close: () => Awaitable<void>;
+}>;
+
+export type CompensationOrderRedemption = Readonly<{
+  tradeNumber: string;
+  status: "reserved" | "redeemed";
+  claim: CompensationClaim;
 }>;
 
 export function createSqliteCompensationClaimStore(databaseUrl: string): CompensationClaimStore {
@@ -20,11 +27,19 @@ export function createSqliteCompensationClaimStore(databaseUrl: string): Compens
   initializeSqliteSchema(database);
   return {
     create: (claim, tradeNumbers) => createClaim(database, claim, tradeNumbers),
+    findRedemption: (tradeNumber) => findRedemption(database, tradeNumber),
     complete: (id, reward, updatedAt) => completeClaim({ database, id, reward, updatedAt }),
     fail: (id, message, updatedAt) => failClaim({ database, id, message, updatedAt }),
     list: () => listClaims(database),
     close: () => database.close(),
   };
+}
+
+function findRedemption(database: DatabaseSync, tradeNumber: string): CompensationOrderRedemption | null {
+  const value = database.prepare(`SELECT claim_id, status
+    FROM embed_compensation_order_redemptions WHERE trade_no = ?`).get(tradeNumber) as RedemptionRow | undefined;
+  if (!value) return null;
+  return Object.freeze({ tradeNumber, status: value.status, claim: requiredClaim(database, value.claim_id) });
 }
 
 function createClaim(database: DatabaseSync, claim: CompensationClaim, tradeNumbers: readonly string[]) {
@@ -159,4 +174,9 @@ type ClaimRow = Readonly<{
   error_message: string | null;
   created_at: string;
   updated_at: string;
+}>;
+
+type RedemptionRow = Readonly<{
+  claim_id: string;
+  status: CompensationOrderRedemption["status"];
 }>;

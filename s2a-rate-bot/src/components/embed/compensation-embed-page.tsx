@@ -93,7 +93,7 @@ function RedemptionCode({ claim }: Readonly<{ claim: CompensationClaim }>) {
   if (!claim.redemptionCode) return <p className="mt-4 text-sm text-muted sm:mt-0">无可补偿金额，未生成兑换码</p>;
   return (
     <div className="mt-4 min-w-0 rounded-lg border border-primary/25 bg-surface p-3 sm:mt-0 sm:w-[min(100%,360px)]">
-      <p className="text-xs font-semibold text-muted">余额兑换码</p>
+      <p className="text-xs font-semibold text-muted">{claim.alreadyRedeemed ? "订单已使用 · 原兑换码" : "余额兑换码"}</p>
       <div className="mt-1 flex items-center gap-2"><code className="min-w-0 flex-1 select-all break-all font-mono text-sm font-semibold">{claim.redemptionCode}</code>
         <Button type="button" variant="ghost" size="icon-sm" className="shrink-0" aria-label="复制兑换码" title="复制兑换码" onClick={() => void copyCode(claim.redemptionCode!)}><Copy className="size-4" /></Button>
       </div>
@@ -125,8 +125,9 @@ async function calculate(input: Readonly<{
   }
   input.setPending(true);
   try {
-    input.setClaim(await embedRequestJson<CompensationClaim>("/api/embed/compensation", input.token, { method: "POST", body: JSON.stringify({ orders: input.orders }) }));
-    toast.success("补偿计算与兑换码生成完成");
+    const claim = await embedRequestJson<CompensationClaim>("/api/embed/compensation", input.token, { method: "POST", body: JSON.stringify({ orders: input.orders }) });
+    input.setClaim(claim);
+    toast.success(claim.alreadyRedeemed ? "订单已使用，已返回原兑换码" : "补偿计算与兑换码生成完成");
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
   } finally {
