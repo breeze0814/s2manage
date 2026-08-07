@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
+import type { CollectionChannelMonitorCollector } from "../src/server/collection/types.ts";
 import { sourceInput, sourceRate, successCollector, successOverview, type CollectionCollector } from "./collection-test-support.ts";
 
 const PROJECT_ROOT = new URL("../", import.meta.url);
@@ -31,10 +32,11 @@ async function withCollection<T>(
   collector: CollectionCollector,
   task: (context: Awaited<ReturnType<typeof createContext>>) => Promise<T>,
   afterRefreshSuccess?: (siteId: number) => Promise<void>,
+  channelMonitorCollector: CollectionChannelMonitorCollector = { collect: async () => [] },
 ) {
   const directory = await mkdtemp(join(tmpdir(), "s2a-collection-"));
   const databasePath = join(directory, "app.db");
-  const context = await createContext(`file:${databasePath}`, databasePath, collector, afterRefreshSuccess);
+  const context = await createContext(`file:${databasePath}`, databasePath, collector, afterRefreshSuccess, channelMonitorCollector);
   try {
     return await task(context);
   } finally {
@@ -48,6 +50,7 @@ async function createContext(
   databasePath: string,
   collector: CollectionCollector,
   afterRefreshSuccess?: (siteId: number) => Promise<void>,
+  channelMonitorCollector: CollectionChannelMonitorCollector = { collect: async () => [] },
 ) {
   const modules = await loadModules();
   const store = modules.store.createSqliteCollectionStore(databaseUrl);
@@ -55,6 +58,7 @@ async function createContext(
     store,
     cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET),
     collector,
+    channelMonitorCollector,
     requestOptions: async () => ({ timeoutMs: 25_000, proxyUrl: null, targetRechargeRatio: 1 }),
     afterRefreshSuccess,
   });
@@ -81,6 +85,36 @@ test("collection site CRUD encrypts credentials and never returns their values",
     assert.match(row.password_enc, /^enc:v1:/);
     assert.doesNotMatch(row.password_enc, /source-password/);
   });
+});
+
+test("channel monitors are loaded live with decrypted Sub2API site credentials", async () => {
+  let observedPassword = "";
+  const channelMonitorCollector: CollectionChannelMonitorCollector = {
+    collect: async (site) => {
+      observedPassword = site.password;
+      return [{
+        id: "28",
+        name: "ChatGPT-Plus",
+        provider: "openai",
+        groupName: "",
+        primaryModel: "gpt-5.6-sol",
+        primaryStatus: "operational",
+        primaryLatencyMs: 1587,
+        primaryPingLatencyMs: 24,
+        availability7d: 99.5,
+        timeline: [],
+      }];
+    },
+  };
+  await withCollection(successCollector(), async ({ service }) => {
+    const site = await service.create(sourceInput());
+    const monitors = await service.channelMonitors(site.id);
+    assert.equal(observedPassword, "source-password");
+    assert.equal(monitors[0]?.name, "ChatGPT-Plus");
+
+    await service.update(site.id, { ...sourceInput(), enabled: false });
+    await assert.rejects(service.channelMonitors(site.id), /采集站已停用/);
+  }, undefined, channelMonitorCollector);
 });
 
 test("successful refresh persists balance, rates, and a success run", async () => {

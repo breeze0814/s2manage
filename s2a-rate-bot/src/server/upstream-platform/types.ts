@@ -98,6 +98,26 @@ export type KeyUsageStat = {
   readonly amount: number;
 };
 
+export type Sub2ApiChannelMonitorPoint = {
+  readonly status: string;
+  readonly latencyMs: number | null;
+  readonly pingLatencyMs: number | null;
+  readonly checkedAt: string;
+};
+
+export type Sub2ApiChannelMonitor = {
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+  readonly groupName: string;
+  readonly primaryModel: string;
+  readonly primaryStatus: string;
+  readonly primaryLatencyMs: number | null;
+  readonly primaryPingLatencyMs: number | null;
+  readonly availability7d: number | null;
+  readonly timeline: readonly Sub2ApiChannelMonitorPoint[];
+};
+
 export type Sub2ApiAdminUsersQuery = {
   readonly page?: number;
   readonly pageSize?: number;

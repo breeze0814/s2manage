@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { SecretCipher } from "../crypto.ts";
 import { CollectionRefreshSupersededError, type CollectionStore } from "./store.ts";
 import type { CollectionChangesQuery, CollectionRunsQuery } from "./history.ts";
-import type { CollectionCollector, CollectionRequestOptions, CollectionSiteInput, CollectionSiteRuntime, CollectionSiteStored, CollectionSiteView } from "./types.ts";
+import type { CollectionChannelMonitorCollector, CollectionCollector, CollectionRequestOptions, CollectionSiteInput, CollectionSiteRuntime, CollectionSiteStored, CollectionSiteView } from "./types.ts";
 
 export const collectionSiteSchema = z.object({
   name: z.string().trim().min(1, "采集站名称不能为空"),
@@ -35,6 +35,7 @@ export type CollectionService = {
   readonly runtimeSite: (id: number) => Promise<CollectionSiteRuntime>;
   readonly changes: (query?: CollectionChangesQuery) => Promise<Awaited<ReturnType<CollectionStore["changes"]>>>;
   readonly runs: (query?: CollectionRunsQuery) => Promise<Awaited<ReturnType<CollectionStore["runs"]>>>;
+  readonly channelMonitors: (siteId: number) => Promise<Awaited<ReturnType<CollectionChannelMonitorCollector["collect"]>>>;
   readonly refresh: (id: number) => Promise<CollectionSiteView>;
   readonly refreshAll: () => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
   readonly refreshAllWithProgress: (onProgress: (event: CollectionRefreshProgressEvent) => void) => Promise<Array<{ id: number; ok: boolean; error?: string }>>;
@@ -49,6 +50,7 @@ export function createCollectionService(input: {
   readonly store: CollectionStore;
   readonly cipher: SecretCipher;
   readonly collector: CollectionCollector;
+  readonly channelMonitorCollector: CollectionChannelMonitorCollector;
   readonly requestOptions: () => Promise<CollectionRequestOptions>;
   readonly afterRefreshSuccess?: (siteId: number) => Promise<void>;
 }): CollectionService {
@@ -64,6 +66,7 @@ export function createCollectionService(input: {
     runtimeSite: async (id) => runtimeSite(await requiredSite(input.store, id), input.cipher),
     changes: async (query) => input.store.changes(query),
     runs: async (query) => input.store.runs(query),
+    channelMonitors: (siteId) => channelMonitors(input, siteId),
     refresh: (id) => refreshSite(input, id),
     refreshAll: () => refreshAllSites(input),
     refreshAllWithProgress: (onProgress) => refreshAllSites(input, onProgress),
@@ -109,6 +112,13 @@ async function refreshSite(input: CollectionDependencies, id: number) {
   }
   await input.afterRefreshSuccess?.(id);
   return siteView(await requiredSite(input.store, id), input.cipher);
+}
+
+async function channelMonitors(input: CollectionDependencies, id: number) {
+  const stored = await requiredSite(input.store, id);
+  if (!stored.enabled) throw new Error("采集站已停用");
+  if (stored.siteType !== "sub2api") throw new Error("渠道监控仅支持 Sub2API 采集站");
+  return input.channelMonitorCollector.collect(runtimeSite(stored, input.cipher));
 }
 
 async function recordRefreshFailure(

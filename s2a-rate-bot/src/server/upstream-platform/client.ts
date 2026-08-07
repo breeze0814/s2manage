@@ -12,6 +12,8 @@ import type {
   KeyUsageStat,
   Sub2ApiAccountBulkUpdate,
   Sub2ApiAdminUsersQuery,
+  Sub2ApiChannelMonitor,
+  Sub2ApiChannelMonitorPoint,
   Sub2ApiMetricsPayload,
   Sub2ApiSession,
   Sub2ApiUserBreakdownQuery,
@@ -401,6 +403,21 @@ export function createSub2ApiClient(input: ClientInput<Sub2ApiSession>) {
     return stats.filter((stat) => stat.amount > 0);
   }
 
+  async function fetchChannelMonitors(timezone = "Asia/Shanghai") {
+    const params = new URLSearchParams({ timezone: timezone.trim() || "Asia/Shanghai" });
+    const payload = await userRequest("GET", `/api/v1/channel-monitors?${params}`);
+    const root = record(payload);
+    const code = numberField(root, "code");
+    if (code !== null && code !== 0) {
+      throw new UpstreamProtocolError(stringField(root, "message") || "Sub2API 渠道监控接口返回失败", "invalid_response");
+    }
+    const items = record(root.data).items;
+    if (!Array.isArray(items)) {
+      throw new UpstreamProtocolError("Sub2API 渠道监控响应缺少 data.items", "invalid_response");
+    }
+    return items.map(parseSub2ApiChannelMonitor);
+  }
+
   async function createKey(name: string, groupId: number) {
     const data = dataRecord(await userRequest("POST", "/api/v1/keys", { name, group_id: groupId }));
     const id = idField(data);
@@ -493,7 +510,7 @@ export function createSub2ApiClient(input: ClientInput<Sub2ApiSession>) {
   return {
     login, refresh, verifyAdmin, fetchCurrentUser, fetchMetrics, fetchAvailableGroups, fetchAdminGroups,
     fetchAdminUsageStats, fetchAdminGroupUsageSummary, fetchAdminGroupDailyStats, fetchUsageStats,
-    fetchGroupDailyStats, listKeys, fetchKeyUsageToday, createKey, deleteKey,
+    fetchGroupDailyStats, listKeys, fetchKeyUsageToday, fetchChannelMonitors, createKey, deleteKey,
     listGroupAccounts, createAdminAccount, deleteAdminAccount, exportAdminAccount, updateAdminAccount,
     updateAdminGroupMultiplier, fetchAdminUserBreakdown, fetchAdminUsersPage, fetchAdminUser,
     fetchAdminUserBalanceHistory, fetchAdminSiteBalance,
@@ -628,6 +645,40 @@ function parseSub2ApiAccount(value: unknown): AdminTarget {
     weight: null, concurrency: numberField(raw, "concurrency"), rateMultiplier: numberField(raw, "rate_multiplier", "rateMultiplier"),
     loadFactor: numberField(raw, "load_factor", "loadFactor"), models: stringField(raw, "models"),
     groupIds: stringList(raw.group_ids ?? raw.groupIds), schedulable: booleanField(raw, "schedulable"), baseUrl: "",
+  };
+}
+
+function parseSub2ApiChannelMonitor(value: unknown): Sub2ApiChannelMonitor {
+  const raw = record(value);
+  const id = idField(raw);
+  const name = stringField(raw, "name");
+  if (!id || !name) throw new UpstreamProtocolError("Sub2API 渠道监控条目缺少 ID 或名称", "invalid_response");
+  const timeline = Array.isArray(raw.timeline) ? raw.timeline.map(parseSub2ApiChannelMonitorPoint) : [];
+  return {
+    id,
+    name,
+    provider: stringField(raw, "provider"),
+    groupName: stringField(raw, "group_name", "groupName"),
+    primaryModel: stringField(raw, "primary_model", "primaryModel"),
+    primaryStatus: stringField(raw, "primary_status", "primaryStatus") || "unknown",
+    primaryLatencyMs: numberField(raw, "primary_latency_ms", "primaryLatencyMs"),
+    primaryPingLatencyMs: numberField(raw, "primary_ping_latency_ms", "primaryPingLatencyMs"),
+    availability7d: numberField(raw, "availability_7d", "availability7d"),
+    timeline,
+  };
+}
+
+function parseSub2ApiChannelMonitorPoint(value: unknown): Sub2ApiChannelMonitorPoint {
+  const raw = record(value);
+  const checkedAt = stringField(raw, "checked_at", "checkedAt");
+  if (!checkedAt || Number.isNaN(Date.parse(checkedAt))) {
+    throw new UpstreamProtocolError("Sub2API 渠道监控时间线缺少有效时间", "invalid_response");
+  }
+  return {
+    status: stringField(raw, "status") || "unknown",
+    latencyMs: numberField(raw, "latency_ms", "latencyMs"),
+    pingLatencyMs: numberField(raw, "ping_latency_ms", "pingLatencyMs"),
+    checkedAt,
   };
 }
 

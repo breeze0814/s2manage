@@ -9,6 +9,7 @@ test("collection API routes are present", () => {
     "src/app/api/sources/route.ts",
     "src/app/api/sources/[id]/route.ts",
     "src/app/api/sources/[id]/refresh/route.ts",
+    "src/app/api/sources/[id]/channel-monitors/route.ts",
     "src/app/api/sources/refresh-all/route.ts",
     "src/app/api/sources/refresh-stream/route.ts",
     "src/app/api/sources/changes/route.ts",

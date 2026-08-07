@@ -84,6 +84,26 @@ export type SourceRunView = {
   readonly durationMs: number;
 };
 
+export type SourceChannelMonitorPoint = {
+  readonly status: string;
+  readonly latencyMs: number | null;
+  readonly pingLatencyMs: number | null;
+  readonly checkedAt: string;
+};
+
+export type SourceChannelMonitor = {
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+  readonly groupName: string;
+  readonly primaryModel: string;
+  readonly primaryStatus: string;
+  readonly primaryLatencyMs: number | null;
+  readonly primaryPingLatencyMs: number | null;
+  readonly availability7d: number | null;
+  readonly timeline: readonly SourceChannelMonitorPoint[];
+};
+
 export type SourceSiteForm = {
   name: string;
   remark: string;

@@ -145,6 +145,46 @@ test("Sub2API login and current-user lookup use the user Bearer token", async ()
   });
 });
 
+test("Sub2API channel monitors use the user token and normalize timeline fields", async () => {
+  await withServer((request, response) => {
+    assert.equal(request.url, "/api/v1/channel-monitors?timezone=Asia%2FShanghai");
+    assert.equal(request.headers.authorization, "Bearer jwt");
+    json(response, {
+      code: 0,
+      message: "success",
+      data: {
+        items: [{
+          id: 28,
+          name: "ChatGPT-Plus",
+          provider: "openai",
+          group_name: "priority",
+          primary_model: "gpt-5.6-sol",
+          primary_status: "operational",
+          primary_latency_ms: 1587,
+          primary_ping_latency_ms: 24,
+          availability_7d: 77.53,
+          timeline: [{ status: "degraded", latency_ms: 7176, ping_latency_ms: 26, checked_at: "2026-08-07T06:26:42Z" }],
+        }],
+      },
+    });
+  }, async (baseUrl) => {
+    const session = sub2ApiSessionFromToken(baseUrl, { accessToken: "jwt" });
+    const [monitor] = await createSub2ApiClient({ baseUrl, http: http(), session }).fetchChannelMonitors();
+    assert.deepEqual(monitor, {
+      id: "28",
+      name: "ChatGPT-Plus",
+      provider: "openai",
+      groupName: "priority",
+      primaryModel: "gpt-5.6-sol",
+      primaryStatus: "operational",
+      primaryLatencyMs: 1587,
+      primaryPingLatencyMs: 24,
+      availability7d: 77.53,
+      timeline: [{ status: "degraded", latencyMs: 7176, pingLatencyMs: 26, checkedAt: "2026-08-07T06:26:42Z" }],
+    });
+  });
+});
+
 test("Sub2API refresh-token-only sessions can obtain a new access token", async () => {
   await withServer(async (request, response) => {
     assert.equal(request.url, "/api/v1/auth/refresh");

@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Activity, ExternalLink, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../ui/button";
 import { ConfirmAlert } from "../ui/confirm-alert";
@@ -8,12 +8,13 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuPortal, Co
 import { Tag } from "../ui/tag";
 import type { SourceSiteView } from "./types";
 
-export function SourceSiteTable({ sites, selectedSiteId, pendingId, pendingIds = new Set(), onSelect, onRefresh, onEdit, onDelete }: Readonly<{
+export function SourceSiteTable({ sites, selectedSiteId, pendingId, pendingIds = new Set(), onSelect, onMonitors, onRefresh, onEdit, onDelete }: Readonly<{
   sites: readonly SourceSiteView[];
   selectedSiteId: number | null;
   pendingId: number | null;
   pendingIds?: ReadonlySet<number>;
   onSelect: (siteId: number) => void;
+  onMonitors: (site: SourceSiteView) => void;
   onRefresh: (site: SourceSiteView) => void;
   onEdit: (site: SourceSiteView) => void;
   onDelete: (site: SourceSiteView) => void;
@@ -30,6 +31,7 @@ export function SourceSiteTable({ sites, selectedSiteId, pendingId, pendingIds =
             selected={selectedSiteId === site.id}
             pending={pendingId === site.id || pendingIds.has(site.id)}
             onSelect={onSelect}
+            onMonitors={onMonitors}
             onRefresh={onRefresh}
             onEdit={onEdit}
             onDelete={setDeleteTarget}
@@ -81,7 +83,7 @@ function SourceCard(props: SourceActions & { site: SourceSiteView; selected: boo
           <SiteMetrics site={site} />
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
             <SiteMeta site={site} />
-            <CardActions site={site} pending={props.pending} onRefresh={props.onRefresh} onEdit={props.onEdit} onDelete={props.onDelete} />
+            <CardActions site={site} pending={props.pending} onMonitors={props.onMonitors} onRefresh={props.onRefresh} onEdit={props.onEdit} onDelete={props.onDelete} />
           </div>
         </article>
       </ContextMenuTrigger>
@@ -108,6 +110,7 @@ function SiteMetric({ label, value, className }: Readonly<{ label: string; value
 function CardActions({
   site,
   pending,
+  onMonitors,
   onRefresh,
   onEdit,
   onDelete,
@@ -118,6 +121,21 @@ function CardActions({
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
+      {site.siteType === "sub2api" ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          data-channel-monitors
+          aria-label="渠道监控"
+          title="渠道监控"
+          disabled={!site.enabled}
+          onClick={() => onMonitors(site)}
+          className="compact-icon-button"
+        >
+          <Activity className="size-3.5" />
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -174,11 +192,12 @@ function TypeTag({ type }: Readonly<{ type: SourceSiteView["siteType"] }>) {
   return <Tag tone="primary">{type === "newapi" ? "New API" : "Sub2API"}</Tag>;
 }
 
-function SourceCardMenu({ site, pending, onRefresh, onEdit, onDelete }: SourceActions & { site: SourceSiteView; pending: boolean }) {
+function SourceCardMenu({ site, pending, onMonitors, onRefresh, onEdit, onDelete }: SourceActions & { site: SourceSiteView; pending: boolean }) {
   return (
     <ContextMenuPortal>
       <ContextMenuContent aria-label={`${site.name} 操作`}>
         <WebsiteMenuItem site={site} />
+        {site.siteType === "sub2api" ? <MenuItem marker="data-channel-monitors" disabled={!site.enabled} onSelect={() => onMonitors(site)} icon={<Activity className="size-4" />} label="渠道监控" /> : null}
         <MenuItem marker="data-refresh-site" disabled={pending || !site.enabled} onSelect={() => onRefresh(site)} icon={<RefreshCw className={`size-4 ${pending ? "animate-spin" : ""}`} />} label="刷新采集站" />
         <MenuItem marker="data-edit-site" onSelect={() => onEdit(site)} icon={<Pencil className="size-4" />} label="编辑采集站" />
         <ContextMenuSeparator className="my-1 h-px bg-border" />
@@ -231,6 +250,7 @@ function selectWithKeyboard(event: React.KeyboardEvent, siteId: number, onSelect
 
 const MENU_ITEM_CLASS = "flex min-h-9 cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-40";
 type SourceActions = {
+  onMonitors: (site: SourceSiteView) => void;
   onRefresh: (site: SourceSiteView) => void;
   onEdit: (site: SourceSiteView) => void;
   onDelete: (site: SourceSiteView) => void;

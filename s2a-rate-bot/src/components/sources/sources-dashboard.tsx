@@ -5,11 +5,12 @@ import { useState } from "react";
 import { Button } from "../ui/button";
 import { ConnectionCreateDialog } from "../connections/connection-create-dialog";
 import { SourceBindingDialog } from "./source-binding-dialog";
+import { SourceChannelMonitorsDialog } from "./source-channel-monitors-dialog";
 import { SourceRatesTable } from "./source-rates-table";
 import { SourceSiteDialog } from "./source-site-dialog";
 import { SourceSiteTable } from "./source-site-table";
 import { SourceCollectionRunsDialog, SourceRateHistoryDialog } from "./source-history-dialog";
-import type { SourceRateHistoryTarget } from "./types";
+import type { SourceRateHistoryTarget, SourceSiteView } from "./types";
 import { useSourcesDashboard } from "./use-sources-dashboard";
 
 export function SourcesDashboard() {
@@ -20,6 +21,7 @@ export function SourcesDashboard() {
   const [bindingTarget, setBindingTarget] = useState<SourceRateHistoryTarget | null>(null);
   const [connectionTarget, setConnectionTarget] = useState<SourceRateHistoryTarget | null>(null);
   const [runsOpen, setRunsOpen] = useState(false);
+  const [monitorSite, setMonitorSite] = useState<SourceSiteView | null>(null);
   if (view.loading) return <LoadingDashboard />;
   const selectedSite = view.sites.find((site) => site.id === selectedSiteId);
   const activeSiteId = selectedSite?.id ?? null;
@@ -55,6 +57,7 @@ export function SourcesDashboard() {
                     setSitesExpanded(false);
                   }}
                   onRefresh={view.refreshSite}
+                  onMonitors={setMonitorSite}
                   onEdit={view.openDialog}
                   onDelete={view.deleteSite}
                 />
@@ -70,6 +73,7 @@ export function SourcesDashboard() {
               pendingIds={view.pendingSiteIds}
               onSelect={setSelectedSiteId}
               onRefresh={view.refreshSite}
+              onMonitors={setMonitorSite}
               onEdit={view.openDialog}
               onDelete={view.deleteSite}
             />
@@ -103,6 +107,7 @@ export function SourcesDashboard() {
         }}
       />
       <SourceCollectionRunsDialog open={runsOpen} siteId={activeSiteId} onOpenChange={setRunsOpen} />
+      <SourceChannelMonitorsDialog site={monitorSite} onOpenChange={setMonitorSite} />
     </section>
   );
 }

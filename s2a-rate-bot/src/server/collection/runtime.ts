@@ -2,6 +2,7 @@ import { createAesGcmSecretCipher } from "../crypto.ts";
 import { getRuntimeInfrastructure } from "../infrastructure/runtime.ts";
 import { getRuntimeSettingsService } from "../settings/runtime.ts";
 import { createDefaultCollectionCollector } from "./collector.ts";
+import { createDefaultChannelMonitorCollector } from "./channel-monitor-collector.ts";
 import { createCollectionService, type CollectionService } from "./service.ts";
 import { createPostgresCollectionStore } from "./postgres-store.ts";
 
@@ -17,6 +18,7 @@ export function getRuntimeCollectionService(env: NodeJS.ProcessEnv = process.env
     store: createPostgresCollectionStore(infrastructure.postgres),
     cipher: createAesGcmSecretCipher(secret),
     collector: createDefaultCollectionCollector(),
+    channelMonitorCollector: createDefaultChannelMonitorCollector({ settings }),
     requestOptions: async () => requestOptions(await settings.get()),
     afterRefreshSuccess: async (siteId) => {
       const { getRuntimeConnectionService } = await import("../connections/runtime.ts");
