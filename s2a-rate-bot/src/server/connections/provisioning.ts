@@ -4,7 +4,7 @@ import {
   resolveExistingResources, validateExistingRetry, validateStoredResources,
 } from "./existing-resources.ts";
 import { beginLifecycle, beginStage, completeStage, failLifecycle } from "./lifecycle.ts";
-import { ensureResourceName, requiredConnection, toView } from "./model.ts";
+import { buildResourceName, ensureResourceName, requiredConnection, toView } from "./model.ts";
 import {
   mappedGroupIds, resolveRequest, resolveStored, type ResolvedConnectionContext,
 } from "./resolution.ts";
@@ -141,7 +141,13 @@ function initialConnection(input: Readonly<{
     targetAccountId: resources?.target.id ?? null, targetAccountName: resources?.target.name ?? "",
     targetGroupIds: resolved.targetGroups.map((group) => group.id),
     targetGroupNames: resolved.targetGroups.map((group) => group.name),
-    groupType: parsed.groupType, resourceName: "", provisioningMode: parsed.mode,
+    groupType: parsed.groupType,
+    resourceName: parsed.mode === "managed" ? buildResourceName({
+      sourceSiteName: resolved.site.name,
+      sourceGroupName: resolved.rate.groupName,
+      effectiveRate: resolved.rate.effectiveRate,
+    }) : "",
+    provisioningMode: parsed.mode,
     status: "provisioning", pricingMappingEnabled: false,
     pricingMappingRequested: parsed.addToPricingMapping,
     sourceCredentialDeleted: false, targetAccountDeleted: false,

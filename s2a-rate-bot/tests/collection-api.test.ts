@@ -17,3 +17,10 @@ test("collection API routes are present", () => {
   ];
   for (const path of paths) assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
 });
+
+test("ticket embed session has an explicit POST route ahead of the ticket id route", async () => {
+  const path = "src/app/api/embed/tickets/session/route.ts";
+  assert.equal(existsSync(new URL(path, PROJECT_ROOT)), true, `${path} should exist`);
+  const route = await import("../src/app/api/embed/tickets/session/route.ts");
+  assert.equal(typeof route.POST, "function");
+});

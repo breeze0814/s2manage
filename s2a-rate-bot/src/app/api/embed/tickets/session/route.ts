@@ -4,8 +4,6 @@ import { exchangeEmbedSession } from "../../../../../server/embeds/session-route
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest, context: Context) {
-  return exchangeEmbedSession(request, context.params.kind);
+export async function POST(request: NextRequest) {
+  return exchangeEmbedSession(request, "tickets");
 }
-
-type Context = Readonly<{ params: Readonly<{ kind: string }> }>;

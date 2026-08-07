@@ -18,6 +18,10 @@ export function getRuntimeCollectionService(env: NodeJS.ProcessEnv = process.env
     cipher: createAesGcmSecretCipher(secret),
     collector: createDefaultCollectionCollector(),
     requestOptions: async () => requestOptions(await settings.get()),
+    afterRefreshSuccess: async (siteId) => {
+      const { getRuntimeConnectionService } = await import("../connections/runtime.ts");
+      await getRuntimeConnectionService(env).syncAccountNames(siteId);
+    },
   });
   if (env === process.env) globalCollection.s2aCollectionService = service;
   return service;

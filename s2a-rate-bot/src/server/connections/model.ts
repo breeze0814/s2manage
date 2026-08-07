@@ -12,10 +12,29 @@ export async function requiredConnection(context: ConnectionContext, id: string)
 
 export async function ensureResourceName(context: ConnectionContext, connection: RealConnection) {
   if (connection.resourceName) return connection.resourceName;
-  const raw = `s2a-${connection.sourceSiteName}-${connection.sourceGroupName}-${connection.id.slice(0, 8)}`;
-  const resourceName = raw.replace(/\s+/g, "-").slice(0, RESOURCE_NAME_LIMIT);
+  const rate = (await context.sources.rates()).find((item) => (
+    item.sourceSiteId === connection.sourceSiteId && item.groupId === connection.sourceGroupId && !item.deleted
+  ));
+  if (!rate) throw new Error(`采集分组不存在: ${connection.sourceSiteId}:${connection.sourceGroupId}`);
+  const resourceName = buildResourceName({
+    sourceSiteName: connection.sourceSiteName,
+    sourceGroupName: connection.sourceGroupName,
+    effectiveRate: rate.effectiveRate,
+  });
   await context.store.setResourceName({ id: connection.id, resourceName, at: context.now().toISOString() });
   return resourceName;
+}
+
+export function buildResourceName(input: Readonly<{
+  sourceSiteName: string;
+  sourceGroupName: string;
+  effectiveRate: number;
+}>) {
+  if (!Number.isFinite(input.effectiveRate)) throw new Error("采集分组有效倍率无效");
+  const rate = Number(input.effectiveRate.toFixed(4)).toString();
+  const suffix = `-${rate}`;
+  const label = `${input.sourceSiteName.trim()}-${input.sourceGroupName.trim()}`.replace(/\s+/g, "-");
+  return `${label.slice(0, RESOURCE_NAME_LIMIT - suffix.length)}${suffix}`;
 }
 
 export function resourcesGone(connection: RealConnection) {

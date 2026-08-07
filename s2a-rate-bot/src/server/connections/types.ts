@@ -75,6 +75,7 @@ export type ConnectionSourceRate = {
   readonly sourceSiteId: number;
   readonly groupId: string;
   readonly groupName: string;
+  readonly effectiveRate: number;
   readonly platform?: string;
   readonly groupType?: string | null;
   readonly deleted?: boolean;
@@ -119,6 +120,7 @@ export type ConnectionRemoteGateway = {
     targetGroupIds: readonly number[];
   }>) => Promise<ProvisionedTarget>;
   readonly listTargetAccounts: (targetGroupIds: readonly number[]) => Promise<readonly ExistingTargetAccount[]>;
+  readonly renameTargetAccount: (accountId: number, name: string) => Promise<void>;
   readonly deleteTargetAccount: (accountId: number) => Promise<void>;
 };
 

@@ -27,10 +27,14 @@ async function loadModules() {
   return { crypto, service, store };
 }
 
-async function withCollection<T>(collector: CollectionCollector, task: (context: Awaited<ReturnType<typeof createContext>>) => Promise<T>) {
+async function withCollection<T>(
+  collector: CollectionCollector,
+  task: (context: Awaited<ReturnType<typeof createContext>>) => Promise<T>,
+  afterRefreshSuccess?: (siteId: number) => Promise<void>,
+) {
   const directory = await mkdtemp(join(tmpdir(), "s2a-collection-"));
   const databasePath = join(directory, "app.db");
-  const context = await createContext(`file:${databasePath}`, databasePath, collector);
+  const context = await createContext(`file:${databasePath}`, databasePath, collector, afterRefreshSuccess);
   try {
     return await task(context);
   } finally {
@@ -39,7 +43,12 @@ async function withCollection<T>(collector: CollectionCollector, task: (context:
   }
 }
 
-async function createContext(databaseUrl: string, databasePath: string, collector: CollectionCollector) {
+async function createContext(
+  databaseUrl: string,
+  databasePath: string,
+  collector: CollectionCollector,
+  afterRefreshSuccess?: (siteId: number) => Promise<void>,
+) {
   const modules = await loadModules();
   const store = modules.store.createSqliteCollectionStore(databaseUrl);
   const service = modules.service.createCollectionService({
@@ -47,6 +56,7 @@ async function createContext(databaseUrl: string, databasePath: string, collecto
     cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET),
     collector,
     requestOptions: async () => ({ timeoutMs: 25_000, proxyUrl: null, targetRechargeRatio: 1 }),
+    afterRefreshSuccess,
   });
   return { ...modules, store, service, databasePath };
 }
@@ -87,6 +97,24 @@ test("successful refresh persists balance, rates, and a success run", async () =
     assert.equal(refreshed.historyRecharge, 30);
     assert.equal(refreshed.consecutiveFailures, 0);
     assert.deepEqual(rates.map((rate: { groupId: string; effectiveRate: number }) => [rate.groupId, rate.effectiveRate]), [["vip", 2]]);
+  });
+});
+
+test("successful refresh retries a failed post-refresh account sync without marking collection failed", async () => {
+  let attempts = 0;
+  await withCollection(successCollector(), async ({ service }) => {
+    const site = await service.create(sourceInput());
+
+    await assert.rejects(service.refresh(site.id), /account rename failed/);
+    const [collected] = await service.list();
+    assert.equal(collected.lastStatus, "success");
+    assert.equal(collected.consecutiveFailures, 0);
+
+    await service.refresh(site.id);
+    assert.equal(attempts, 2);
+  }, async () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("account rename failed");
   });
 });
 

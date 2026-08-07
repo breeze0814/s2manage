@@ -174,11 +174,11 @@ test("Sub2API admin operations use x-api-key and field-level bulk update", async
     const client = createSub2ApiClient({ baseUrl, http: http(), session });
     const accounts = await client.listGroupAccounts("7");
     assert.equal(accounts[0]?.name, "relay");
-    await client.updateAdminAccount("4", { priority: 12 });
+    await client.updateAdminAccount("4", { name: "Source-VIP-2.5", priority: 12 });
   });
   assert.deepEqual(calls[1], {
     url: "/api/v1/admin/accounts/bulk-update",
-    body: { account_ids: [4], priority: 12 },
+    body: { account_ids: [4], name: "Source-VIP-2.5", priority: 12 },
   });
 });
 

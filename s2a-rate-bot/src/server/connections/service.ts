@@ -4,7 +4,7 @@ import type { ConnectionContext } from "./context.ts";
 import { disconnectConnection, resumeDisconnect } from "./disconnection.ts";
 import { ConnectionBusyError, ConnectionConflictError } from "./errors.ts";
 import { tryReconcileLease, withConnectionLease, withSourceGroupLease } from "./lease.ts";
-import { requiredConnection, resourcesGone, toView } from "./model.ts";
+import { buildResourceName, combinedMessage, requiredConnection, resourcesGone, toView } from "./model.ts";
 import {
   prepareConnection, provisionConnection, validateRetry,
 } from "./provisioning.ts";
@@ -33,6 +33,7 @@ export type ConnectionService = Readonly<{
   events: (connectionId?: string, limit?: number) => Promise<ConnectionLifecycleEvent[]>;
   eventPage: (connectionId?: string, limit?: number, beforeId?: number) => Promise<Awaited<ReturnType<ConnectionContext["store"]["eventPage"]>>>;
   reconcile: () => Promise<boolean>;
+  syncAccountNames: (sourceSiteId: number) => Promise<number>;
 }>;
 
 export function createConnectionService(context: ConnectionContext): ConnectionService {
@@ -51,7 +52,67 @@ export function createConnectionService(context: ConnectionContext): ConnectionS
       ...(beforeId === undefined ? {} : { beforeId: positiveLimit(beforeId) }),
     }),
     reconcile: () => tryReconcileLease({ context, task: () => reconcileConnections(context) }),
+    syncAccountNames: (sourceSiteId) => syncAccountNames(context, sourceSiteId),
   };
+}
+
+async function syncAccountNames(context: ConnectionContext, sourceSiteId: number) {
+  const [connections, rates, concurrency] = await Promise.all([
+    context.store.list(),
+    context.sources.rates(),
+    context.concurrency(),
+  ]);
+  const candidates = connections.flatMap((connection) => {
+    if (!managedActiveTarget(connection) || connection.sourceSiteId !== sourceSiteId) return [];
+    const rate = rates.find((item) => item.sourceSiteId === sourceSiteId
+      && item.groupId === connection.sourceGroupId && !item.deleted);
+    if (!rate) return [];
+    const desiredName = buildResourceName({
+      sourceSiteName: connection.sourceSiteName,
+      sourceGroupName: rate.groupName,
+      effectiveRate: rate.effectiveRate,
+    });
+    return connection.targetAccountName === desiredName ? [] : [{ connectionId: connection.id, desiredName }];
+  });
+  const results = await mapConcurrent({
+    items: candidates,
+    concurrency,
+    task: async ({ connectionId, desiredName }) => {
+      try {
+        const updated = await withConnectionLease({
+          context,
+          connectionId,
+          task: () => syncAccountName(context, connectionId, desiredName),
+        });
+        return { updated, error: null };
+      } catch (error) {
+        return { updated: false, error };
+      }
+    },
+  });
+  const errors = results.flatMap((result) => result.error === null ? [] : [result.error]);
+  if (errors.length > 0) {
+    throw new AggregateError(errors, `目标账号名称同步失败: ${combinedMessage(errors)}`);
+  }
+  return results.filter((result) => result.updated).length;
+}
+
+async function syncAccountName(context: ConnectionContext, connectionId: string, desiredName: string) {
+  const connection = await requiredConnection(context, connectionId);
+  if (!managedActiveTarget(connection) || connection.targetAccountName === desiredName) return false;
+  await context.remote.renameTargetAccount(connection.targetAccountId, desiredName);
+  await context.store.setTargetAccount({
+    id: connection.id,
+    accountId: connection.targetAccountId,
+    accountName: desiredName,
+    at: context.now().toISOString(),
+  });
+  return true;
+}
+
+function managedActiveTarget(connection: RealConnection): connection is RealConnection & { readonly targetAccountId: number } {
+  return connection.provisioningMode === "managed" && connection.status === "active"
+    && connection.targetAccountId !== null && !connection.targetAccountDeleted;
 }
 
 async function createConnection(context: ConnectionContext, parsed: ParsedCreate) {

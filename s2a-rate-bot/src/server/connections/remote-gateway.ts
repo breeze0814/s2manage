@@ -32,6 +32,10 @@ export function createRuntimeConnectionRemoteGateway(input: Readonly<{
     },
     ensureTargetAccount: (request) => ensureTargetAccount(input.settings, request),
     listTargetAccounts: async (groupIds) => targetOptions(await listTargetAccounts(await targetClient(input.settings), groupIds)),
+    renameTargetAccount: async (accountId, name) => {
+      const client = await targetClient(input.settings);
+      await client.updateAdminAccount(String(accountId), { name });
+    },
     deleteTargetAccount: async (accountId) => {
       const client = await targetClient(input.settings);
       await deleteIfPresent(() => client.deleteAdminAccount(String(accountId)));

@@ -129,6 +129,7 @@ export type NewApiChannelState = {
 };
 
 export type Sub2ApiAccountBulkUpdate = {
+  readonly name?: string;
   readonly priority?: number;
   readonly status?: string;
 };

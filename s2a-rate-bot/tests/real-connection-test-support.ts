@@ -14,7 +14,7 @@ export function storedSiteInput() {
   };
 }
 
-export function recordVipRate(store: ReturnType<typeof createSqliteCollectionStore>, siteId: number) {
+export function recordVipRate(store: ReturnType<typeof createSqliteCollectionStore>, siteId: number, effectiveRate = 2) {
   const startedAt = new Date().toISOString();
   store.recordSuccess({
     siteId, refreshVersion: store.beginRefresh(siteId), startedAt,
@@ -22,7 +22,7 @@ export function recordVipRate(store: ReturnType<typeof createSqliteCollectionSto
       account: { sourceSiteId: siteId, label: "user@example.com", balance: 10, todayConsume: 1, historyRecharge: 20 },
       rates: [{
         sourceSiteId: siteId, groupId: "vip", groupName: "VIP", platform: "openai",
-        rawRate: 2, effectiveRate: 2, collectedAt: new Date(),
+        rawRate: effectiveRate, effectiveRate, collectedAt: new Date(),
       }],
       errors: [],
     },

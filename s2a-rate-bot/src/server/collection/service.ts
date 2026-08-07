@@ -50,6 +50,7 @@ export function createCollectionService(input: {
   readonly cipher: SecretCipher;
   readonly collector: CollectionCollector;
   readonly requestOptions: () => Promise<CollectionRequestOptions>;
+  readonly afterRefreshSuccess?: (siteId: number) => Promise<void>;
 }): CollectionService {
   return {
     create: (raw) => createSite(input, raw),
@@ -100,13 +101,14 @@ async function refreshSite(input: CollectionDependencies, id: number) {
       startedAt,
       credentials: encryptedCredentials(overview, input.cipher),
     });
-    return siteView(await requiredSite(input.store, id), input.cipher);
   } catch (error) {
     if (error instanceof CollectionRefreshSupersededError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     await recordRefreshFailure(input.store, { siteId: id, refreshVersion, message, startedAt, originalError: error });
     throw error;
   }
+  await input.afterRefreshSuccess?.(id);
+  return siteView(await requiredSite(input.store, id), input.cipher);
 }
 
 async function recordRefreshFailure(

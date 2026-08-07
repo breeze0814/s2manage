@@ -8,6 +8,7 @@ import { createConnectionService } from "../src/server/connections/service.ts";
 import { createSqliteConnectionStore } from "../src/server/connections/store.ts";
 import type { ConnectionRemoteGateway, ConnectionTargetGroup } from "../src/server/connections/types.ts";
 import { createSqliteRuntimeLeaseStore } from "../src/server/runtime-leases/store.ts";
+import { buildResourceName } from "../src/server/connections/model.ts";
 import { recordVipRate, storedSiteInput, TEST_CONNECTION_ID } from "./real-connection-test-support.ts";
 
 test("managed connection provisions once and fully disconnects both remote resources", async () => {
@@ -19,6 +20,8 @@ test("managed connection provisions once and fully disconnects both remote resou
     assert.equal(created.status, "active");
     assert.equal(retried.id, created.id);
     assert.deepEqual(harness.calls.created, ["source", "target"]);
+    assert.deepEqual(harness.calls.names, ["source:Source-VIP-2", "target:Source-VIP-2"]);
+    assert.equal(created.resourceName, "Source-VIP-2");
     assert.deepEqual(harness.pricing.bindings(), [7]);
     assert.equal(harness.collection.rates(harness.siteId)[0]?.groupType, "openai");
 
@@ -31,6 +34,61 @@ test("managed connection provisions once and fully disconnects both remote resou
     assert.deepEqual(harness.pricing.bindings(), []);
   } finally {
     await harness.close();
+  }
+});
+
+test("managed resource names use source identity and effective rate", () => {
+  assert.equal(buildResourceName({
+    sourceSiteName: "采集 站",
+    sourceGroupName: "VIP Group",
+    effectiveRate: 1.234567,
+  }), "采集-站-VIP-Group-1.2346");
+  const truncated = buildResourceName({
+    sourceSiteName: "S".repeat(60),
+    sourceGroupName: "G".repeat(60),
+    effectiveRate: 1.25,
+  });
+  assert.equal(truncated.length, 80);
+  assert.equal(truncated.endsWith("-1.25"), true);
+});
+
+test("rate changes rename managed target accounts and persist the remote result", async () => {
+  const harness = await createHarness();
+  try {
+    const created = await harness.service.create(createInput());
+    recordVipRate(harness.collection, harness.siteId, 2.5);
+
+    assert.equal(await harness.service.syncAccountNames(harness.siteId), 1);
+    assert.deepEqual(harness.calls.renamed, ["99:Source-VIP-2.5"]);
+    assert.equal((await harness.service.get(created.id)).targetAccountName, "Source-VIP-2.5");
+    assert.equal(await harness.service.syncAccountNames(harness.siteId), 0);
+    assert.deepEqual(harness.calls.renamed, ["99:Source-VIP-2.5"]);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("account name sync retries failures and leaves existing-resource bindings unchanged", async () => {
+  const managed = await createHarness({ targetRenameFailures: 1 });
+  try {
+    const created = await managed.service.create(createInput());
+    recordVipRate(managed.collection, managed.siteId, 3);
+    await assert.rejects(managed.service.syncAccountNames(managed.siteId), /目标账号名称同步失败: target rename failed/);
+    assert.equal((await managed.service.get(created.id)).targetAccountName, "Source-VIP-2");
+    assert.equal(await managed.service.syncAccountNames(managed.siteId), 1);
+    assert.deepEqual(managed.calls.renamed, ["99:Source-VIP-3", "99:Source-VIP-3"]);
+  } finally {
+    await managed.close();
+  }
+
+  const existing = await createHarness({ resourcesExist: true });
+  try {
+    await existing.service.create(existingInput());
+    recordVipRate(existing.collection, existing.siteId, 3);
+    assert.equal(await existing.service.syncAccountNames(existing.siteId), 0);
+    assert.deepEqual(existing.calls.renamed, []);
+  } finally {
+    await existing.close();
   }
 });
 
@@ -165,7 +223,7 @@ async function createHarness(options: RemoteOptions = {}) {
   recordVipRate(collection, site.id);
   const store = createSqliteConnectionStore(databaseUrl);
   const leases = createSqliteRuntimeLeaseStore(databaseUrl);
-  const calls: RemoteCalls = { created: [], deleted: [] };
+  const calls: RemoteCalls = { created: [], deleted: [], names: [], renamed: [] };
   const pricing = createPricing(site.id);
   const service = createConnectionService({
     store, remote: createRemote(calls, options), id: () => TEST_CONNECTION_ID,
@@ -186,10 +244,12 @@ function createRemote(calls: RemoteCalls, options: RemoteOptions): ConnectionRem
   let sourceDeleteFailures = options.sourceDeleteFailures ?? 0;
   let targetCreateFailures = options.targetCreateFailures ?? 0;
   let targetResponseFailures = options.targetResponseFailures ?? 0;
+  let targetRenameFailures = options.targetRenameFailures ?? 0;
   let sourceExists = options.resourcesExist ?? false;
   let targetExists = options.resourcesExist ?? false;
   return {
-    ensureSourceCredential: async () => {
+    ensureSourceCredential: async ({ name }) => {
+      calls.names.push(`source:${name}`);
       if (!sourceExists) { sourceExists = true; calls.created.push("source"); }
       return { id: "credential-1", key: "secret-key" };
     },
@@ -201,6 +261,7 @@ function createRemote(calls: RemoteCalls, options: RemoteOptions): ConnectionRem
       if (sourceDeleteFailures > 0) { sourceDeleteFailures -= 1; throw new Error("source delete failed"); }
     },
     ensureTargetAccount: async ({ name }) => {
+      calls.names.push(`target:${name}`);
       if (!targetExists) calls.created.push("target");
       if (targetCreateFailures > 0) { targetCreateFailures -= 1; throw new Error("target create failed"); }
       targetExists = true;
@@ -210,6 +271,10 @@ function createRemote(calls: RemoteCalls, options: RemoteOptions): ConnectionRem
     listTargetAccounts: async () => targetExists
       ? [{ id: 99, name: "managed", platform: "openai", status: "active", groupIds: [7] }]
       : [],
+    renameTargetAccount: async (id, name) => {
+      calls.renamed.push(`${id}:${name}`);
+      if (targetRenameFailures > 0) { targetRenameFailures -= 1; throw new Error("target rename failed"); }
+    },
     deleteTargetAccount: async (id) => { targetExists = false; calls.deleted.push(`target:${id}`); },
   };
 }
@@ -242,10 +307,11 @@ function resourceState(connection: ReturnType<ReturnType<typeof createSqliteConn
   return connection && { status: connection.status, source: connection.sourceCredentialDeleted, target: connection.targetAccountDeleted };
 }
 
-type RemoteCalls = { readonly created: string[]; readonly deleted: string[] };
+type RemoteCalls = { readonly created: string[]; readonly deleted: string[]; readonly names: string[]; readonly renamed: string[] };
 type RemoteOptions = {
   readonly targetCreateFailures?: number;
   readonly targetResponseFailures?: number;
+  readonly targetRenameFailures?: number;
   readonly sourceDeleteFailures?: number;
   readonly resourcesExist?: boolean;
 };
