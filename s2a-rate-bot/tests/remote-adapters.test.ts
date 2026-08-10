@@ -83,6 +83,64 @@ test("getSub2ApiSourceAccount reads source station balance", async () => {
   });
 });
 
+test("getSub2ApiSourceAccount falls back to date-range usage stats", async () => {
+  let fallbackUrl = "";
+  await withServer((request, response) => {
+    assert.equal(request.headers.authorization, "Bearer token-a");
+    if (request.method === "GET" && request.url === "/api/v1/auth/me") {
+      json(response, { code: 0, data: { email: "owner@example.com", balance: 123.45 } });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v1/usage/dashboard/stats") {
+      json(response, { code: 1, message: "接口不存在" }, 404);
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/api/v1/usage/stats?")) {
+      fallbackUrl = request.url;
+      json(response, { code: 0, data: { total_actual_cost: 3.375376448 } });
+      return;
+    }
+    json(response, { message: "not found" }, 404);
+  }, async (baseUrl) => {
+    const account = await getSub2ApiSourceAccount({
+      sourceSiteId: 7,
+      baseUrl,
+      accessToken: "token-a",
+      rechargeRatio: 1,
+      targetRechargeRatio: 1,
+    });
+
+    const query = new URL(`http://127.0.0.1${fallbackUrl}`).searchParams;
+    assert.equal(query.get("timezone"), "Asia/Shanghai");
+    assert.match(query.get("start_date") ?? "", /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(query.get("end_date") ?? "", /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(account.todayConsume, 3.375376448);
+    assert.equal(account.balance, 123.45);
+  });
+});
+
+test("getSub2ApiSourceAccount keeps auth/me balance when usage endpoints fail", async () => {
+  await withServer((request, response) => {
+    assert.equal(request.headers.authorization, "Bearer token-a");
+    if (request.method === "GET" && request.url === "/api/v1/auth/me") {
+      json(response, { code: 0, data: { email: "owner@example.com", balance: 123.45 } });
+      return;
+    }
+    json(response, { code: 1, message: "接口不存在" }, 404);
+  }, async (baseUrl) => {
+    const account = await getSub2ApiSourceAccount({
+      sourceSiteId: 7,
+      baseUrl,
+      accessToken: "token-a",
+      rechargeRatio: 1,
+      targetRechargeRatio: 1,
+    });
+
+    assert.equal(account.balance, 123.45);
+    assert.equal(account.todayConsume, null);
+  });
+});
+
 test("collectSub2ApiSourceRates logs in with email and password", async () => {
   await withServer(async (request, response) => {
     if (request.method === "POST" && request.url === "/api/v1/auth/login") {

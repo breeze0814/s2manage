@@ -4,6 +4,7 @@ import { requestJson } from "./http-client.ts";
 const NEW_API_QUOTA_PER_UNIT = 500_000;
 const NEW_API_USAGE_LOG_TYPE = 2;
 const MILLISECONDS_PER_SECOND = 1_000;
+const SUB2API_USAGE_TIMEZONE = "Asia/Shanghai";
 
 export type SourceAccountSnapshot = {
   readonly sourceSiteId: number;
@@ -17,20 +18,36 @@ type JsonRecord = Record<string, unknown>;
 
 export async function getSub2ApiSourceAccount(input: SourceRateRequest): Promise<SourceAccountSnapshot> {
   const accessToken = await resolveSub2ApiAccessToken(input);
-  const [payload, usagePayload] = await Promise.all([
+  const [payload, usage] = await Promise.all([
     requestAccount(apiV1Url(input.baseUrl, "/auth/me"), accessToken, input),
-    requestAccount(apiV1Url(input.baseUrl, "/usage/dashboard/stats"), accessToken, input),
+    requestSub2ApiUsage(input, accessToken).catch(() => null),
   ]);
   const record = expectCodeZeroRecord(payload, "获取账户信息失败");
-  const usage = expectCodeZeroRecord(usagePayload, "获取账户消费指标失败");
   const balance = finiteNumber(record.balance, "账户余额");
   return {
     sourceSiteId: input.sourceSiteId,
     label: stringValue(record.email || record.username || record.id || "Sub2API"),
     balance,
-    todayConsume: firstFinite(usage, ["today_actual_cost", "todayActualCost"]),
-    historyRecharge: sub2ApiHistoryRecharge(record, usage, balance),
+    todayConsume: usage === null ? null : firstFinite(usage, ["today_actual_cost", "todayActualCost"]),
+    historyRecharge: sub2ApiHistoryRecharge(record, usage ?? {}, balance),
   };
+}
+
+async function requestSub2ApiUsage(input: SourceRateRequest, accessToken: string) {
+  try {
+    const payload = await requestAccount(apiV1Url(input.baseUrl, "/usage/dashboard/stats"), accessToken, input);
+    const usage = expectCodeZeroRecord(payload, "获取账户消费指标失败");
+    if (firstFinite(usage, ["today_actual_cost", "todayActualCost"]) !== null) return usage;
+  } catch {}
+  const range = sub2ApiTodayRange();
+  const params = new URLSearchParams({
+    start_date: range.startDate,
+    end_date: range.endDate,
+    timezone: SUB2API_USAGE_TIMEZONE,
+  });
+  const payload = await requestAccount(apiV1Url(input.baseUrl, `/usage/stats?${params}`), accessToken, input);
+  const usage = expectCodeZeroRecord(payload, "获取账户消费指标失败");
+  return { ...usage, today_actual_cost: firstFinite(usage, ["total_actual_cost", "totalActualCost"]) };
 }
 
 export async function getNewApiSourceAccount(input: SourceRateRequest): Promise<SourceAccountSnapshot> {
@@ -178,6 +195,24 @@ function todayUnixRange() {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - 1;
   return { start: Math.floor(start / MILLISECONDS_PER_SECOND), end: Math.floor(end / MILLISECONDS_PER_SECOND) };
+}
+
+function sub2ApiTodayRange() {
+  const now = new Date();
+  const today = dateInTimeZone(now, SUB2API_USAGE_TIMEZONE);
+  const yesterday = dateInTimeZone(new Date(now.getTime() - 24 * 60 * 60 * 1_000), SUB2API_USAGE_TIMEZONE);
+  return { startDate: yesterday, endDate: today };
+}
+
+function dateInTimeZone(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function apiV1Url(baseUrl: string, path: string) {
