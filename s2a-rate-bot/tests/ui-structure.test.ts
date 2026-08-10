@@ -97,7 +97,7 @@ test("top-level page titles use consistent Chinese hierarchy", () => {
     ["src/components/channel-monitors/channel-monitors-dashboard.tsx", "渠道监控", "按采集站查看渠道可用率、状态与延迟趋势"],
     ["src/components/accounts/accounts-dashboard.tsx", "账号调度", "查看账号状态、倍率绑定与调度可用性"],
     ["src/components/logs/logs-dashboard.tsx", "系统日志", "外部 API 调用与 Worker 执行记录"],
-    ["src/components/settings-form.tsx", "全局配置", "目标站、代理、Worker 与 Telegram 通知设置"],
+    ["src/components/settings-form.tsx", "全局配置", "目标站、代理、Worker 与通知机器人设置"],
   ] as const;
 
   for (const [path, title, description] of titles) {

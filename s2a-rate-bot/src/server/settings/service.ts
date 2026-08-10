@@ -142,7 +142,17 @@ async function saveNotificationChannels(input: SettingsDependencies, raw: unknow
   validateNotificationChannels(channels);
   const stored = await input.store.get();
   if (!stored) throw new Error("请先保存基础配置");
-  await input.store.save({ ...stored, notificationChannelsEnc: input.cipher.encrypt(JSON.stringify(channels)) });
+  const legacy = channels.telegram.find((bot) => bot.id === "legacy-telegram");
+  await input.store.save({
+    ...stored,
+    telegramHourlyBalanceEnabled: legacy?.enabled ?? false,
+    telegramRateChangeEnabled: legacy?.enabled ?? false,
+    ...(legacy ? {
+      telegramBotTokenEnc: input.cipher.encrypt(legacy.botToken),
+      telegramChatId: legacy.chatId,
+    } : {}),
+    notificationChannelsEnc: input.cipher.encrypt(JSON.stringify(channels)),
+  });
   return channels;
 }
 

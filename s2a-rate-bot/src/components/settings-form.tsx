@@ -9,12 +9,18 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { WorkerStatusPanel } from "./worker-status-panel";
-import { TelegramSettingsFields, type TelegramFormValue } from "./telegram-settings-fields";
 import { SettingsNavigation, type SettingsSection } from "./settings-navigation";
 import { NotificationChannelsFields } from "./notification-channels-fields";
 import type { NotificationChannelSettings } from "../server/notifications/types.ts";
 
-type PendingAction = "save" | "testTarget" | "testTelegram" | null;
+type PendingAction = "save" | "testTarget" | null;
+
+type TelegramFormValue = {
+  readonly botToken: string;
+  readonly chatId: string;
+  readonly hourlyBalanceEnabled: boolean;
+  readonly rateChangeEnabled: boolean;
+};
 
 type SettingsFormState = {
   targetName: string;
@@ -28,7 +34,6 @@ type SettingsFormState = {
   workerTimeoutSeconds: string;
   workerConcurrency: string;
   telegram: TelegramFormValue;
-  hasTelegramBotToken: boolean;
   notificationChannels: NotificationChannelSettings;
 };
 
@@ -46,7 +51,6 @@ const EMPTY_FORM: SettingsFormState = {
   workerTimeoutSeconds: "25",
   workerConcurrency: "3",
   telegram: { botToken: "", chatId: "", hourlyBalanceEnabled: false, rateChangeEnabled: false },
-  hasTelegramBotToken: false,
   notificationChannels: EMPTY_NOTIFICATION_CHANNELS,
 };
 
@@ -69,7 +73,7 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
   if (presentation === "dialog") {
     return (
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
-        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6 2xl:grid 2xl:grid-cols-[220px_minmax(0,1fr)] 2xl:items-start 2xl:gap-6 2xl:px-8">
+        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6 lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0 lg:px-7">
           <SettingsNavigation active={section} onChange={setSection} dialogWide />
           <div className="min-w-0">{panel}</div>
         </div>
@@ -79,7 +83,7 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
   }
   return (
     <section className="page-stack">
-      <header className="page-header"><div><h1 className="page-heading">全局配置</h1><p className="page-description">目标站、代理、Worker 与 Telegram 通知设置</p></div></header>
+      <header className="page-header"><div><h1 className="page-heading">全局配置</h1><p className="page-description">目标站、代理、Worker 与通知机器人设置</p></div></header>
       <form className="grid w-full max-w-6xl items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)] xl:max-w-none xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,56rem)]" onSubmit={submit}>
         <SettingsNavigation sidebar active={section} onChange={setSection} />
         <div className="min-w-0 max-w-4xl space-y-5 2xl:max-w-none">{panel}<ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} /></div>
@@ -231,24 +235,7 @@ function sectionPanel(input: Readonly<{ section: SettingsSection; form: Settings
   if (input.section === "target") return <TargetFields form={input.form} update={input.update} />;
   if (input.section === "proxy") return <ProxyFields form={input.form} update={input.update} />;
   if (input.section === "worker") return <WorkerFields form={input.form} update={input.update} />;
-  if (input.section === "telegram") return <SettingsCard title="通知策略" description="控制余额和倍率变化通知，并兼容旧版 Telegram 配置"><TelegramSettingsFields value={input.form.telegram} hasBotToken={input.form.hasTelegramBotToken} testing={input.pending === "testTelegram"} disabled={input.pending !== null} onChange={(value) => input.update("telegram", value)} onTest={() => { void testTelegram({ form: input.form, setPending: input.setPending }); }} /></SettingsCard>;
-  return <SettingsCard title="通知机器人" description="配置钉钉、企业微信、QQ、飞书和 Telegram 机器人"><NotificationChannelsFields value={input.form.notificationChannels} disabled={input.pending !== null} onChange={(value) => input.update("notificationChannels", value)} /></SettingsCard>;
-}
-
-async function testTelegram(input: Pick<SaveActions, "form" | "setPending">) {
-  input.setPending("testTelegram");
-  try {
-    const response = await fetch("/api/settings/test-telegram", { method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ botToken: input.form.telegram.botToken, chatId: input.form.telegram.chatId }) });
-    const body = await response.json() as { message?: string; error?: string };
-    if (!response.ok) throw new Error(body.error ?? "Telegram 测试消息发送失败");
-    toast.success(body.message ?? "Telegram 测试消息已发送");
-  } catch (error) {
-    toast.error(errorMessage(error));
-  } finally {
-    input.setPending(null);
-  }
+  return <SettingsCard title="通知机器人" description="统一管理钉钉、企业微信、QQ、飞书和 Telegram"><NotificationChannelsFields value={input.form.notificationChannels} disabled={input.pending !== null} onChange={(value) => input.update("notificationChannels", value)} /></SettingsCard>;
 }
 
 function settingsPayload(form: SettingsFormState) {
@@ -277,7 +264,6 @@ function formFromResponse(data: SettingsResponse, notificationChannels: Notifica
     workerTimeoutSeconds: String(data.worker.timeoutSeconds),
     workerConcurrency: String(data.worker.concurrency),
     telegram: data.telegram,
-    hasTelegramBotToken: data.hasTelegramBotToken,
     notificationChannels,
   };
 }
@@ -296,6 +282,6 @@ type SettingsFieldsProps = { form: SettingsFormState; update: SettingsFormUpdate
 type StateActions = { setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setLoading: (value: boolean) => void };
 type SaveActions = { form: SettingsFormState; setForm: React.Dispatch<React.SetStateAction<SettingsFormState>>; setPending: (value: PendingAction) => void; onSaved?: () => void };
 type SettingsResponse = { target: { name: string; baseUrl: string; rechargeRatio: number } | null;
-  hasAdminApiKey: boolean; hasTelegramBotToken: boolean;
+  hasAdminApiKey: boolean;
   proxy: { enabled: boolean; proxyUrl: string }; worker: { intervalSeconds: number; timeoutSeconds: number; concurrency: number };
   telegram: TelegramFormValue };

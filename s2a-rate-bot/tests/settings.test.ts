@@ -82,6 +82,22 @@ test("notification channels round-trip with encrypted credentials and legacy Tel
     const store = modules.store.createSqliteSettingsStore(databaseUrl);
     const service = modules.service.createSettingsService({ store, cipher: modules.crypto.createAesGcmSecretCipher(APP_SECRET) });
     await service.save(settingsInput());
+    const legacy = await service.getNotificationChannels?.();
+    assert.equal(legacy?.telegram[0]?.id, "legacy-telegram");
+    await service.saveNotificationChannels?.({
+      dingtalk: [], wecom: [], qq: [], feishu: [],
+      telegram: [{ id: "legacy-telegram", name: "Telegram", enabled: true,
+        botToken: "654321:updated-telegram-token", chatId: "-1009876543210", proxyUrl: "" }],
+    });
+    assert.deepEqual((await service.get()).telegram, {
+      botToken: "654321:updated-telegram-token", chatId: "-1009876543210",
+      hourlyBalanceEnabled: true, rateChangeEnabled: true,
+    });
+    await service.saveNotificationChannels?.({ dingtalk: [], wecom: [], qq: [], feishu: [], telegram: [] });
+    assert.deepEqual((await service.get()).telegram, {
+      botToken: "654321:updated-telegram-token", chatId: "-1009876543210",
+      hourlyBalanceEnabled: false, rateChangeEnabled: false,
+    });
     const saved = await service.saveNotificationChannels?.({
       dingtalk: [{ id: "ding", name: "Ding", enabled: true, webhook: "https://example.test/hook", secret: "signing-secret" }],
       wecom: [], qq: [], feishu: [], telegram: [],
@@ -198,9 +214,12 @@ test("settings API, target test API, and settings form are present", () => {
   assert.match(form, /WorkerStatusPanel/);
   assert.match(form, /targetRechargeRatio/);
   assert.match(form, /充值倍率/);
-  assert.match(form, /TelegramSettingsFields/);
+  assert.match(form, /NotificationChannelsFields/);
+  assert.doesNotMatch(form, /TelegramSettingsFields/);
   assert.match(form, /SettingsNavigation/);
   assert.match(navigation, /全局配置分类/);
+  assert.match(navigation, /通知机器人/);
+  assert.doesNotMatch(navigation, /id: "telegram"/);
   assert.match(navigation, /aria-current/);
   assert.match(navigation, /sm:grid-cols-4/);
   assert.match(targetTest, /refreshAll/);
