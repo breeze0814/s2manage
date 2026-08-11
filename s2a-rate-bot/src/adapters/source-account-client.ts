@@ -200,8 +200,7 @@ function todayUnixRange() {
 function sub2ApiTodayRange() {
   const now = new Date();
   const today = dateInTimeZone(now, SUB2API_USAGE_TIMEZONE);
-  const yesterday = dateInTimeZone(new Date(now.getTime() - 24 * 60 * 60 * 1_000), SUB2API_USAGE_TIMEZONE);
-  return { startDate: yesterday, endDate: today };
+  return { startDate: today, endDate: today };
 }
 
 function dateInTimeZone(value: Date, timeZone: string) {

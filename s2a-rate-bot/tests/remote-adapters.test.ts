@@ -114,6 +114,7 @@ test("getSub2ApiSourceAccount falls back to date-range usage stats", async () =>
     assert.equal(query.get("timezone"), "Asia/Shanghai");
     assert.match(query.get("start_date") ?? "", /^\d{4}-\d{2}-\d{2}$/);
     assert.match(query.get("end_date") ?? "", /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(query.get("start_date"), query.get("end_date"));
     assert.equal(account.todayConsume, 3.375376448);
     assert.equal(account.balance, 123.45);
   });
