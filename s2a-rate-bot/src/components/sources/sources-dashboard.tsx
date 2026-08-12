@@ -3,6 +3,7 @@
 import { ChevronDown, History, Loader2, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../ui/button";
+import { OverflowAction, OverflowActions } from "../ui/overflow-actions";
 import { ConnectionCreateDialog } from "../connections/connection-create-dialog";
 import { SourceBindingDialog } from "./source-binding-dialog";
 import { SourceRatesTable } from "./source-rates-table";
@@ -154,11 +155,15 @@ function DashboardHeader({ actions }: Readonly<{ actions: React.ReactNode }>) {
 function SourceActions({ bulkPending, bulkProgress, onCreate, onRefreshAll, onShowRuns }: Readonly<{ bulkPending: boolean; bulkProgress: { readonly completed: number; readonly total: number } | null; onCreate: () => void; onRefreshAll: () => void; onShowRuns: () => void }>) {
   return (
     <div className="page-actions">
-      <Action primary icon={<Plus className="size-3.5" />} label="添加采集站" text="添加站点" onClick={onCreate} />
-      <Action icon={<History className="size-3.5" />} label="查看采集记录" text="采集记录" onClick={onShowRuns} />
-      <Action icon={bulkPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} label="重新请求全部远端" text="刷新全部" activeText={bulkProgress && bulkProgress.total > 0 ? `刷新 ${bulkProgress.completed}/${bulkProgress.total}` : undefined} onClick={onRefreshAll} disabled={bulkPending} />
+      <div className="page-actions-primary"><Action primary icon={<Plus className="size-3.5" />} label="添加采集站" text="添加站点" onClick={onCreate} /></div>
+      <div className="page-actions-secondary"><Action icon={<History className="size-3.5" />} label="查看采集记录" text="采集记录" onClick={onShowRuns} /><RefreshAllAction bulkPending={bulkPending} bulkProgress={bulkProgress} onRefreshAll={onRefreshAll} /></div>
+      <OverflowActions className="page-actions-overflow"><OverflowAction onClick={onShowRuns}><History />采集记录</OverflowAction><OverflowAction disabled={bulkPending} onClick={onRefreshAll}>{bulkPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}{bulkProgress && bulkProgress.total > 0 ? `刷新 ${bulkProgress.completed}/${bulkProgress.total}` : "刷新全部"}</OverflowAction></OverflowActions>
     </div>
   );
+}
+
+function RefreshAllAction({ bulkPending, bulkProgress, onRefreshAll }: Readonly<{ bulkPending: boolean; bulkProgress: { readonly completed: number; readonly total: number } | null; onRefreshAll: () => void }>) {
+  return <Action icon={bulkPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} label="重新请求全部远端" text="刷新全部" activeText={bulkProgress && bulkProgress.total > 0 ? `刷新 ${bulkProgress.completed}/${bulkProgress.total}` : undefined} onClick={onRefreshAll} disabled={bulkPending} />;
 }
 
 function Action({ icon, label, text, activeText, primary, ...button }: Readonly<{ icon: React.ReactNode; label: string; text: string; activeText?: string; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>>) {

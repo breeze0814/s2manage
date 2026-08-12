@@ -122,10 +122,11 @@ test("channel monitoring is a top-level page with one horizontal tab per source 
   assert.doesNotMatch(sourcesDashboard, /SourceChannelMonitors/);
   assert.doesNotMatch(sourceTable, /data-channel-monitors|渠道监控/);
   assert.match(view, /\/api\/sources\/\$\{siteId\}\/channel-monitors/);
-  assert.match(view, /7日可用率/);
-  assert.match(view, /响应延迟/);
-  assert.match(view, /网络延迟/);
-  assert.match(view, /<svg/);
+  assert.match(view, /可用性 · 7 天/);
+  assert.match(view, /对话延迟/);
+  assert.match(view, /端点 PING/);
+  assert.match(view, /monitor-status-bars/);
+  assert.doesNotMatch(view, /<svg/);
   assert.match(view, /Asia\/Shanghai/);
 });
 

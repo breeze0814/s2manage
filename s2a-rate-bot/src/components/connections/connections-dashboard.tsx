@@ -3,6 +3,7 @@
 import { AlertCircle, Cable, History, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../ui/button";
+import { OverflowAction, OverflowActions } from "../ui/overflow-actions";
 import { ConnectionCreateDialog } from "./connection-create-dialog";
 import { ConnectionDisconnectDialog } from "./connection-disconnect-dialog";
 import { ConnectionPolicyDialog } from "./connection-policy-dialog";
@@ -30,7 +31,20 @@ function LoadErrorNotice({ message, pending, onRetry }: Readonly<{ message: stri
 }
 
 function PageHeader({ pending, onCreate, onPolicies, onEvents, onReload }: Readonly<{ pending: boolean; onCreate: () => void; onPolicies: () => void; onEvents: () => void; onReload: () => void }>) {
-  return <header className="page-header"><div className="min-w-0"><h1 className="page-heading">对接治理</h1><p className="page-description">真实连接、健康策略和远端资源生命周期</p></div><div className="page-actions"><Button type="button" onClick={onCreate}><Cable className="size-3.5" />创建对接</Button><Button type="button" variant="secondary" onClick={onPolicies}><ShieldCheck className="size-3.5" />健康策略</Button><Button type="button" variant="secondary" onClick={onEvents}><History className="size-3.5" />事件记录</Button><Button type="button" variant="secondary" disabled={pending} onClick={onReload}>{pending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}刷新</Button></div></header>;
+  return (
+    <header className="page-header">
+      <div className="min-w-0"><h1 className="page-heading">对接治理</h1><p className="page-description">真实连接、健康策略和远端资源生命周期</p></div>
+      <div className="page-actions">
+        <div className="page-actions-primary"><Button type="button" onClick={onCreate}><Cable className="size-3.5" />创建对接</Button></div>
+        <div className="page-actions-secondary"><Button type="button" variant="secondary" onClick={onPolicies}><ShieldCheck className="size-3.5" />健康策略</Button><Button type="button" variant="secondary" onClick={onEvents}><History className="size-3.5" />事件记录</Button><RefreshAction pending={pending} onReload={onReload} /></div>
+        <OverflowActions className="page-actions-overflow"><OverflowAction onClick={onPolicies}><ShieldCheck />健康策略</OverflowAction><OverflowAction onClick={onEvents}><History />事件记录</OverflowAction><OverflowAction disabled={pending} onClick={onReload}>{pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}刷新</OverflowAction></OverflowActions>
+      </div>
+    </header>
+  );
+}
+
+function RefreshAction({ pending, onReload }: Readonly<{ pending: boolean; onReload: () => void }>) {
+  return <Button type="button" variant="secondary" disabled={pending} onClick={onReload}>{pending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}刷新</Button>;
 }
 
 function HealthSummary({ connections, monitorMap }: Readonly<{ connections: readonly ConnectionView[]; monitorMap: ReadonlyMap<string, { readonly state: string }> }>) {

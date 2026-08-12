@@ -8,14 +8,14 @@ import { SettingsDialog } from "./settings-dialog";
 import { ThemeToggle } from "./theme-toggle";
 
 const NAVIGATION = [
-  { href: "/", label: "概览", icon: Home },
-  { href: "/groups", label: "分组倍率", icon: Layers3 },
-  { href: "/sources", label: "倍率采集", icon: Database },
-  { href: "/channel-monitors", label: "渠道监控", icon: Activity },
-  { href: "/connections", label: "对接治理", icon: Cable },
-  { href: "/accounts", label: "账号调度", icon: UsersRound },
-  { href: "/tickets", label: "互动运营", icon: PanelsTopLeft, matches: ["/tickets", "/leaderboard", "/lottery", "/compensation"] },
-  { href: "/logs", label: "系统日志", icon: ScrollText },
+  { href: "/", label: "概览", icon: Home, group: "system" },
+  { href: "/groups", label: "分组倍率", icon: Layers3, group: "rates" },
+  { href: "/sources", label: "倍率采集", icon: Database, group: "rates" },
+  { href: "/channel-monitors", label: "渠道监控", icon: Activity, group: "rates" },
+  { href: "/connections", label: "对接治理", icon: Cable, group: "accounts" },
+  { href: "/accounts", label: "账号调度", icon: UsersRound, group: "accounts" },
+  { href: "/tickets", label: "互动运营", icon: PanelsTopLeft, matches: ["/tickets", "/leaderboard", "/lottery", "/compensation"], group: "engagement" },
+  { href: "/logs", label: "系统日志", icon: ScrollText, group: "system" },
 ] as const;
 
 export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
@@ -58,14 +58,17 @@ function TopNavigation({ pathname }: Readonly<{ pathname: string }>) {
 }
 
 function Navigation({ pathname, mobile = false }: Readonly<{ pathname: string; mobile?: boolean }>) {
-  return NAVIGATION.map((item) => {
+  return NAVIGATION.map((item, index) => {
     const active = isActive(pathname, item);
     const Icon = item.icon;
     return (
-      <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined}
-        className={`top-nav-link ${mobile ? "shrink-0" : ""} ${active ? "top-nav-link-active" : ""}`}>
-        <Icon className="size-4" aria-hidden="true" />{item.label}
-      </Link>
+      <span key={item.href} className={`contents ${mobile ? "shrink-0" : ""}`}>
+        {index > 0 && NAVIGATION[index - 1]?.group !== item.group ? <span aria-hidden="true" className="top-nav-divider" /> : null}
+        <Link href={item.href} aria-current={active ? "page" : undefined}
+          className={`top-nav-link ${mobile ? "shrink-0" : ""} ${active ? "top-nav-link-active" : ""}`}>
+          <Icon className="size-4" aria-hidden="true" />{item.label}
+        </Link>
+      </span>
     );
   });
 }
@@ -124,4 +127,4 @@ function workerTone(connected: boolean) {
   return connected ? "border-success/25 bg-success/10 text-success" : "border-border bg-surface-muted text-muted";
 }
 
-type NavigationItem = Readonly<{ href: string; label: string; icon: LucideIcon; matches?: readonly string[] }>;
+type NavigationItem = Readonly<{ href: string; label: string; icon: LucideIcon; matches?: readonly string[]; group: string }>;

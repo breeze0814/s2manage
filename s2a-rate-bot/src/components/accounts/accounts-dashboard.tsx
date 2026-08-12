@@ -5,6 +5,7 @@ import { useState } from "react";
 import { PlatformLabel } from "../platform-icon";
 import { Button } from "../ui/button";
 import { ConfirmAlert } from "../ui/confirm-alert";
+import { OverflowAction, OverflowActions } from "../ui/overflow-actions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Tag, type TagTone } from "../ui/tag";
 import { AccountInfo, LoadingAccounts, type AccountActionProps, type AccountListProps } from "./account-dashboard-support";
@@ -32,14 +33,16 @@ export function AccountsDashboard() {
           <p className="page-description">查看账号状态、倍率绑定与调度可用性</p>
         </div>
         <div className="page-actions">
-          <Button type="button" variant="secondary" onClick={view.testAll} disabled={view.loading || testing || view.accounts.length === 0} className="shrink-0">
+          <div className="page-actions-primary"><Button type="button" variant="secondary" onClick={view.refresh} disabled={view.loading || testing} className="shrink-0">
+            {view.loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            刷新账号
+          </Button></div>
+          <div className="page-actions-secondary"><Button type="button" variant="secondary" onClick={view.testAll} disabled={view.loading || testing || view.accounts.length === 0} className="shrink-0">
             {view.batchTesting ? <Loader2 className="size-3.5 animate-spin" /> : <ListChecks className="size-3.5" />}
             批量测试
           </Button>
-          <Button type="button" variant="secondary" onClick={view.refresh} disabled={view.loading || testing} className="shrink-0">
-            {view.loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-            刷新账号
-          </Button>
+          </div>
+          <OverflowActions className="page-actions-overflow"><OverflowAction disabled={view.loading || testing || view.accounts.length === 0} onClick={view.testAll}>{view.batchTesting ? <Loader2 className="animate-spin" /> : <ListChecks />}批量测试</OverflowAction></OverflowActions>
         </div>
       </header>
       {view.loading ? (

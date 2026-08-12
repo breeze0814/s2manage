@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { SourceChannelMonitorsView } from "../sources/source-channel-monitors-view";
 import type { SourceSiteView } from "../sources/types";
 import { Button } from "../ui/button";
+import { OverflowAction, OverflowActions } from "../ui/overflow-actions";
 import { Tag } from "../ui/tag";
 
 export function ChannelMonitorsDashboard() {
@@ -39,10 +40,11 @@ export function ChannelMonitorsDashboard() {
           <p className="page-description">按采集站查看渠道可用率、状态与延迟趋势</p>
         </div>
         <div className="page-actions">
-          <Button type="button" variant="secondary" onClick={() => void loadSites()} disabled={loading}>
+          <div className="page-actions-primary"><Button type="button" variant="secondary" onClick={() => void loadSites()} disabled={loading}>
             {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}刷新站点
-          </Button>
-          <Button asChild variant="secondary"><Link href="/sources"><Settings2 className="size-3.5" />管理采集站</Link></Button>
+          </Button></div>
+          <div className="page-actions-secondary"><Button asChild variant="secondary"><Link href="/sources"><Settings2 className="size-3.5" />管理采集站</Link></Button></div>
+          <OverflowActions className="page-actions-overflow"><Link role="menuitem" className="overflow-action" href="/sources"><Settings2 />管理采集站</Link></OverflowActions>
         </div>
       </header>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, AlertTriangle, Database, Layers3, Loader2, RefreshCw, WalletCards } from "lucide-react";
+import { Activity, ArrowRight, Database, Layers3, Loader2, RefreshCw, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
@@ -59,16 +59,19 @@ function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
   return (
     <>
       <AlertBanner data={data} failedSites={failures} lowBalanceSites={lowBalanceSites.length} />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric href="/sources" icon={<Database />} label="采集站" value={data.sites.length} detail={`启用 ${enabledSites}`} tone="blue" />
-        <Metric href="/sources#source-sites" icon={<WalletCards />} label="采集站总余额" value={formatBalance(totalBalance)} valueClassName="text-balance-value" detail={`今日消费 ${formatBalance(totalTodayConsume)}`} tone="emerald" />
-        <Metric href="/groups" icon={<Layers3 />} label="目标分组" value={data.groups.length} detail={`启用规则 ${enabledRules}`} tone="violet" />
-        <Metric href={failures ? "/logs" : "/sources"} icon={<Activity />} label="倍率快照" value={data.rates.length} detail={failures ? `${failures} 个站点异常` : "全部站点正常"} tone={failures ? "red" : "amber"} />
-      </div>
-      <div className="dashboard-split">
-        <RateChangePanel changes={data.changes} />
+      <div className="dashboard-split overview-priority-grid">
         <div className="grid gap-5 lg:sticky sticky-below-header">
+          <RiskSummary data={data} failedSites={failures} lowBalanceSites={lowBalanceSites.length} />
           <WorkerOverview run={data.run} connected={data.workerConnected} />
+        </div>
+        <div className="grid gap-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric href="/sources" icon={<Database />} label="采集站" value={data.sites.length} detail={`启用 ${enabledSites}`} tone="blue" />
+            <Metric href="/sources#source-sites" icon={<WalletCards />} label="采集站总余额" value={formatBalance(totalBalance)} valueClassName="text-balance-value" detail={`今日消费 ${formatBalance(totalTodayConsume)}`} tone="emerald" />
+            <Metric href="/groups" icon={<Layers3 />} label="目标分组" value={data.groups.length} detail={`启用规则 ${enabledRules}`} tone="violet" />
+            <Metric href={failures ? "/logs" : "/sources"} icon={<Activity />} label="倍率快照" value={data.rates.length} detail={failures ? `${failures} 个站点异常` : "全部站点正常"} tone={failures ? "red" : "amber"} />
+          </div>
+          <RateChangePanel changes={data.changes} />
           <SiteBalances sites={data.sites} />
         </div>
       </div>
@@ -77,33 +80,27 @@ function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
 }
 
 function AlertBanner({ data, failedSites, lowBalanceSites }: Readonly<{ data: DashboardData; failedSites: number; lowBalanceSites: number }>) {
-  const items: { readonly href: string; readonly text: string }[] = [];
-  if (!data.workerConnected) items.push({ href: "/settings", text: "Worker 未连接，自动采集与应用可能已停止" });
-  if (failedSites > 0) items.push({ href: "/sources", text: `${failedSites} 个采集站最近一次运行存在接口异常` });
-  if (lowBalanceSites > 0) items.push({ href: "/sources", text: `${lowBalanceSites} 个采集站余额低于告警阈值` });
-  if (data.run?.status === "failed" || data.run?.status === "partial") {
-    items.push({ href: "/logs", text: `Worker 最近运行状态为 ${data.run.status}` });
-  }
-  if (data.run && data.run.failedGroups > 0) {
-    items.push({ href: "/groups", text: `最近周期有 ${data.run.failedGroups} 个分组应用失败` });
-  }
-  if (items.length === 0) return null;
+  return <RiskSummary data={data} failedSites={failedSites} lowBalanceSites={lowBalanceSites} />;
+}
+
+function RiskSummary({ data, failedSites, lowBalanceSites }: Readonly<{ data: DashboardData; failedSites: number; lowBalanceSites: number }>) {
+  const risks = [
+    !data.workerConnected ? { href: "/settings", label: "Worker 未连接", detail: "自动采集与应用可能已停止", tone: "warning" as const } : null,
+    failedSites > 0 ? { href: "/sources", label: `${failedSites} 个采集站异常`, detail: "最近一次运行存在接口异常", tone: "danger" as const } : null,
+    lowBalanceSites > 0 ? { href: "/sources", label: `${lowBalanceSites} 个采集站余额偏低`, detail: "余额已低于告警阈值", tone: "warning" as const } : null,
+    data.run && (data.run.status === "failed" || data.run.status === "partial") ? { href: "/logs", label: `Worker ${data.run.status}`, detail: "最近周期未完整完成", tone: "danger" as const } : null,
+    data.run && data.run.failedGroups > 0 ? { href: "/groups", label: `${data.run.failedGroups} 个分组应用失败`, detail: "需要检查目标分组规则", tone: "danger" as const } : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
   return (
-    <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
-        <ul className="min-w-0 space-y-1.5 text-sm text-warning">
-          {items.map((item) => (
-            <li key={item.text}>
-              <Link href={item.href} className="font-medium underline-offset-2 transition-colors hover:text-foreground hover:underline">
-                {item.text}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    <section className="panel overflow-hidden" aria-labelledby="risk-summary-title">
+      <div className="panel-header"><div><h2 id="risk-summary-title" className="panel-title">需要关注</h2><p className="panel-description">优先处理会影响采集或倍率应用的状态。</p></div><Tag tone={risks.length ? "warning" : "success"}>{risks.length ? `${risks.length} 项` : "无异常"}</Tag></div>
+      {risks.length ? <div className="risk-queue">{risks.map((risk) => <Link key={risk.label} href={risk.href} className="risk-queue-item"><span className={`mt-1 size-2 shrink-0 rounded-full ${risk.tone === "danger" ? "bg-danger" : "bg-warning"}`} aria-hidden="true" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{risk.label}</span><span className="mt-0.5 block text-xs text-muted">{risk.detail}</span></span><ArrowRightIcon /></Link>)}</div> : <p className="px-4 py-5 text-sm text-muted">当前没有需要立即处理的风险。</p>}
+    </section>
   );
+}
+
+function ArrowRightIcon() {
+  return <ArrowRight aria-hidden="true" className="ml-auto size-4 shrink-0 text-muted" />;
 }
 
 function Metric({ href, icon, label, value, valueClassName = "", detail, tone }: Readonly<{

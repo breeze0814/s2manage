@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Clock3, Loader2, RefreshCw, Timer, Wifi } from "lucide-react";
+import { Activity, Gauge, Globe2, Loader2, Radio, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { Tag, type TagTone } from "../ui/tag";
@@ -72,31 +72,37 @@ export function SourceChannelMonitorsView({ site }: Readonly<{ site: SourceSiteV
 function MonitorCard({ monitor }: Readonly<{ monitor: SourceChannelMonitor }>) {
   const state = monitorState(monitor.primaryStatus);
   const points = chronologicalPoints(monitor.timeline);
+  const visiblePointCount = Math.min(points.length, 60);
   return (
-    <article className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
-      <div className="flex min-h-20 flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5">
+    <article className="monitor-card" aria-labelledby={`monitor-${monitor.id}-title`}>
+      <div className="monitor-card-identity">
+        <div className="monitor-card-mark" aria-hidden="true"><Radio className="size-6" /></div>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className="max-w-full truncate text-sm font-semibold" title={monitor.name}>{monitor.name}</h3>
-            <Tag tone={state.tone}>{state.label}</Tag>
+            <h3 id={`monitor-${monitor.id}-title`} className="min-w-0 truncate text-lg font-semibold" title={monitor.name}>{monitor.name}</h3>
+            {monitor.provider ? <Tag tone="primary">{monitor.provider}</Tag> : null}
           </div>
-          <p className="mt-1 truncate text-xs text-muted" title={[monitor.provider, monitor.primaryModel, monitor.groupName].filter(Boolean).join(" · ")}>{[monitor.provider, monitor.primaryModel, monitor.groupName].filter(Boolean).join(" · ") || `渠道 #${monitor.id}`}</p>
+          <p className="mt-1 truncate font-mono text-sm text-muted" title={[monitor.primaryModel, monitor.groupName].filter(Boolean).join(" · ")}>{[monitor.primaryModel, monitor.groupName].filter(Boolean).join(" · ") || `渠道 #${monitor.id}`}</p>
         </div>
-        <span className="shrink-0 font-mono text-xs tabular-nums text-muted">#{monitor.id}</span>
+        <Tag tone={state.tone} className="h-8 px-3 text-sm">{state.label}</Tag>
       </div>
 
-      <dl className="grid grid-cols-3 divide-x divide-border border-b border-border bg-surface-muted/25">
-        <MonitorMetric icon={<Clock3 className="size-3.5" />} label="7日可用率" value={formatAvailability(monitor.availability7d)} valueClass={availabilityClass(monitor.availability7d)} />
-        <MonitorMetric icon={<Timer className="size-3.5" />} label="响应延迟" value={formatLatency(monitor.primaryLatencyMs)} />
-        <MonitorMetric icon={<Wifi className="size-3.5" />} label="网络延迟" value={formatLatency(monitor.primaryPingLatencyMs)} />
+      <dl className="monitor-metrics">
+        <MonitorMetric icon={<Gauge />} label="对话延迟" value={formatLatency(monitor.primaryLatencyMs)} />
+        <MonitorMetric icon={<Globe2 />} label="端点 PING" value={formatLatency(monitor.primaryPingLatencyMs)} />
       </dl>
 
-      <div className="px-3 pb-3 pt-4 sm:px-5 sm:pb-4">
-        <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <span className="text-xs font-medium text-muted">响应延迟</span>
-          <span className="font-mono text-[11px] tabular-nums text-muted">{points.length ? `${formatShortTime(points[0]!.checkedAt)} - ${formatShortTime(points.at(-1)!.checkedAt)}` : "暂无时间线"}</span>
+      <div className="monitor-availability">
+        <div className="flex min-w-0 items-end justify-between gap-4">
+          <div><p className="monitor-section-label">可用性 · 7 天</p><p className="mt-1 text-xs text-muted">基于最近监控记录</p></div>
+          <p className={`font-mono text-4xl font-semibold tabular-nums sm:text-5xl ${availabilityClass(monitor.availability7d)}`}>{formatAvailability(monitor.availability7d)}</p>
         </div>
-        <LatencyChart points={points} name={monitor.name} />
+      </div>
+
+      <div className="monitor-history" aria-label={`${monitor.name} 最近 ${visiblePointCount} 次监控记录`}>
+        <div className="flex items-center justify-between gap-3"><span className="monitor-section-label">近 {visiblePointCount} 次记录</span><span className="text-xs text-muted">{points.length ? `${formatShortTime(points[0]!.checkedAt)} 后刷新` : "暂无记录"}</span></div>
+        <StatusBars points={points} />
+        <div className="mt-1 flex justify-between text-[11px] font-medium tracking-[0.12em] text-muted"><span>PAST</span><span>NOW</span></div>
       </div>
     </article>
   );
@@ -104,45 +110,17 @@ function MonitorCard({ monitor }: Readonly<{ monitor: SourceChannelMonitor }>) {
 
 function MonitorMetric({ icon, label, value, valueClass = "text-foreground" }: Readonly<{ icon: React.ReactNode; label: string; value: string; valueClass?: string }>) {
   return (
-    <div className="min-w-0 px-2 py-3 text-center sm:px-4">
-      <dt className="flex items-center justify-center gap-1 text-[11px] text-muted">{icon}<span className="truncate">{label}</span></dt>
-      <dd title={value} className={`mt-1 truncate font-mono text-sm font-semibold tabular-nums ${valueClass}`}>{value}</dd>
+    <div className="monitor-metric">
+      <dt className="flex items-center gap-2 text-sm font-medium text-muted">{icon}<span className="truncate">{label}</span></dt>
+      <dd title={value} className={`mt-4 truncate font-mono text-3xl font-semibold tabular-nums sm:text-4xl ${valueClass}`}>{value}{value !== "—" ? <span className="ml-1 text-base font-medium text-muted">ms</span> : null}</dd>
     </div>
   );
 }
 
-function LatencyChart({ points, name }: Readonly<{ points: readonly SourceChannelMonitorPoint[]; name: string }>) {
-  const available = points.filter((point): point is SourceChannelMonitorPoint & { latencyMs: number } => point.latencyMs !== null && Number.isFinite(point.latencyMs));
-  if (available.length === 0) return <div className="flex h-44 items-center justify-center rounded-md border border-dashed border-border bg-surface-muted/30 text-xs text-muted">暂无延迟数据</div>;
-
-  const width = 680;
-  const height = 176;
-  const plot = { left: 44, right: 12, top: 12, bottom: 27 };
-  const plotWidth = width - plot.left - plot.right;
-  const plotHeight = height - plot.top - plot.bottom;
-  const maximum = niceMaximum(Math.max(...available.map((point) => point.latencyMs)));
-  const x = (point: SourceChannelMonitorPoint) => plot.left + (points.length === 1 ? plotWidth / 2 : (points.indexOf(point) / (points.length - 1)) * plotWidth);
-  const y = (value: number) => plot.top + plotHeight - (value / maximum) * plotHeight;
-  const line = available.map((point) => `${x(point)},${y(point.latencyMs)}`).join(" ");
-  const levels = [maximum, maximum / 2, 0];
-
-  return (
-    <div className="h-44 w-full overflow-hidden rounded-md border border-border bg-background/55">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" role="img" aria-label={`${name} 响应延迟趋势图`}>
-        <title>{name} 响应延迟趋势</title>
-        {levels.map((level) => {
-          const gridY = y(level);
-          return <g key={level}><line x1={plot.left} x2={width - plot.right} y1={gridY} y2={gridY} stroke="rgb(var(--border))" strokeWidth="1" /><text x={plot.left - 7} y={gridY + 4} textAnchor="end" fill="rgb(var(--foreground-muted))" fontSize="10">{compactLatency(level)}</text></g>;
-        })}
-        <polyline points={line} fill="none" stroke="rgb(var(--primary))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-        {available.map((point, index) => (
-          <circle key={`${point.checkedAt}-${index}`} cx={x(point)} cy={y(point.latencyMs)} r="3.5" fill={statusColor(point.status)} stroke="rgb(var(--surface))" strokeWidth="1.5">
-            <title>{`${formatTime(point.checkedAt)} · ${formatLatency(point.latencyMs)} · ${monitorState(point.status).label}`}</title>
-          </circle>
-        ))}
-      </svg>
-    </div>
-  );
+function StatusBars({ points }: Readonly<{ points: readonly SourceChannelMonitorPoint[] }>) {
+  const visiblePoints = points.slice(-60);
+  if (!visiblePoints.length) return <div className="monitor-history-empty">暂无历史记录</div>;
+  return <div className="monitor-status-bars">{visiblePoints.map((point, index) => <span key={`${point.checkedAt}-${index}`} className={statusBarClass(point.status)} title={`${formatTime(point.checkedAt)} · ${monitorState(point.status).label}${point.latencyMs === null ? "" : ` · ${formatLatency(point.latencyMs)}`}`} />)}</div>;
 }
 
 function chronologicalPoints(points: readonly SourceChannelMonitorPoint[]) {
@@ -156,12 +134,12 @@ function monitorState(status: string): { label: string; tone: TagTone } {
   return { label: status || "未知", tone: "neutral" };
 }
 
-function statusColor(status: string) {
+function statusBarClass(status: string) {
   const tone = monitorState(status).tone;
-  if (tone === "success") return "rgb(var(--success))";
-  if (tone === "warning") return "rgb(var(--warning))";
-  if (tone === "danger") return "rgb(var(--danger))";
-  return "rgb(var(--foreground-muted))";
+  if (tone === "success") return "monitor-status-bar-success";
+  if (tone === "warning") return "monitor-status-bar-warning";
+  if (tone === "danger") return "monitor-status-bar-danger";
+  return "monitor-status-bar-neutral";
 }
 
 function availabilityClass(value: number | null) {
@@ -171,10 +149,8 @@ function availabilityClass(value: number | null) {
   return "text-danger";
 }
 
-function formatAvailability(value: number | null) { return value === null ? "-" : `${Math.max(0, Math.min(100, value)).toFixed(2)}%`; }
-function formatLatency(value: number | null) { return value === null ? "-" : `${Math.round(value).toLocaleString("zh-CN")} ms`; }
-function compactLatency(value: number) { return value >= 1_000 ? `${Number((value / 1_000).toFixed(1))}s` : `${Math.round(value)}`; }
-function niceMaximum(value: number) { const padded = Math.max(100, value * 1.12); const magnitude = 10 ** Math.floor(Math.log10(padded)); return Math.ceil(padded / magnitude) * magnitude; }
+function formatAvailability(value: number | null) { return value === null ? "—" : `${Math.max(0, Math.min(100, value)).toFixed(2)}%`; }
+function formatLatency(value: number | null) { return value === null ? "—" : Math.round(value).toLocaleString("zh-CN"); }
 function formatTime(value: string) { return new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }); }
 function formatShortTime(value: string) { return new Date(value).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }); }
 

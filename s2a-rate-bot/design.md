@@ -51,13 +51,16 @@ surface treatment, spacing, active state, and visual hierarchy.
 - Primary buttons: solid teal, compact, single-line labels.
 - Secondary buttons: surface fill with a quiet border and teal hover state.
 - Panels: structured work surfaces, never decorative cards inside cards.
+- Monitor cards: identity and status first, paired latency blocks, dominant availability conclusion, compact history bars.
 - Tags: compact semantic status chips.
 - Tables: dense header contrast, clear row dividers, restrained hover state.
+- Narrow page headers: keep one primary command visible; secondary commands move into an accessible overflow menu.
 
 ## Per-page allowances
 
 App pages use function-first layouts and no decorative hero imagery. The visual
 variety comes from each page's data shape, not from changing the design system.
+Overview pages prioritize actionable risks, then current status and supporting metrics.
 
 ## What must share
 
