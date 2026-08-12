@@ -126,6 +126,7 @@ test("channel monitoring is a top-level page with one horizontal tab per source 
   assert.match(view, /对话延迟/);
   assert.match(view, /端点 PING/);
   assert.match(view, /monitor-status-bars/);
+  assert.match(view, /xl:grid-cols-4/);
   assert.doesNotMatch(view, /<svg/);
   assert.match(view, /Asia\/Shanghai/);
 });

@@ -58,7 +58,7 @@ export function SourceChannelMonitorsView({ site }: Readonly<{ site: SourceSiteV
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
             {loading && monitors.length === 0 ? <MonitorLoading /> : error ? <MonitorError message={error} onRetry={() => void load()} /> : monitors.length ? (
-              <div className="grid gap-3 lg:grid-cols-2">
+              <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
                 {monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} />)}
               </div>
             ) : <MonitorEmpty />}
