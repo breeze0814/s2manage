@@ -39,13 +39,13 @@ export function SourceChannelMonitorsView({ site }: Readonly<{ site: SourceSiteV
 
   return (
     <section className="min-w-0 overflow-hidden">
-        <header className="shrink-0 border-b border-border bg-surface-muted/30 px-5 py-4 sm:px-6 sm:py-5">
-          <h2 className="flex items-center gap-2 text-lg font-semibold"><Activity className="size-5 text-primary" />{site.name}</h2>
-          <p className="mt-1 truncate text-sm leading-6 text-muted" title={site.baseUrl}>{site.baseUrl}</p>
+        <header className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-5 gap-y-1 border-b border-border bg-surface-muted/30 px-4 py-3 sm:px-5">
+          <h2 className="flex min-w-0 items-center gap-2 text-base font-semibold"><Activity className="size-4 shrink-0 text-primary" /><span className="truncate">{site.name}</span></h2>
+          <p className="max-w-full truncate font-mono text-xs text-muted" title={site.baseUrl}>{site.baseUrl}</p>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col bg-background/40">
-          <div className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5 sm:px-6">
+          <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2 sm:px-5">
             <div className="flex flex-wrap items-center gap-2">
               <Tag tone="info">{monitors.length} 个渠道</Tag>
               <span className="text-xs text-muted">{updatedAt ? `更新于 ${formatTime(updatedAt.toISOString())}` : "Asia/Shanghai"}</span>
@@ -56,9 +56,9 @@ export function SourceChannelMonitorsView({ site }: Readonly<{ site: SourceSiteV
             </Button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
             {loading && monitors.length === 0 ? <MonitorLoading /> : error ? <MonitorError message={error} onRetry={() => void load()} /> : monitors.length ? (
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-3 lg:grid-cols-2">
                 {monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} />)}
               </div>
             ) : <MonitorEmpty />}
@@ -90,19 +90,12 @@ function MonitorCard({ monitor }: Readonly<{ monitor: SourceChannelMonitor }>) {
       <dl className="monitor-metrics">
         <MonitorMetric icon={<Gauge />} label="对话延迟" value={formatLatency(monitor.primaryLatencyMs)} />
         <MonitorMetric icon={<Globe2 />} label="端点 PING" value={formatLatency(monitor.primaryPingLatencyMs)} />
+        <div className="monitor-availability"><dt className="monitor-section-label">7 天可用性</dt><dd className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${availabilityClass(monitor.availability7d)}`}>{formatAvailability(monitor.availability7d)}</dd></div>
       </dl>
 
-      <div className="monitor-availability">
-        <div className="flex min-w-0 items-end justify-between gap-4">
-          <div><p className="monitor-section-label">可用性 · 7 天</p><p className="mt-1 text-xs text-muted">基于最近监控记录</p></div>
-          <p className={`font-mono text-4xl font-semibold tabular-nums sm:text-5xl ${availabilityClass(monitor.availability7d)}`}>{formatAvailability(monitor.availability7d)}</p>
-        </div>
-      </div>
-
       <div className="monitor-history" aria-label={`${monitor.name} 最近 ${visiblePointCount} 次监控记录`}>
-        <div className="flex items-center justify-between gap-3"><span className="monitor-section-label">近 {visiblePointCount} 次记录</span><span className="text-xs text-muted">{points.length ? `${formatShortTime(points[0]!.checkedAt)} 后刷新` : "暂无记录"}</span></div>
+        <div className="flex items-center justify-between gap-3"><span className="monitor-section-label">近 {visiblePointCount} 次记录</span><span className="font-mono text-[11px] text-muted">{points.length ? `${formatShortTime(points[0]!.checkedAt)} 更新` : "暂无记录"}</span></div>
         <StatusBars points={points} />
-        <div className="mt-1 flex justify-between text-[11px] font-medium tracking-[0.12em] text-muted"><span>PAST</span><span>NOW</span></div>
       </div>
     </article>
   );
@@ -112,7 +105,7 @@ function MonitorMetric({ icon, label, value, valueClass = "text-foreground" }: R
   return (
     <div className="monitor-metric">
       <dt className="flex items-center gap-2 text-sm font-medium text-muted">{icon}<span className="truncate">{label}</span></dt>
-      <dd title={value} className={`mt-4 truncate font-mono text-3xl font-semibold tabular-nums sm:text-4xl ${valueClass}`}>{value}{value !== "—" ? <span className="ml-1 text-base font-medium text-muted">ms</span> : null}</dd>
+      <dd title={value} className={`mt-1 truncate font-mono text-2xl font-semibold tabular-nums ${valueClass}`}>{value}{value !== "—" ? <span className="ml-1 text-xs font-medium text-muted">ms</span> : null}</dd>
     </div>
   );
 }
@@ -154,9 +147,9 @@ function formatLatency(value: number | null) { return value === null ? "—" : M
 function formatTime(value: string) { return new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }); }
 function formatShortTime(value: string) { return new Date(value).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }); }
 
-function MonitorLoading() { return <div className="loading-state min-h-60"><Loader2 className="size-4 animate-spin" />正在读取渠道监控...</div>; }
-function MonitorEmpty() { return <div className="empty-state-inline min-h-52 rounded-lg border border-dashed border-border bg-surface-muted/40"><Activity className="size-5 text-muted" /><p className="mt-2">该站点暂无渠道监控数据。</p></div>; }
-function MonitorError({ message, onRetry }: Readonly<{ message: string; onRetry: () => void }>) { return <div className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-lg border border-danger/25 bg-danger/10 px-5 text-center text-sm text-danger"><p>{message}</p><Button type="button" variant="secondary" size="sm" onClick={onRetry}><RefreshCw className="size-3.5" />重新请求</Button></div>; }
+function MonitorLoading() { return <div className="loading-state min-h-44"><Loader2 className="size-4 animate-spin" />正在读取渠道监控...</div>; }
+function MonitorEmpty() { return <div className="empty-state-inline min-h-40 rounded-lg border border-dashed border-border bg-surface-muted/40"><Activity className="size-5 text-muted" /><p className="mt-2">该站点暂无渠道监控数据。</p></div>; }
+function MonitorError({ message, onRetry }: Readonly<{ message: string; onRetry: () => void }>) { return <div className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-lg border border-danger/25 bg-danger/10 px-5 text-center text-sm text-danger"><p>{message}</p><Button type="button" variant="secondary" size="sm" onClick={onRetry}><RefreshCw className="size-3.5" />重新请求</Button></div>; }
 
 async function loadChannelMonitors(siteId: number) {
   const response = await fetch(`/api/sources/${siteId}/channel-monitors`, { cache: "no-store" });

@@ -51,7 +51,7 @@ export function ChannelMonitorsDashboard() {
       {loading && sites.length === 0 ? <PageLoading /> : error ? <PageError message={error} onRetry={() => void loadSites()} /> : sites.length === 0 ? <NoSites /> : (
         <div className="min-w-0">
           <SiteTabs sites={sites} selectedSiteId={selectedSiteId} onSelect={setSelectedSiteId} />
-          <div id="site-monitor-panel" role="tabpanel" aria-labelledby={selectedSite ? `site-monitor-tab-${selectedSite.id}` : undefined} className="pt-5 sm:pt-6">
+          <div id="site-monitor-panel" role="tabpanel" aria-labelledby={selectedSite ? `site-monitor-tab-${selectedSite.id}` : undefined} className="pt-3 sm:pt-4">
             <SiteMonitorContent site={selectedSite} />
           </div>
         </div>
@@ -82,7 +82,7 @@ function SiteTabs({ sites, selectedSiteId, onSelect }: Readonly<{
               tabIndex={selected ? 0 : -1}
               onClick={() => onSelect(site.id)}
               onKeyDown={(event) => selectTabWithKeyboard(event, index, sites, onSelect)}
-              className={`flex min-h-12 max-w-72 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary ${selected ? "border-primary text-primary-strong" : "border-transparent text-muted hover:border-border-strong hover:text-foreground"}`}
+              className={`flex min-h-10 max-w-72 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary ${selected ? "border-primary text-primary-strong" : "border-transparent text-muted hover:border-border-strong hover:text-foreground"}`}
             >
               <span className={`size-2 shrink-0 rounded-full ${site.enabled ? "bg-success" : "bg-muted"}`} aria-hidden="true" />
               <span className="truncate" title={site.name}>{site.name}</span>

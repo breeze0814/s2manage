@@ -264,23 +264,23 @@
 }
 
 .monitor-card {
-  @apply min-w-0 overflow-hidden rounded-[14px] border border-primary/25 bg-surface shadow-panel;
+  @apply min-w-0 overflow-hidden rounded-[10px] border border-primary/25 bg-surface shadow-panel;
 }
 
 .monitor-card-identity {
-  @apply flex min-h-24 items-center gap-3 border-b border-border px-4 py-4 sm:px-5;
+  @apply flex min-h-0 items-center gap-2.5 border-b border-border px-3 py-3.5 sm:px-4;
 }
 
 .monitor-card-mark {
-  @apply flex size-12 shrink-0 items-center justify-center rounded-[14px] border border-primary/25 bg-primary/10 text-primary-strong;
+  @apply flex size-9 shrink-0 items-center justify-center rounded-[8px] border border-primary/25 bg-primary/10 text-primary-strong;
 }
 
 .monitor-metrics {
-  @apply grid grid-cols-2 gap-3 border-b border-border bg-background/30 p-4 sm:p-5;
+  @apply grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] divide-x divide-border bg-background/30;
 }
 
 .monitor-metric {
-  @apply min-w-0 rounded-[14px] border border-border bg-background/35 px-4 py-4;
+  @apply min-w-0 px-3 py-3 sm:px-4;
 }
 
 .monitor-metric svg {
@@ -288,19 +288,19 @@
 }
 
 .monitor-availability {
-  @apply border-b border-border px-4 py-5 sm:px-5;
+  @apply min-w-[5.5rem] px-3 py-3 text-right sm:px-4;
 }
 
 .monitor-section-label {
-  @apply text-sm font-medium tracking-[0.08em] text-muted;
+  @apply text-xs font-medium tracking-[0.06em] text-muted;
 }
 
 .monitor-history {
-  @apply px-4 pb-4 pt-5 sm:px-5 sm:pb-5;
+  @apply px-3 py-2.5 sm:px-4;
 }
 
 .monitor-status-bars {
-  @apply mt-4 grid h-10 min-w-0 grid-flow-col auto-cols-fr items-end gap-1;
+  @apply mt-2 grid h-6 min-w-0 grid-flow-col auto-cols-fr items-end gap-0.5;
 }
 
 .monitor-status-bars > span {
@@ -324,7 +324,7 @@
 }
 
 .monitor-history-empty {
-  @apply mt-4 flex h-10 items-center justify-center rounded-md border border-dashed border-border bg-background/35 text-xs text-muted;
+  @apply mt-2 flex h-6 items-center justify-center rounded-md border border-dashed border-border bg-background/35 text-xs text-muted;
 }
 
 @media (max-width: 480px) {
@@ -340,8 +340,16 @@
     @apply shrink-0;
   }
 
-  .monitor-status-bars {
-    @apply gap-0.5;
+  .monitor-metrics {
+    @apply grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.75rem];
+  }
+
+  .monitor-metric {
+    @apply px-2.5;
+  }
+
+  .monitor-availability {
+    @apply min-w-0 px-2.5;
   }
 }
 
