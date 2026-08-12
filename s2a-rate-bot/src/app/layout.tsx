@@ -20,7 +20,7 @@ const THEME_SCRIPT = `
 (() => {
   const stored = localStorage.getItem("s2a-rate-theme");
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const dark = stored === "dark" || (stored !== "light" && systemDark);
+  const dark = stored === "dark" || (stored !== "light" && (stored === null ? true : systemDark));
   document.documentElement.classList.toggle("dark", dark);
   document.documentElement.style.colorScheme = dark ? "dark" : "light";
 })();`;

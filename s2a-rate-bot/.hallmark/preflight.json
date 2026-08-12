@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-12",
+  "framework": "Next.js 14 App Router",
+  "styling": "Tailwind CSS 3 with CSS custom properties",
+  "components": "Radix UI and Lucide React",
+  "fonts": "Inter system stack; no next/font or external font package",
+  "motion": "motion-cut; CSS transitions only",
+  "spacing": "Tailwind spacing scale",
+  "preserved": ["top navigation behavior", "route tree", "business copy", "data fetching", "dark mode toggle"],
+  "introduced": ["dark graphite default palette", "Workbench app-page system", "restrained panel/control geometry", "consistent interaction states"]
+}

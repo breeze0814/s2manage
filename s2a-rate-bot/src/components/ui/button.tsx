@@ -4,13 +4,13 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 export const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-[border-color,background-color,box-shadow,color,filter] duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] border text-sm font-medium transition-[border-color,background-color,box-shadow,color,filter,transform] duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "border-primary bg-primary font-semibold text-primary-foreground shadow-sm hover:brightness-95 hover:shadow-md active:brightness-90",
-        secondary: "border-border-strong bg-surface text-foreground shadow-sm hover:border-primary/50 hover:bg-primary/5 hover:text-primary-strong active:bg-primary/10",
-        outline: "border-border-strong bg-transparent text-foreground hover:bg-surface-muted",
+        default: "border-primary bg-primary font-semibold text-primary-foreground shadow-sm hover:brightness-95 hover:shadow-md active:translate-y-px active:brightness-90",
+        secondary: "border-border-strong bg-surface text-foreground shadow-sm hover:border-primary/60 hover:bg-primary/10 hover:text-primary-strong active:translate-y-px active:bg-primary/15",
+        outline: "border-border-strong bg-transparent text-foreground hover:border-primary/45 hover:bg-surface-muted",
         ghost: "border-transparent bg-transparent text-muted hover:bg-surface-muted hover:text-foreground",
         destructive: "border-danger bg-danger font-semibold text-white shadow-sm hover:brightness-95",
       },

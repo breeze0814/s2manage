@@ -37,7 +37,7 @@ function SkipLink() {
 
 function TopNavigation({ pathname }: Readonly<{ pathname: string }>) {
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-surface/95 shadow-sm backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-border bg-surface/95 shadow-[0_10px_30px_rgb(var(--shadow)/0.18)] backdrop-blur-xl">
       <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6 lg:px-8 xl:px-10">
         <div className="hidden min-h-16 items-center gap-5 lg:flex">
           <Brand />
@@ -73,8 +73,8 @@ function Navigation({ pathname, mobile = false }: Readonly<{ pathname: string; m
 function Brand() {
   return (
     <Link href="/" aria-label="S2A Rate Bot 首页" className="inline-flex min-h-11 shrink-0 items-center gap-2.5 rounded-md font-semibold text-foreground transition-opacity hover:opacity-80">
-      <span className="inline-flex h-8 items-center rounded-md bg-primary px-2 text-sm font-bold text-primary-foreground">S2A</span>
-      <span className="hidden text-sm xl:inline">Rate Bot</span>
+      <span className="inline-flex h-8 items-center rounded-md border border-primary/40 bg-primary/[0.16] px-2 text-sm font-bold tracking-[0.08em] text-primary-strong">S2A</span>
+      <span className="hidden text-sm tracking-[0.01em] text-foreground xl:inline">Rate Bot</span>
     </Link>
   );
 }

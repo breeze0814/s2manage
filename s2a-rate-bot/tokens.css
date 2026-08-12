@@ -1,0 +1,84 @@
+/* Hallmark · macrostructure: Workbench · tone: technical · anchor hue: deep teal · theme: dark graphite */
+/* Hallmark · pre-emit critique: P5 H4 E4 S4 R4 V4 */
+
+:root {
+  color-scheme: dark;
+
+  /* Canonical Hallmark tokens. */
+  --color-paper: oklch(17% 0.018 185);
+  --color-paper-2: oklch(21% 0.022 180);
+  --color-ink: oklch(94% 0.018 160);
+  --color-ink-2: oklch(72% 0.025 165);
+  --color-rule: oklch(31% 0.028 175);
+  --color-accent: oklch(72% 0.13 171);
+  --color-accent-strong: oklch(80% 0.12 171);
+  --color-accent-ink: oklch(19% 0.045 171);
+  --color-focus: oklch(78% 0.14 171);
+
+  /* Existing RGB channel aliases keep Tailwind and SVG consumers compatible. */
+  --background: 13 18 20;
+  --surface: 18 25 26;
+  --surface-muted: 25 34 34;
+  --surface-elevated: 29 39 38;
+  --foreground: 231 239 235;
+  --foreground-muted: 157 172 166;
+  --border: 43 57 54;
+  --border-strong: 60 78 73;
+  --primary: 78 191 168;
+  --primary-strong: 104 221 192;
+  --primary-foreground: 8 28 25;
+  --info: 103 177 255;
+  --success: 102 211 151;
+  --warning: 241 177 92;
+  --danger: 245 117 124;
+  --rate: 110 181 255;
+  --effective-rate: 199 146 255;
+  --balance: 105 211 153;
+  --shadow: 0 0 0;
+
+  --font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --space-2xs: 0.25rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --radius-control: 0.5rem;
+  --radius-panel: 0.625rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --dur-short: 160ms;
+  --dur-medium: 220ms;
+  --workspace-top: 5.75rem;
+  --page-chrome-offset: 15.5rem;
+  --embedded-chrome-offset: 20rem;
+  --log-chrome-offset: 17.5rem;
+}
+
+:root:not(.dark) {
+  color-scheme: light;
+  --color-paper: oklch(95% 0.012 85);
+  --color-paper-2: oklch(98% 0.008 85);
+  --color-ink: oklch(25% 0.025 175);
+  --color-ink-2: oklch(48% 0.022 175);
+  --color-rule: oklch(87% 0.018 85);
+  --color-accent: oklch(43% 0.105 171);
+  --color-accent-strong: oklch(36% 0.095 171);
+  --color-accent-ink: oklch(99% 0.005 85);
+  --color-focus: oklch(47% 0.12 171);
+
+  --background: 244 241 236;
+  --surface: 252 250 247;
+  --surface-muted: 245 242 237;
+  --surface-elevated: 255 253 249;
+  --foreground: 31 38 39;
+  --foreground-muted: 95 105 101;
+  --border: 221 218 210;
+  --border-strong: 195 193 185;
+  --primary: 32 117 104;
+  --primary-strong: 23 92 82;
+  --primary-foreground: 255 255 255;
+  --shadow: 31 38 39;
+}
