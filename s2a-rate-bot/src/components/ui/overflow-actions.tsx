@@ -9,6 +9,7 @@ export function OverflowActions({ children, className }: Readonly<{ children: Re
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -16,7 +17,10 @@ export function OverflowActions({ children, className }: Readonly<{ children: Re
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", closeWhenOutside);
     document.addEventListener("keydown", closeOnEscape);
@@ -37,6 +41,7 @@ export function OverflowActions({ children, className }: Readonly<{ children: Re
         type="button"
         variant="secondary"
         size="icon"
+        ref={triggerRef}
         aria-label="更多操作"
         title="更多操作"
         aria-expanded={open}
@@ -48,7 +53,7 @@ export function OverflowActions({ children, className }: Readonly<{ children: Re
       {open ? (
         <div ref={menuRef} role="menu" aria-label="更多操作" className="overflow-actions-menu">
           {React.Children.map(children, (child, index) => (
-            <div key={index} role="none" onClick={() => setOpen(false)}>{child}</div>
+            <div key={index} role="none" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}>{child}</div>
           ))}
         </div>
       ) : null}

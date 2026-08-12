@@ -68,14 +68,15 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
     event.preventDefault();
     void saveSettings({ form, setForm, setPending, onSaved });
   };
+  const idPrefix = presentation === "dialog" ? "settings-dialog" : "settings-page";
   if (loading) return <LoadingSettings presentation={presentation} />;
   const panel = sectionPanel({ section, form, update, pending, setPending });
   if (presentation === "dialog") {
     return (
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
-        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6 lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0 lg:px-7">
-          <SettingsNavigation active={section} onChange={setSection} dialogWide />
-          <div className="min-w-0">{panel}</div>
+        <div className="space-y-4 overflow-y-auto px-4 py-4 sm:px-5 lg:grid lg:grid-cols-[190px_minmax(0,1fr)] lg:items-start lg:gap-5 lg:space-y-0 lg:px-6">
+          <SettingsNavigation active={section} onChange={setSection} idPrefix={idPrefix} dialogWide />
+          <div id={`${idPrefix}-panel-${section}`} role="tabpanel" aria-labelledby={`${idPrefix}-tab-${section}`} tabIndex={-1} className="min-w-0">{panel}</div>
         </div>
         <ActionBar compact pending={pending} onTest={() => { void testTarget({ setPending }); }} />
       </form>
@@ -84,9 +85,9 @@ export function SettingsForm({ presentation = "page", onSaved }: Readonly<{ pres
   return (
     <section className="page-stack">
       <header className="page-header"><div><h1 className="page-heading">全局配置</h1><p className="page-description">目标站、代理、Worker 与通知机器人设置</p></div></header>
-      <form className="grid w-full max-w-6xl items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)] xl:max-w-none xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,56rem)]" onSubmit={submit}>
-        <SettingsNavigation sidebar active={section} onChange={setSection} />
-        <div className="min-w-0 max-w-4xl space-y-5 2xl:max-w-none">{panel}<ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} /></div>
+      <form className="grid w-full max-w-6xl items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)] xl:max-w-none xl:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,56rem)]" onSubmit={submit}>
+        <SettingsNavigation sidebar active={section} onChange={setSection} idPrefix={idPrefix} />
+        <div id={`${idPrefix}-panel-${section}`} role="tabpanel" aria-labelledby={`${idPrefix}-tab-${section}`} tabIndex={-1} className="min-w-0 max-w-4xl space-y-4 2xl:max-w-none">{panel}<ActionBar pending={pending} onTest={() => { void testTarget({ setPending }); }} /></div>
       </form>
     </section>
   );
@@ -140,7 +141,7 @@ function SettingsCard({ title, description, children }: Readonly<{ title: string
   return (
     <section className="panel overflow-hidden">
       <div className="border-b border-border bg-surface-muted/40 px-4 py-3.5 lg:px-5"><h2 className="panel-title">{title}</h2><p className="panel-description">{description}</p></div>
-      <div className="space-y-4 p-4 lg:p-5">{children}</div>
+      <div className="space-y-3.5 p-4">{children}</div>
     </section>
   );
 }
@@ -159,8 +160,8 @@ function TextInput(input: Readonly<{ value: string; onChange: (value: string) =>
 
 function ActionBar({ pending, onTest, compact = false }: Readonly<{ pending: PendingAction; onTest: () => void; compact?: boolean }>) {
   const layout = compact
-    ? "flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-5 py-4 sm:flex-row sm:justify-end sm:px-6"
-    : "sticky bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 flex flex-col gap-2 rounded-lg border border-border bg-surface/95 p-3 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end";
+    ? "flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface-muted/60 px-4 py-3 sm:flex-row sm:justify-end sm:px-5"
+    : "sticky bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 flex flex-col gap-2 rounded-lg border border-border bg-surface/95 p-2.5 shadow-panel backdrop-blur-xl sm:flex-row sm:justify-end";
   return (
     <div className={layout}>
       <Button type="button" variant="secondary" onClick={onTest} disabled={pending !== null}>

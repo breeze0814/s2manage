@@ -158,7 +158,7 @@ test("desktop pages share a stable heading and data layout", () => {
   for (const table of [accounts, groups, rates]) assert.match(table, /data-table-sticky/);
   assert.match(rates, /embedded-table-viewport/);
   assert.match(settings, /max-w-6xl/);
-  assert.match(settings, /lg:grid-cols-\[240px_minmax\(0,1fr\)\]/);
+  assert.match(settings, /lg:grid-cols-\[220px_minmax\(0,1fr\)\]/);
   assert.match(settings, /bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
   assert.match(settings, /dialogWide/);
   assert.match(navigation, /lg:sticky sticky-below-header/);

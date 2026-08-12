@@ -55,9 +55,9 @@ function ChangeList({ changes }: Readonly<{ changes: readonly RateChange[] }>) {
 function ChangeRow({ change }: Readonly<{ change: RateChange }>) {
   const state = changeState(change);
   return (
-    <article className="flex flex-col gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/50 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <article className="flex flex-col gap-2 px-4 py-2.5 transition-colors hover:bg-surface-muted/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-start gap-3">
-        <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${state.iconClass}`} aria-hidden="true">
+        <span className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md ${state.iconClass}`} aria-hidden="true">
           {state.icon}
         </span>
         <div className="min-w-0">

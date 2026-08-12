@@ -25,7 +25,8 @@ test("home dashboard aggregates existing system APIs", () => {
   assert.match(dashboard, /site\.balance/);
   assert.match(dashboard, /METRIC_TONES/);
   assert.match(dashboard, /Worker 最近运行/);
-  assert.match(dashboard, /AlertBanner/);
+  assert.match(dashboard, /RiskSummary/);
+  assert.doesNotMatch(dashboard, /function AlertBanner/);
   assert.match(dashboard, /dashboard-split/);
   assert.match(dashboard, /href="\/sources"/);
   assert.match(dashboard, /href="\/groups"/);
@@ -73,4 +74,18 @@ test("system logs page exposes external API and Worker business logs", () => {
   assert.match(logger, /worker\.log/);
   assert.match(http, /writeExternalApiLog/);
   assert.match(worker, /writeWorkerLog/);
+});
+
+test("overview and logs preserve workspace context when a refresh fails", () => {
+  const home = source("src/components/home/home-dashboard.tsx");
+  const logs = source("src/components/logs/logs-dashboard.tsx");
+  const shared = source("src/components/ui/data-load-error.tsx");
+
+  assert.match(home, /DataLoadError/);
+  assert.match(home, /error && !data/);
+  assert.match(home, /系统概览刷新失败/);
+  assert.match(logs, /DataLoadError/);
+  assert.match(logs, /error && !data/);
+  assert.match(logs, /业务日志刷新失败/);
+  assert.match(shared, /role="alert"/);
 });

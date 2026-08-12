@@ -14,11 +14,14 @@ const LABELS: Record<Kind, string> = {
   compensation: "订单补偿",
 };
 
-export function EmbedSettingsDialog({ kind }: Readonly<{ kind: Kind }>) {
+export function EmbedSettingsDialog({ kind, compact = false }: Readonly<{ kind: Kind; compact?: boolean }>) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button type="button" variant="secondary"><Settings2 className="size-4" />嵌入设置</Button>
+        <Button type="button" variant="secondary" aria-label="嵌入设置" title="嵌入设置">
+          <Settings2 className="size-4" />
+          {compact ? <><span className="sr-only sm:not-sr-only">嵌入设置</span></> : "嵌入设置"}
+        </Button>
       </DialogTrigger>
         <DialogContent className="flex max-h-[92dvh] w-[min(94vw,760px)] flex-col overflow-hidden">
           <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">

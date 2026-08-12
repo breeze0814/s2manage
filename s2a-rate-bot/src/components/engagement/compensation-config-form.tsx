@@ -28,8 +28,8 @@ export function CompensationConfigForm(props: Readonly<{
         <div><h2 className="panel-title">活动配置</h2><p className="panel-description">联动店铺连接、用户端状态与补偿档位</p></div>
         <Settings2 className="size-5 text-primary" aria-hidden="true" />
       </div>
-      <form className="grid gap-5 p-4 lg:grid-cols-2 lg:p-5" onSubmit={(event) => { event.preventDefault(); run("save"); }}>
-        <div className="flex min-h-16 items-center gap-3 rounded-lg border border-border bg-surface-muted px-3 lg:col-span-2">
+      <form className="grid gap-4 p-4 lg:grid-cols-2" onSubmit={(event) => { event.preventDefault(); run("save"); }}>
+        <div className="flex min-h-14 items-center gap-3 rounded-lg border border-border bg-surface-muted px-3 lg:col-span-2">
           <Label htmlFor="compensation-enabled" className="min-w-0 flex-1 cursor-pointer">
             <span className="block font-medium">向用户开放活动</span>
             <span className="mt-0.5 block text-xs font-normal leading-5 text-muted">关闭后嵌入端停止计算与发码</span>
@@ -44,7 +44,7 @@ export function CompensationConfigForm(props: Readonly<{
         </Field>
         <CompensationOrderSourceFields draft={draft} passwordConfigured={props.settings.passwordConfigured} onChange={update} />
         <CompensationRuleFields rules={draft.rules} onChange={(rules) => update({ rules })} />
-        <div className="flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end lg:col-span-2">
+        <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end lg:col-span-2">
           <Button type="button" variant="secondary" disabled={pending !== null} onClick={() => run("test")}>
             {pending === "test" ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}{draft.orderSource === "json" ? "保存并验证 JSON" : "保存并测试连接"}
           </Button>

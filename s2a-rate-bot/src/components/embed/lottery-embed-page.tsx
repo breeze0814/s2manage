@@ -8,7 +8,7 @@ import type { LotteryCampaign } from "../../server/embeds/types";
 import { LotteryEligibilitySummary } from "../lottery-eligibility-summary";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
-import { EmbedError, EmbedHeader, EmbedLoading } from "./embed-state";
+import { EmbedError, EmbedHeader, EmbedInlineError, EmbedLoading } from "./embed-state";
 import { LotteryWheel } from "./lottery-wheel";
 import { embedRequestJson, useEmbedSession } from "./use-embed-session";
 
@@ -44,7 +44,7 @@ export function LotteryEmbedPage() {
   if (auth.loading) return <EmbedLoading />;
   if (auth.error || !auth.session) return <EmbedError message={auth.error || "嵌入会话不可用"} />;
   return <div className="min-h-dvh bg-background"><EmbedHeader eyebrow="Lucky Draw" title="抽奖中心" description="即时抽奖立刻返回结果，定时活动到点自动开奖" />
-    <div className="mx-auto max-w-6xl p-4 sm:p-6">{error ? <p role="alert" className="mb-4 rounded-lg border border-danger/25 bg-danger/10 px-4 py-3 text-sm text-danger">{error}</p> : null}
+    <div className="mx-auto max-w-6xl p-4 sm:p-6">{error ? <div className="mb-4"><EmbedInlineError message={error} onRetry={() => void load()} retryLabel="重新加载活动" /></div> : null}
       {selected ? <CampaignDetail campaign={selected} token={auth.session.token} onBack={() => { setSelected(null); previousStatus.current = null; }} onChange={(campaign) => { const status = campaign.currentEntry?.status ?? null; setSelected(campaign); setItems((current) => current.map((item) => item.id === campaign.id ? campaign : item)); if (status === "won" || status === "not_won") setReveal(status === "won" ? "won" : "lost"); previousStatus.current = status; }} />
         : <CampaignList items={items} loading={loading} onSelect={(campaign) => { setSelected(campaign); previousStatus.current = campaign.currentEntry?.status ?? null; }} />}
     </div>{reveal ? <ResultReveal result={reveal} campaign={selected} onClose={() => setReveal(null)} /> : null}</div>;

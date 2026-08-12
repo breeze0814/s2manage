@@ -1,6 +1,7 @@
 "use client";
 
 import { BellRing, Globe2, RadioTower, ShieldCheck } from "lucide-react";
+import type { KeyboardEvent } from "react";
 import { Button } from "./ui/button";
 
 export type SettingsSection = "target" | "proxy" | "worker" | "notifications";
@@ -15,6 +16,7 @@ const ITEMS: readonly { readonly id: SettingsSection; readonly label: string; re
 export function SettingsNavigation(input: Readonly<{
   active: SettingsSection;
   onChange: (section: SettingsSection) => void;
+  idPrefix: string;
   sidebar?: boolean;
   dialogWide?: boolean;
 }>) {
@@ -30,13 +32,13 @@ export function SettingsNavigation(input: Readonly<{
       : "grid grid-cols-2 gap-2 sm:grid-cols-4";
   return (
     <nav aria-label="全局配置分类" className={navigationClass}>
-      <div className={layout}>
+      <div role="tablist" aria-orientation="horizontal" className={layout}>
         {ITEMS.map((item) => {
           const Icon = item.icon;
           const active = item.id === input.active;
           return (
-            <Button key={item.id} type="button" variant="ghost" aria-current={active ? "page" : undefined} aria-pressed={active}
-              onClick={() => input.onChange(item.id)} title={item.description}
+            <Button key={item.id} id={`${input.idPrefix}-tab-${item.id}`} type="button" role="tab" variant="ghost" aria-current={active ? "page" : undefined} aria-selected={active} aria-controls={`${input.idPrefix}-panel-${item.id}`} tabIndex={active ? 0 : -1}
+              onClick={() => input.onChange(item.id)} onKeyDown={(event) => selectTabWithKeyboard(event, item.id, input.onChange, input.idPrefix)} title={item.description}
               className={`min-h-11 min-w-0 justify-start gap-3 px-3 py-2 text-left ${active ? "border-primary/25 bg-primary/15 text-primary-strong shadow-sm" : "text-muted"}`}>
               <Icon className="size-4 shrink-0" aria-hidden="true" />
               <span className="min-w-0"><span className="block text-sm font-semibold">{item.label}</span><span className="block truncate text-xs opacity-75">{item.description}</span></span>
@@ -46,4 +48,19 @@ export function SettingsNavigation(input: Readonly<{
       </div>
     </nav>
   );
+}
+
+function selectTabWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, current: SettingsSection, onChange: (section: SettingsSection) => void, idPrefix: string) {
+  const index = ITEMS.findIndex((item) => item.id === current);
+  const nextIndex = event.key === "ArrowRight" || event.key === "ArrowDown" ? (index + 1) % ITEMS.length
+    : event.key === "ArrowLeft" || event.key === "ArrowUp" ? (index - 1 + ITEMS.length) % ITEMS.length
+      : event.key === "Home" ? 0
+        : event.key === "End" ? ITEMS.length - 1
+          : null;
+  if (nextIndex === null) return;
+  event.preventDefault();
+  const next = ITEMS[nextIndex];
+  if (!next) return;
+  onChange(next.id);
+  window.requestAnimationFrame(() => document.getElementById(`${idPrefix}-tab-${next.id}`)?.focus());
 }

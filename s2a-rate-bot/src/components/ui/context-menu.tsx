@@ -27,7 +27,7 @@ export const ContextMenuItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenuPrimitive.Item
     ref={ref}
-    className={cn("flex min-h-9 cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-40", className)}
+    className={cn("flex min-h-9 cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm outline-none transition-colors data-[highlighted]:bg-surface-muted data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-40", className)}
     {...props}
   />
 ));

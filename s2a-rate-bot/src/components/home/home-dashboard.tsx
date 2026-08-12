@@ -5,6 +5,7 @@ import { Activity, ArrowRight, Database, Layers3, Loader2, RefreshCw, WalletCard
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { DataLoadError } from "../ui/data-load-error";
 import { Tag } from "../ui/tag";
 import { RateChangePanel, type RateChange } from "./rate-change-panel";
 
@@ -24,12 +25,15 @@ type DashboardData = {
 export function HomeDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const load = () => void loadDashboard({ setData, setLoading });
+  const [error, setError] = useState("");
+  const load = () => void loadDashboard({ setData, setLoading, setError });
   useEffect(load, []);
   return (
     <section className="page-stack">
       <Header loading={loading} onRefresh={load} />
-      {loading && !data ? <Loading /> : data ? <DashboardContent data={data} /> : null}
+      {loading && !data ? <Loading />
+        : error && !data ? <DataLoadError message={`系统概览加载失败：${error}`} onRetry={load} pending={loading} className="min-h-36 justify-center" />
+          : <>{error ? <DataLoadError message={`系统概览刷新失败：${error}`} onRetry={load} pending={loading} /> : null}{data ? <DashboardContent data={data} /> : null}</>}
     </section>
   );
 }
@@ -37,7 +41,7 @@ export function HomeDashboard() {
 function Header({ loading, onRefresh }: Readonly<{ loading: boolean; onRefresh: () => void }>) {
   return (
     <header className="page-header">
-      <div>
+      <div className="min-w-0">
         <h1 className="page-heading">系统概览</h1>
         <p className="page-description">采集站、目标分组、倍率变化与 Worker 运行状态</p>
       </div>
@@ -57,14 +61,12 @@ function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
   const totalBalance = data.sites.reduce((total, site) => total + (site.balance ?? 0), 0);
   const totalTodayConsume = data.sites.reduce((total, site) => total + (site.todayConsume ?? 0), 0);
   return (
-    <>
-      <AlertBanner data={data} failedSites={failures} lowBalanceSites={lowBalanceSites.length} />
-      <div className="dashboard-split overview-priority-grid">
-        <div className="grid gap-5 lg:sticky sticky-below-header">
+    <div className="dashboard-split overview-priority-grid">
+        <div className="grid gap-4 lg:sticky sticky-below-header">
           <RiskSummary data={data} failedSites={failures} lowBalanceSites={lowBalanceSites.length} />
           <WorkerOverview run={data.run} connected={data.workerConnected} />
         </div>
-        <div className="grid gap-5">
+        <div className="grid gap-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Metric href="/sources" icon={<Database />} label="采集站" value={data.sites.length} detail={`启用 ${enabledSites}`} tone="blue" />
             <Metric href="/sources#source-sites" icon={<WalletCards />} label="采集站总余额" value={formatBalance(totalBalance)} valueClassName="text-balance-value" detail={`今日消费 ${formatBalance(totalTodayConsume)}`} tone="emerald" />
@@ -75,12 +77,7 @@ function DashboardContent({ data }: Readonly<{ data: DashboardData }>) {
           <SiteBalances sites={data.sites} />
         </div>
       </div>
-    </>
   );
-}
-
-function AlertBanner({ data, failedSites, lowBalanceSites }: Readonly<{ data: DashboardData; failedSites: number; lowBalanceSites: number }>) {
-  return <RiskSummary data={data} failedSites={failedSites} lowBalanceSites={lowBalanceSites} />;
 }
 
 function RiskSummary({ data, failedSites, lowBalanceSites }: Readonly<{ data: DashboardData; failedSites: number; lowBalanceSites: number }>) {
@@ -94,7 +91,7 @@ function RiskSummary({ data, failedSites, lowBalanceSites }: Readonly<{ data: Da
   return (
     <section className="panel overflow-hidden" aria-labelledby="risk-summary-title">
       <div className="panel-header"><div><h2 id="risk-summary-title" className="panel-title">需要关注</h2><p className="panel-description">优先处理会影响采集或倍率应用的状态。</p></div><Tag tone={risks.length ? "warning" : "success"}>{risks.length ? `${risks.length} 项` : "无异常"}</Tag></div>
-      {risks.length ? <div className="risk-queue">{risks.map((risk) => <Link key={risk.label} href={risk.href} className="risk-queue-item"><span className={`mt-1 size-2 shrink-0 rounded-full ${risk.tone === "danger" ? "bg-danger" : "bg-warning"}`} aria-hidden="true" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{risk.label}</span><span className="mt-0.5 block text-xs text-muted">{risk.detail}</span></span><ArrowRightIcon /></Link>)}</div> : <p className="px-4 py-5 text-sm text-muted">当前没有需要立即处理的风险。</p>}
+      {risks.length ? <div className="risk-queue">{risks.map((risk) => <Link key={risk.label} href={risk.href} className="risk-queue-item"><span className={`mt-1 size-2 shrink-0 rounded-full ${risk.tone === "danger" ? "bg-danger" : "bg-warning"}`} aria-hidden="true" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{risk.label}</span><span className="mt-0.5 block text-xs text-muted">{risk.detail}</span></span><ArrowRightIcon /></Link>)}</div> : <p className="px-4 py-4 text-sm text-muted">当前没有需要立即处理的风险。</p>}
     </section>
   );
 }
@@ -118,11 +115,11 @@ function Metric({ href, icon, label, value, valueClassName = "", detail, tone }:
       <div className="flex items-start justify-between gap-3 pl-1">
         <div>
           <p className="text-sm text-muted">{label}</p>
-          <p className={`mt-1.5 font-mono text-2xl font-semibold tabular-nums ${valueClassName}`}>{value}</p>
+          <p className={`mt-1 font-mono text-xl font-semibold tabular-nums ${valueClassName}`}>{value}</p>
         </div>
         <span className={`flex size-9 items-center justify-center rounded-lg bg-surface-muted [&>svg]:size-4 ${style.icon}`}>{icon}</span>
       </div>
-      <p className={`mt-2.5 pl-1 text-xs font-medium ${style.detail}`}>{detail}</p>
+      <p className={`mt-2 pl-1 text-xs font-medium ${style.detail}`}>{detail}</p>
     </Link>
   );
 }
@@ -178,7 +175,7 @@ function WorkerOverview({ run, connected }: Readonly<{ run: WorkerRun | null; co
         </div>
       </div>
       {run ? (
-        <dl className="grid grid-cols-2 gap-3 p-4 sm:p-5">
+        <dl className="grid grid-cols-2 gap-2.5 p-3.5">
           <Stat label="采集成功" value={run.collectedSources} />
           <Stat label="采集失败" value={run.failedSources} />
           <Stat label="应用分组" value={run.appliedGroups} />
@@ -189,7 +186,7 @@ function WorkerOverview({ run, connected }: Readonly<{ run: WorkerRun | null; co
           </div>
         </dl>
       ) : (
-        <p className="p-5 text-sm text-muted">暂无 Worker 运行记录。</p>
+        <p className="p-4 text-sm text-muted">暂无 Worker 运行记录。</p>
       )}
     </section>
   );
@@ -230,8 +227,9 @@ const METRIC_TONES = {
 } as const;
 type MetricTone = keyof typeof METRIC_TONES;
 
-async function loadDashboard(input: { setData: (value: DashboardData) => void; setLoading: (value: boolean) => void }) {
+async function loadDashboard(input: { setData: (value: DashboardData) => void; setLoading: (value: boolean) => void; setError: (value: string) => void }) {
   input.setLoading(true);
+  input.setError("");
   try {
     const [sites, groups, rates, changes, worker] = await Promise.all([
       api<{ sites: Site[] }>("/api/sources"),
@@ -249,7 +247,9 @@ async function loadDashboard(input: { setData: (value: DashboardData) => void; s
       workerConnected: worker.connection?.connected === true,
     });
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    input.setError(message);
+    toast.error(message);
   } finally {
     input.setLoading(false);
   }

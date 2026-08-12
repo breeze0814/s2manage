@@ -1,6 +1,6 @@
 "use client";
 
-import { ImageIcon, Loader2, Send, UserRound } from "lucide-react";
+import { ImageIcon, Loader2, Send, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -14,17 +14,20 @@ import { requestJson } from "./api";
 const STATUS_LABELS: Record<TicketStatus, string> = { open: "待处理", pending: "待跟进", replied: "已回复", closed: "已关闭" };
 const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
 
-export function TicketDetailPanel({ ticket, onChange }: Readonly<{ ticket: TicketDetail; onChange: (ticket: TicketDetail) => void }>) {
+export function TicketDetailPanel({ ticket, onClose, onChange }: Readonly<{ ticket: TicketDetail; onClose: () => void; onChange: (ticket: TicketDetail) => void }>) {
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   const send = () => void reply({ ticket, body, setBody, setSaving, onChange });
   const changeStatus = (status: TicketStatus) => void updateStatus(ticket.id, status, setSaving, onChange);
   return (
-    <aside className="overflow-hidden border-t border-border bg-surface xl:sticky xl:top-24 xl:border-l xl:border-t-0">
+    <aside id="ticket-detail-panel" className="overflow-hidden border-t border-border bg-surface xl:sticky xl:top-[var(--workspace-top)] xl:flex xl:h-[calc(100dvh-var(--workspace-top)-1rem)] xl:flex-col xl:border-l xl:border-t-0">
       <div className="panel-header">
         <div className="min-w-0"><h2 className="panel-title break-words">{ticket.title}</h2><p className="panel-description">{ticket.category} · {ticket.priority}</p></div>
-        <div className="w-full sm:w-36"><Select ariaLabel="工单状态" value={ticket.status} options={STATUS_OPTIONS} disabled={saving}
-          onValueChange={(value) => changeStatus(value as TicketStatus)} /></div>
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="min-w-0 flex-1 sm:w-36 sm:flex-none"><Select ariaLabel="工单状态" value={ticket.status} options={STATUS_OPTIONS} disabled={saving}
+            onValueChange={(value) => changeStatus(value as TicketStatus)} /></div>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭工单详情" title="关闭详情" onClick={onClose}><X className="size-3.5" /></Button>
+        </div>
       </div>
       <div className="border-b border-border bg-surface-muted/60 p-4 text-sm">
         <div className="flex items-start gap-3"><UserRound className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
@@ -33,7 +36,7 @@ export function TicketDetailPanel({ ticket, onChange }: Readonly<{ ticket: Ticke
             <div><dt className="inline text-muted">来源：</dt><dd className="inline break-all">{ticket.srcHost}</dd></div></dl>
         </div>
       </div>
-      <ol className="max-h-[32rem] space-y-3 overflow-y-auto p-4" aria-label="工单消息">
+      <ol className="max-h-[32rem] space-y-3 overflow-y-auto p-4 xl:min-h-0 xl:max-h-none xl:flex-1" aria-label="工单消息">
         {ticket.messages.map((message) => (
           <li key={message.id} className={`rounded-lg border p-3 ${message.authorType === "admin" ? "ml-4 border-primary/25 bg-primary/[0.06]" : "mr-4 border-border bg-surface-muted"}`}>
             <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold">{message.authorName || (message.authorType === "admin" ? "管理员" : "用户")}</span><time className="text-muted">{formatDate(message.createdAt)}</time></div>

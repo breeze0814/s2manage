@@ -51,6 +51,7 @@ surface treatment, spacing, active state, and visual hierarchy.
 - Primary buttons: solid teal, compact, single-line labels.
 - Secondary buttons: surface fill with a quiet border and teal hover state.
 - Panels: structured work surfaces, never decorative cards inside cards.
+- Dense summaries: use dividers and compact metric grids inside a work surface instead of nested card chrome.
 - Monitor cards: identity and status first, paired latency blocks, dominant availability conclusion, compact history bars.
 - Tags: compact semantic status chips.
 - Tables: dense header contrast, clear row dividers, restrained hover state.

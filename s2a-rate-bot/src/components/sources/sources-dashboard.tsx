@@ -10,6 +10,7 @@ import { SourceRatesTable } from "./source-rates-table";
 import { SourceSiteDialog } from "./source-site-dialog";
 import { SourceSiteTable } from "./source-site-table";
 import { SourceCollectionRunsDialog, SourceRateHistoryDialog } from "./source-history-dialog";
+import { DataLoadError } from "../ui/data-load-error";
 import type { SourceRateHistoryTarget } from "./types";
 import { useSourcesDashboard } from "./use-sources-dashboard";
 
@@ -21,12 +22,14 @@ export function SourcesDashboard() {
   const [bindingTarget, setBindingTarget] = useState<SourceRateHistoryTarget | null>(null);
   const [connectionTarget, setConnectionTarget] = useState<SourceRateHistoryTarget | null>(null);
   const [runsOpen, setRunsOpen] = useState(false);
-  if (view.loading) return <LoadingDashboard />;
+  const hasData = view.sites.length > 0 || view.rates.length > 0;
   const selectedSite = view.sites.find((site) => site.id === selectedSiteId);
   const activeSiteId = selectedSite?.id ?? null;
   return (
     <section className="page-stack">
       <DashboardHeader actions={<SourceActions bulkPending={view.bulkPending} bulkProgress={view.bulkProgress} onCreate={() => view.openDialog(null)} onRefreshAll={view.refreshAll} onShowRuns={() => setRunsOpen(true)} />} />
+      {view.loading && !hasData ? <LoadingDashboard /> : view.loadError && !hasData ? <DataLoadError message={`采集数据加载失败：${view.loadError}`} onRetry={view.reload} pending={view.loading} className="min-h-36 justify-center" /> : <>
+      {view.loadError ? <DataLoadError message={`采集数据刷新失败：${view.loadError}`} onRetry={view.reload} pending={view.loading} /> : null}
       <div data-source-split-layout className="source-split">
         <section className="source-side-rail min-w-0" aria-labelledby="source-sites-title" id="source-sites">
           <div className="mb-3 flex min-h-10 items-start justify-between gap-4">
@@ -92,6 +95,7 @@ export function SourcesDashboard() {
           onShowAll={() => setSelectedSiteId(null)}
         />
       </div>
+      </>}
       <SourceSiteDialog open={view.dialog.open} site={view.dialog.site} pending={view.dialogPending} onOpenChange={view.setDialogOpen} onSave={view.saveSite} />
       <SourceRateHistoryDialog target={historyTarget} onOpenChange={setHistoryTarget} />
       <SourceBindingDialog target={bindingTarget} onOpenChange={setBindingTarget} onSaved={view.setRateMappingStatus} />

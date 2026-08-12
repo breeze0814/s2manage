@@ -75,7 +75,7 @@ test("source site management uses a blocking Dialog with complete lifecycle acti
   assert.doesNotMatch(table, /账号认证/);
   assert.doesNotMatch(table, /intervalSeconds/);
   assert.doesNotMatch(table, /ActionButtons|IconButton|SITE_ACTION_CLASS/);
-  assert.match(table, /grid gap-3/);
+  assert.match(table, /grid gap-2/);
   assert.match(table, /rounded-lg border bg-surface/);
   assert.match(table, /border-primary bg-primary\/5 ring-1 ring-primary\/20/);
   assert.match(table, /border-border-strong hover:border-primary\/40/);
@@ -127,6 +127,8 @@ test("channel monitoring is a top-level page with one horizontal tab per source 
   assert.match(view, /端点 PING/);
   assert.match(view, /monitor-status-bars/);
   assert.match(view, /xl:grid-cols-4/);
+  assert.match(view, /lg:grid-cols-2/);
+  assert.match(source("src\/app\/design-system.css"), /grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)_5\.5rem\]/);
   assert.doesNotMatch(view, /<svg/);
   assert.match(view, /Asia\/Shanghai/);
 });
@@ -195,6 +197,18 @@ test("source page mounts the dashboard and rates API exists", () => {
   const page = source("src/app/sources/page.tsx");
   assert.match(page, /SourcesDashboard/);
   source("src/app/api/sources/rates/route.ts");
+});
+
+test("dense source and connection toolbars have a deliberate narrow layout", () => {
+  const rates = source("src/components/sources/source-rates-table.tsx");
+  const connections = source("src/components/connections/connections-table.tsx");
+
+  assert.match(rates, /flex flex-col gap-2 border-b/);
+  assert.match(rates, /sm:min-w-56/);
+  assert.match(rates, /grid grid-cols-2 gap-2 sm:contents/);
+  assert.match(connections, /flex flex-col gap-2 border-b/);
+  assert.match(connections, /sm:min-w-56/);
+  assert.match(connections, /w-full sm:w-40/);
 });
 
 test("source operations expose persisted history and balance alerts without site tabs", () => {

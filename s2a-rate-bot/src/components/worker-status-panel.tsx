@@ -26,26 +26,26 @@ type WorkerRun = {
 export function WorkerStatusPanel() {
   const [run, setRun] = useState<WorkerRun | null>(null);
   const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => { void loadWorkerStatus({ setRun, setLoading, setFailed }); }, []);
+  const [error, setError] = useState("");
+  useEffect(() => { void loadWorkerStatus({ setRun, setLoading, setError }); }, []);
   return (
-    <section className="space-y-4 border-t border-border pt-4" aria-labelledby="worker-status-title">
+    <section className="space-y-3 border-t border-border pt-3" aria-labelledby="worker-status-title">
       <div className="flex items-center justify-between gap-3">
         <div><h3 id="worker-status-title" className="text-sm font-semibold text-foreground">最近运行</h3><p className="text-xs text-muted">来自 Worker 持久化运行摘要。</p></div>
-        <Button type="button" variant="secondary" size="icon" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setFailed })} disabled={loading}>
+        <Button type="button" variant="secondary" size="icon" aria-label="刷新 Worker 最近状态" title="刷新 Worker 最近状态" onClick={() => void loadWorkerStatus({ setRun, setLoading, setError })} disabled={loading}>
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
         </Button>
       </div>
-      {failed ? null : loading ? <p className="text-sm text-muted">正在读取 Worker 状态...</p> : run ? <RunSummary run={run} /> : <p className="text-sm text-muted">尚无 Worker 运行记录。</p>}
+      {error ? <p role="alert" className="border-l-2 border-danger pl-3 text-sm text-danger">{error}</p> : loading ? <p className="text-sm text-muted">正在读取 Worker 状态...</p> : run ? <RunSummary run={run} /> : <p className="text-sm text-muted">尚无 Worker 运行记录。</p>}
     </section>
   );
 }
 
 function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
   return (
-    <div className="space-y-3 text-sm">
+    <div className="space-y-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2"><StatusBadge status={run.status} /><span className="text-xs text-muted">开始 {formatTime(run.startedAt)} · 完成 {formatTime(run.finishedAt)}</span></div>
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-3">
         <Metric label="采集成功" value={run.collectedSources} />
         <Metric label="采集跳过" value={run.skippedSources} />
         <Metric label="采集失败" value={run.failedSources} />
@@ -62,7 +62,7 @@ function RunSummary({ run }: Readonly<{ run: WorkerRun }>) {
 }
 
 function Metric({ label, value }: Readonly<{ label: string; value: number }>) {
-  return <div className="rounded-lg border border-border bg-surface-muted/50 px-3 py-2.5"><dt className="text-xs text-muted">{label}</dt><dd className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">{value}</dd></div>;
+  return <div className="border-l-2 border-primary/20 pl-2.5"><dt className="text-xs text-muted">{label}</dt><dd className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-foreground">{value}</dd></div>;
 }
 
 function StatusBadge({ status }: Readonly<{ status: WorkerRun["status"] }>) {
@@ -73,19 +73,20 @@ function StatusBadge({ status }: Readonly<{ status: WorkerRun["status"] }>) {
 
 async function loadWorkerStatus(actions: StatusActions) {
   actions.setLoading(true);
-  actions.setFailed(false);
+  actions.setError("");
   try {
     const response = await fetch("/api/worker/status", { cache: "no-store" });
     const body = await response.json() as { run?: WorkerRun | null; error?: string };
     if (!response.ok) throw new Error(body.error ?? `请求失败 HTTP ${response.status}`);
     actions.setRun(body.run ?? null);
   } catch (error) {
-    actions.setFailed(true);
-    toast.error(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    actions.setError(message);
+    toast.error(message);
   } finally {
     actions.setLoading(false);
   }
 }
 
 function formatTime(value: string | null) { return value ? new Date(value).toLocaleString("zh-CN") : "-"; }
-type StatusActions = { readonly setRun: (run: WorkerRun | null) => void; readonly setLoading: (loading: boolean) => void; readonly setFailed: (failed: boolean) => void };
+type StatusActions = { readonly setRun: (run: WorkerRun | null) => void; readonly setLoading: (loading: boolean) => void; readonly setError: (error: string) => void };

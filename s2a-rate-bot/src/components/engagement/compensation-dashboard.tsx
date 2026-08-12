@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { AdminCompensationSettings, CompensationClaim } from "../../server/compensation/types";
 import { Button } from "../ui/button";
+import { DataLoadError } from "../ui/data-load-error";
 import { requestJson } from "./api";
 import { CompensationClaimList } from "./compensation-claim-list";
 import { CompensationConfigForm } from "./compensation-config-form";
@@ -14,8 +15,10 @@ export function CompensationDashboard() {
   const [settings, setSettings] = useState<AdminCompensationSettings | null>(null);
   const [claims, setClaims] = useState<CompensationClaim[]>([]);
   const [loading, setLoading] = useState(true);
-  const load = () => void loadDashboard({ setSettings, setClaims, setLoading });
-  useEffect(() => { void loadDashboard({ setSettings, setClaims, setLoading }); }, []);
+  const [error, setError] = useState("");
+  const load = () => void loadDashboard({ setSettings, setClaims, setLoading, setError });
+  useEffect(() => { void loadDashboard({ setSettings, setClaims, setLoading, setError }); }, []);
+  const hasData = settings !== null || claims.length > 0;
   return (
     <section className="page-stack">
       <EngagementPageHeader kind="compensation" title="订单补偿" description="配置联动小铺订单补偿规则，并查看自动生成的余额兑换码。" actions={
@@ -23,9 +26,11 @@ export function CompensationDashboard() {
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
         </Button>
       } />
-      <CompensationStats settings={settings} claims={claims} />
-      {settings ? <CompensationConfigForm settings={settings} onSaved={setSettings} /> : <div className="loading-state"><Loader2 className="size-4 animate-spin" />读取补偿活动配置…</div>}
-      <CompensationClaimList items={claims} loading={loading} />
+      {loading && !hasData ? <div className="loading-state"><Loader2 className="size-4 animate-spin" />读取补偿活动配置…</div>
+        : error && !hasData ? <DataLoadError message={`订单补偿数据加载失败：${error}`} onRetry={load} pending={loading} className="min-h-36 justify-center" />
+          : <>{error ? <DataLoadError message={`订单补偿数据刷新失败：${error}`} onRetry={load} pending={loading} /> : null}<CompensationStats settings={settings} claims={claims} />
+            {settings ? <CompensationConfigForm settings={settings} onSaved={setSettings} /> : null}
+            <CompensationClaimList items={claims} loading={loading} /></>}
     </section>
   );
 }
@@ -52,8 +57,10 @@ async function loadDashboard(input: Readonly<{
   setSettings: (value: AdminCompensationSettings) => void;
   setClaims: (value: CompensationClaim[]) => void;
   setLoading: (value: boolean) => void;
+  setError: (value: string) => void;
 }>) {
   input.setLoading(true);
+  input.setError("");
   try {
     const [settings, claims] = await Promise.all([
       requestJson<AdminCompensationSettings>("/api/compensation/config"),
@@ -62,7 +69,9 @@ async function loadDashboard(input: Readonly<{
     input.setSettings(settings);
     input.setClaims(claims.items);
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    input.setError(message);
+    toast.error(message);
   } finally {
     input.setLoading(false);
   }

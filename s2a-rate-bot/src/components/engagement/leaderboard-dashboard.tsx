@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Leaderboard } from "../../server/embeds/types";
 import { Button } from "../ui/button";
+import { DataLoadError } from "../ui/data-load-error";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { requestJson } from "./api";
@@ -16,8 +17,9 @@ export function LeaderboardDashboard() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(true);
-  const load = () => void loadLeaderboard({ startDate, endDate, setData, setStartDate, setEndDate, setLoading });
-  useEffect(() => { void loadLeaderboard({ startDate: "", endDate: "", setData, setStartDate, setEndDate, setLoading }); }, []);
+  const [error, setError] = useState("");
+  const load = () => void loadLeaderboard({ startDate, endDate, setData, setStartDate, setEndDate, setLoading, setError });
+  useEffect(() => { void loadLeaderboard({ startDate: "", endDate: "", setData, setStartDate, setEndDate, setLoading, setError }); }, []);
   return (
     <section className="page-stack">
       <EngagementPageHeader kind="leaderboard" title="用户排行榜" description="按 Token 用量查看活跃用户，数据直接来自当前 Sub2API 目标站。" />
@@ -34,10 +36,12 @@ export function LeaderboardDashboard() {
           </Button>
         </div>
       </section>
+      {error && !data ? <DataLoadError message={`排行榜加载失败：${error}`} onRetry={load} pending={loading} className="min-h-36 justify-center" /> : null}
+      {error && data ? <DataLoadError message={`排行榜刷新失败：${error}`} onRetry={load} pending={loading} /> : null}
       {data?.rows.length ? <LeaderboardHighlights data={data} /> : null}
-      <section className="panel overflow-hidden"><div className="panel-header"><div><h2 className="panel-title">完整排名</h2><p className="panel-description">按照 Token 总用量从高到低排序</p></div></div>
+      {data || loading ? <section className="panel overflow-hidden"><div className="panel-header"><div><h2 className="panel-title">完整排名</h2><p className="panel-description">按照 Token 总用量从高到低排序</p></div></div>
         {loading && !data ? <div className="loading-state m-4"><Loader2 className="size-4 animate-spin" />读取排行榜…</div> : data ? <LeaderboardTable data={data} /> : null}
-      </section>
+      </section> : null}
     </section>
   );
 }
@@ -52,13 +56,14 @@ function DateField({ id, label, value, onChange }: Readonly<{ id: string; label:
 
 async function loadLeaderboard(input: Readonly<{
   startDate: string; endDate: string; setData: (value: Leaderboard) => void;
-  setStartDate: (value: string) => void; setEndDate: (value: string) => void; setLoading: (value: boolean) => void;
+  setStartDate: (value: string) => void; setEndDate: (value: string) => void; setLoading: (value: boolean) => void; setError: (value: string) => void;
 }>) {
   input.setLoading(true);
+  input.setError("");
   const query = input.startDate && input.endDate ? `?start_date=${input.startDate}&end_date=${input.endDate}` : "";
   try {
     const data = await requestJson<Leaderboard>(`/api/leaderboard${query}`);
     input.setData(data); input.setStartDate(data.startDate); input.setEndDate(data.endDate);
-  } catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { const message = error instanceof Error ? error.message : String(error); input.setError(message); toast.error(message); }
   finally { input.setLoading(false); }
 }

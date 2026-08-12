@@ -24,7 +24,7 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
     <div className="min-h-dvh bg-background text-foreground">
       <SkipLink />
       <TopNavigation pathname={pathname} />
-      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1720px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7 xl:px-10">
+      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1720px] px-4 py-4 sm:px-6 lg:px-8 lg:py-5 xl:px-10">
         {children}
       </main>
     </div>

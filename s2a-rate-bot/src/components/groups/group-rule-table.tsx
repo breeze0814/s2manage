@@ -116,7 +116,7 @@ function GroupDetailPanel(props: GroupRowProps) {
   const { group, sites, rates, rateMap, siteNames, pending, onRefresh, onSave, onApply } = props;
   const busy = pending.endsWith(`:${group.id}`);
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <GroupCell group={group} wideName />
         <StatusBadge enabled={group.rule.enabled} />
@@ -137,7 +137,7 @@ function GroupDetailPanel(props: GroupRowProps) {
         <RateChangeCell rule={group.rule} />
       </section>
 
-      <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
         <span className="text-sm text-muted">操作</span>
         <GroupActions group={group} sites={sites} rates={rates} pending={pending} busy={busy} onRefresh={onRefresh} onSave={onSave} onApply={onApply} />
       </div>
@@ -149,12 +149,12 @@ function GroupCard(props: GroupRowProps) {
   const { group, sites, rates, rateMap, siteNames, pending, onRefresh, onSave, onApply } = props;
   const busy = pending.endsWith(`:${group.id}`);
   return (
-    <article className="rounded-lg border border-border bg-surface p-4 shadow-sm">
+    <article className="rounded-lg border border-border bg-surface p-3.5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <GroupCell group={group} />
         <StatusBadge enabled={group.rule.enabled} />
       </div>
-      <dl className="mt-4 grid gap-3 border-t border-border pt-3 text-sm">
+      <dl className="mt-3 grid gap-3 border-t border-border pt-2.5 text-sm">
         <div>
           <dt className="mb-1 text-xs text-muted">绑定分组</dt>
           <dd><BindingCell group={group} rateMap={rateMap} siteNames={siteNames} limit={BINDING_PREVIEW_LIMIT} /></dd>
@@ -170,7 +170,7 @@ function GroupCard(props: GroupRowProps) {
           </div>
         </div>
       </dl>
-      <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+      <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5">
         <span className="text-sm text-muted">操作</span>
         <GroupActions group={group} sites={sites} rates={rates} pending={pending} busy={busy} onRefresh={onRefresh} onSave={onSave} onApply={onApply} />
       </div>

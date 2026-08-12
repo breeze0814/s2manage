@@ -1,4 +1,4 @@
-/* Hallmark · macrostructure: Workbench · tone: technical · anchor hue: deep teal · theme: dark graphite */
+/* Hallmark · macrostructure: Workbench · tone: technical · anchor hue: deep teal · theme: dark graphite · pre-emit critique: P5 H5 E5 S5 R5 V4 · contrast: pass (40-41) · responsive: pass (34,49) */
 
 .dialog-content-motion {
   transform: translate(-50%, -50%);
@@ -22,7 +22,7 @@
 }
 
 .top-nav-link {
-  @apply relative inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent px-3 text-sm font-medium text-muted transition-[background-color,border-color,color] duration-200 hover:border-border hover:bg-surface-muted hover:text-foreground;
+  @apply relative inline-flex min-h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent px-2.5 text-sm font-medium text-muted transition-[background-color,border-color,color] duration-200 hover:border-border hover:bg-surface-muted hover:text-foreground;
 }
 
 .top-nav-link-active {
@@ -39,11 +39,11 @@
 }
 
 .page-stack {
-  @apply space-y-5 lg:space-y-6;
+  @apply space-y-4 lg:space-y-5;
 }
 
 .page-header {
-  @apply flex min-w-0 flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-start sm:justify-between;
+  @apply flex min-w-0 flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between;
 }
 
 .page-actions {
@@ -75,11 +75,13 @@
 }
 
 .page-heading {
-  @apply min-w-0 text-2xl font-semibold leading-8 tracking-[-0.01em] text-foreground;
+  @apply min-w-0 text-xl font-semibold leading-7 tracking-[-0.01em] text-foreground sm:text-2xl sm:leading-8;
+  overflow-wrap: anywhere;
 }
 
 .page-description {
-  @apply mt-1 max-w-3xl text-sm leading-6 text-muted;
+  @apply mt-1 max-w-3xl text-sm leading-5 text-muted;
+  overflow-wrap: anywhere;
 }
 
 .panel {
@@ -87,15 +89,16 @@
 }
 
 .panel-header {
-  @apply flex min-w-0 flex-col gap-3 border-b border-border bg-surface-muted/30 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between lg:px-5;
+  @apply flex min-w-0 flex-col gap-2 border-b border-border bg-surface-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-4;
 }
 
 .panel-title {
   @apply font-semibold leading-5;
+  overflow-wrap: anywhere;
 }
 
 .panel-description {
-  @apply mt-1 text-sm leading-5 text-muted;
+  @apply mt-0.5 text-xs leading-5 text-muted;
 }
 
 .dashboard-split {
@@ -111,7 +114,7 @@
 }
 
 .risk-queue-item {
-  @apply flex min-w-0 items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/50;
+  @apply flex min-w-0 items-start gap-3 px-4 py-2.5 transition-colors hover:bg-surface-muted/50;
 }
 
 .source-split {
@@ -139,15 +142,15 @@
 }
 
 .form-control {
-  @apply min-h-11 w-full rounded-[8px] border border-border-strong bg-surface px-3 text-base outline-none transition-[border-color,box-shadow,background-color] duration-200 focus:border-primary-strong focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted sm:text-sm;
+  @apply min-h-10 w-full rounded-[8px] border border-border-strong bg-surface px-3 text-base outline-none transition-[border-color,box-shadow,background-color] duration-200 focus:border-primary-strong focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted sm:text-sm;
 }
 
 .secondary-button {
-  @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] border border-border-strong bg-surface px-4 text-sm font-medium text-foreground shadow-sm transition-[border-color,background-color,box-shadow,color] duration-200 hover:border-primary/60 hover:bg-primary/10 hover:text-primary-strong active:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex min-h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground shadow-sm transition-[border-color,background-color,box-shadow,color] duration-200 hover:border-primary/60 hover:bg-primary/10 hover:text-primary-strong active:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .primary-button {
-  @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] border border-primary bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-[filter,box-shadow] duration-200 hover:brightness-95 hover:shadow-md active:brightness-90 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex min-h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] border border-primary bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-[filter,box-shadow] duration-200 hover:brightness-95 hover:shadow-md active:brightness-90 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .icon-button,
@@ -174,7 +177,7 @@
 }
 
 .table-shell {
-  @apply overflow-hidden rounded-[10px] border border-border bg-surface shadow-panel;
+  @apply overflow-hidden rounded-[8px] border border-border bg-surface shadow-panel;
 }
 
 .desktop-table-viewport,
@@ -193,11 +196,11 @@
 }
 
 .data-table th {
-  @apply whitespace-nowrap px-4 py-3;
+  @apply whitespace-nowrap px-3 py-2.5;
 }
 
 .data-table td {
-  @apply px-4 py-3 align-middle;
+  @apply px-3 py-2.5 align-middle;
 }
 
 .data-table tbody tr {
@@ -252,7 +255,7 @@
 }
 
 .metric-card {
-  @apply relative overflow-hidden rounded-[10px] border border-border bg-surface p-4 shadow-panel transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-surface-elevated hover:shadow-md;
+  @apply relative overflow-hidden rounded-[8px] border border-border bg-surface p-3 shadow-panel transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-surface-elevated hover:shadow-md;
 }
 
 .metric-card::before {
@@ -341,7 +344,7 @@
   }
 
   .monitor-metrics {
-    @apply grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.75rem];
+    @apply grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem];
   }
 
   .monitor-metric {
@@ -350,6 +353,10 @@
 
   .monitor-availability {
     @apply min-w-0 px-2.5;
+  }
+
+  .monitor-availability dd {
+    @apply text-xl;
   }
 }
 

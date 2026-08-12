@@ -29,7 +29,7 @@ export function Select({ value, options, ariaLabel, disabled = false, triggerIco
         {triggerIcon ? <span className="sr-only"><SelectPrimitive.Value /></span> : <SelectPrimitive.Icon><ChevronDown className="size-4 text-muted" /></SelectPrimitive.Icon>}
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
-        <SelectPrimitive.Content position="popper" sideOffset={6} className="z-[70] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface-elevated p-1 shadow-elevated">
+        <SelectPrimitive.Content position="popper" sideOffset={6} className="z-[70] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[8px] border border-border bg-surface-elevated p-1 shadow-elevated">
           <SelectPrimitive.Viewport>
             {options.map((option) => <SelectItem key={option.value} option={option} />)}
           </SelectPrimitive.Viewport>
@@ -41,7 +41,7 @@ export function Select({ value, options, ariaLabel, disabled = false, triggerIco
 
 function SelectItem({ option }: Readonly<{ option: SelectOption }>) {
   return (
-    <SelectPrimitive.Item value={option.value} className="relative flex min-h-10 cursor-pointer select-none items-center rounded-lg py-2 pl-9 pr-3 text-sm outline-none data-[highlighted]:bg-surface-muted data-[state=checked]:font-medium">
+    <SelectPrimitive.Item value={option.value} className="relative flex min-h-9 cursor-pointer select-none items-center rounded-[6px] py-1.5 pl-9 pr-3 text-sm outline-none data-[highlighted]:bg-surface-muted data-[state=checked]:font-medium">
       <span className="absolute left-3 flex size-4 items-center justify-center">
         <SelectPrimitive.ItemIndicator><Check className="size-4 text-primary-strong" /></SelectPrimitive.ItemIndicator>
       </span>

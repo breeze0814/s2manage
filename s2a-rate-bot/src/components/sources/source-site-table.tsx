@@ -22,7 +22,7 @@ export function SourceSiteTable({ sites, selectedSiteId, pendingId, pendingIds =
   if (sites.length === 0) return <p className="empty-state">还没有采集站，请先添加一个采集源。</p>;
   return (
     <>
-      <div role="listbox" aria-label="选择采集站" className="grid gap-3">
+      <div role="listbox" aria-label="选择采集站" className="grid gap-2">
         {sites.map((site) => (
           <SourceCard
             key={site.id}
@@ -62,7 +62,7 @@ function SourceCard(props: SourceActions & { site: SourceSiteView; selected: boo
           tabIndex={0}
           onClick={() => props.onSelect(site.id)}
           onKeyDown={(event) => selectWithKeyboard(event, site.id, props.onSelect)}
-          className={`cursor-context-menu space-y-3 rounded-lg border bg-surface px-4 py-3.5 shadow-panel outline-none transition-[border-color,background-color,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-primary data-[state=open]:border-primary data-[state=open]:bg-primary/5 data-[state=open]:ring-1 data-[state=open]:ring-primary/20 ${
+          className={`cursor-context-menu space-y-2.5 rounded-lg border bg-surface px-3.5 py-3 shadow-panel outline-none transition-[border-color,background-color,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-primary data-[state=open]:border-primary data-[state=open]:bg-primary/5 data-[state=open]:ring-1 data-[state=open]:ring-primary/20 ${
             props.selected
               ? "border-primary bg-primary/5 ring-1 ring-primary/20 shadow-md"
               : "border-border-strong hover:border-primary/40 hover:bg-surface-muted/55"
@@ -79,7 +79,7 @@ function SourceCard(props: SourceActions & { site: SourceSiteView; selected: boo
             </div>
           </div>
           <SiteMetrics site={site} />
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border pt-2.5">
             <SiteMeta site={site} />
             <CardActions site={site} pending={props.pending} onRefresh={props.onRefresh} onEdit={props.onEdit} onDelete={props.onDelete} />
           </div>

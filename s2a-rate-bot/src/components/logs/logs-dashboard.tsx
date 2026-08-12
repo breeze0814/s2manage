@@ -3,6 +3,7 @@
 import { Activity, Bot, Clock3, Loader2, RefreshCw, ServerCrash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
+import { DataLoadError } from "../ui/data-load-error";
 import { Tag } from "../ui/tag";
 
 type LogType = "api" | "worker";
@@ -27,10 +28,9 @@ export function LogsDashboard() {
   return (
     <section className="page-stack">
       <Header loading={loading} onRefresh={() => load()} />
-      {error ? (
-        <p role="alert" className="rounded-lg border border-danger/25 bg-danger/10 px-4 py-3 text-sm text-danger">{error}</p>
-      ) : null}
-      <section className="panel overflow-hidden">
+      {error && !data ? <DataLoadError message={`业务日志加载失败：${error}`} onRetry={() => load()} pending={loading} className="min-h-36 justify-center" /> : null}
+      {error && data ? <DataLoadError message={`业务日志刷新失败：${error}`} onRetry={() => load()} pending={loading} /> : null}
+      {data || loading ? <section className="panel overflow-hidden">
         <LogOverview type={type} data={data} loading={loading} onChange={selectType} />
         {data ? (
           data.entries.length === 0
@@ -41,7 +41,7 @@ export function LogsDashboard() {
         ) : loading ? (
           <Loading />
         ) : null}
-      </section>
+      </section> : null}
     </section>
   );
 }
@@ -49,7 +49,7 @@ export function LogsDashboard() {
 function Header({ loading, onRefresh }: Readonly<{ loading: boolean; onRefresh: () => void }>) {
   return (
     <header className="page-header">
-      <div>
+      <div className="min-w-0">
         <h1 className="page-heading">系统日志</h1>
         <p className="page-description">外部 API 调用与 Worker 执行记录</p>
       </div>

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { ConfirmAlert } from "../ui/confirm-alert";
+import { DataLoadError } from "../ui/data-load-error";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { requestJson } from "./api";
@@ -15,11 +16,13 @@ type Config = { readonly embedToken: string; readonly config: Record<string, unk
 export function EmbedLinkPanel({ kind }: Readonly<{ kind: Kind }>) {
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [copied, setCopied] = useState(false);
-  useEffect(() => { void loadConfig(kind, setConfig, setLoading); }, [kind]);
+  const load = () => void loadConfig(kind, setConfig, setLoading, setError);
+  useEffect(() => { void loadConfig(kind, setConfig, setLoading, setError); }, [kind]);
   const url = config && typeof window !== "undefined" ? embedUrl(kind, config.embedToken) : "";
-  const rotate = () => void rotateToken(kind, setConfig, setLoading, setConfirming);
+  const rotate = () => void rotateToken(kind, setConfig, setLoading, setError, setConfirming);
   return (
     <section className="panel overflow-hidden">
       <div className="panel-header">
@@ -27,6 +30,9 @@ export function EmbedLinkPanel({ kind }: Readonly<{ kind: Kind }>) {
         <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary-strong"><KeyRound className="size-5" aria-hidden="true" /></span>
       </div>
       <div className="space-y-3 p-4 lg:p-5">
+        {loading && !config ? <div className="loading-state min-h-28"><Loader2 className="size-4 animate-spin" />正在生成链接…</div>
+          : error && !config ? <DataLoadError message={`嵌入链接加载失败：${error}`} onRetry={load} pending={loading} className="min-h-28 justify-center" />
+            : <>{error ? <DataLoadError message={`嵌入链接刷新失败：${error}`} onRetry={load} pending={loading} /> : null}
         <Label className="block" htmlFor={`${kind}-embed-url`}>iframe 地址</Label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input id={`${kind}-embed-url`} readOnly value={loading ? "正在生成链接…" : url} className="min-w-0 flex-1 font-mono text-xs" />
@@ -45,25 +51,27 @@ export function EmbedLinkPanel({ kind }: Readonly<{ kind: Kind }>) {
             {loading ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}轮换密钥
           </Button>
         </div>
+        </>}
       </div>
       <ConfirmAlert open={confirming} onOpenChange={setConfirming} title="轮换嵌入密钥？" description="旧 iframe 地址会立即失效，需要同步更新 Sub2API 配置。" confirmLabel="确认轮换" onConfirm={rotate} />
     </section>
   );
 }
 
-async function loadConfig(kind: Kind, setConfig: (value: Config) => void, setLoading: (value: boolean) => void) {
+async function loadConfig(kind: Kind, setConfig: (value: Config) => void, setLoading: (value: boolean) => void, setError: (value: string) => void) {
   setLoading(true);
+  setError("");
   try { setConfig(await requestJson<Config>(`/api/embeds/${kind}/config`)); }
-  catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+  catch (error) { const message = error instanceof Error ? error.message : String(error); setError(message); toast.error(message); }
   finally { setLoading(false); }
 }
 
-async function rotateToken(kind: Kind, setConfig: (value: Config) => void, setLoading: (value: boolean) => void, setConfirming: (value: boolean) => void) {
-  setConfirming(false); setLoading(true);
+async function rotateToken(kind: Kind, setConfig: (value: Config) => void, setLoading: (value: boolean) => void, setError: (value: string) => void, setConfirming: (value: boolean) => void) {
+  setConfirming(false); setLoading(true); setError("");
   try {
     setConfig(await requestJson<Config>(`/api/embeds/${kind}/config`, { method: "POST", body: JSON.stringify({ action: "rotate" }) }));
     toast.success("嵌入密钥已轮换");
-  } catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { const message = error instanceof Error ? error.message : String(error); setError(message); toast.error(message); }
   finally { setLoading(false); }
 }
 

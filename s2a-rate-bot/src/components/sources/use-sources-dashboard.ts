@@ -9,6 +9,7 @@ export function useSourcesDashboard() {
   const [sites, setSites] = useState<SourceSiteView[]>([]);
   const [rates, setRates] = useState<SourceRateView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [pendingSiteIds, setPendingSiteIds] = useState<Set<number>>(new Set());
   const [bulkPending, setBulkPending] = useState(false);
@@ -18,13 +19,13 @@ export function useSourcesDashboard() {
   const [dialog, setDialog] = useState<DialogState>({ open: false, site: null });
   const [dialogPending, setDialogPending] = useState(false);
   const [search, setSearch] = useState("");
-  useEffect(() => { void loadDashboard({ setSites, setRates, setLoading }); }, []);
+  useEffect(() => { void loadDashboard({ setSites, setRates, setLoading, setLoadError }); }, []);
   return {
-    sites, rates, loading, pendingId, pendingSiteIds, bulkPending, bulkProgress, platformPending, groupTypePending, dialog, dialogPending, search, setSearch,
+    sites, rates, loading, loadError, pendingId, pendingSiteIds, bulkPending, bulkProgress, platformPending, groupTypePending, dialog, dialogPending, search, setSearch,
     enabledCount: useMemo(() => sites.filter((site) => site.enabled).length, [sites]),
     openDialog: (site: SourceSiteView | null) => openDialog(setDialog, site),
     setDialogOpen: (open: boolean) => setDialog((current) => ({ ...current, open })),
-    reload: () => void reload({ setSites, setRates, setLoading }),
+    reload: () => void reload({ setSites, setRates, setLoading, setLoadError }),
     refreshSite: (site: SourceSiteView) => void refreshSite({ site, setPendingId, setSites, setRates }),
     refreshAll: () => void refreshAll({ setBulkPending, setBulkProgress, setPendingSiteIds, setSites, setRates }),
     setRatePlatform: (rate: SourceRateView, platform: string | null) => void setRatePlatform({ rate, platform, setPlatformPending, setRates }),
@@ -78,10 +79,12 @@ function openDialog(setDialog: SetDialog, site: SourceSiteView | null) {
 
 async function reload(actions: LoadActions) {
   actions.setLoading(true);
+  actions.setLoadError("");
   try {
     await reloadData(actions.setSites, actions.setRates);
     toast.success("已重新读取页面数据，未请求远端采集站");
   } catch (error) {
+    actions.setLoadError(errorMessage(error));
     toast.error(errorMessage(error));
   } finally {
     actions.setLoading(false);
@@ -187,7 +190,8 @@ async function deleteSite(input: DeleteSiteActions) {
 }
 
 async function loadDashboard(actions: LoadActions) {
-  try { await reloadData(actions.setSites, actions.setRates); } catch (error) { toast.error(errorMessage(error)); } finally { actions.setLoading(false); }
+  actions.setLoadError("");
+  try { await reloadData(actions.setSites, actions.setRates); } catch (error) { actions.setLoadError(errorMessage(error)); toast.error(errorMessage(error)); } finally { actions.setLoading(false); }
 }
 
 async function reloadData(setSites: SetSites, setRates: SetRates) {
@@ -210,7 +214,7 @@ type DialogState = { open: boolean; site: SourceSiteView | null };
 type SetSites = React.Dispatch<React.SetStateAction<SourceSiteView[]>>;
 type SetRates = React.Dispatch<React.SetStateAction<SourceRateView[]>>;
 type SetDialog = React.Dispatch<React.SetStateAction<DialogState>>;
-type LoadActions = { setSites: SetSites; setRates: SetRates; setLoading: (value: boolean) => void };
+type LoadActions = { setSites: SetSites; setRates: SetRates; setLoading: (value: boolean) => void; setLoadError: (value: string) => void };
 type RefreshSiteActions = { site: SourceSiteView; setPendingId: (value: number | null) => void; setSites: SetSites; setRates: SetRates };
 type BulkProgress = { readonly completed: number; readonly total: number };
 type SetPendingSiteIds = React.Dispatch<React.SetStateAction<Set<number>>>;

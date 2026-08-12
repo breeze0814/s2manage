@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ImagePlus, Inbox, Loader2, MessageSquarePlus, Send, X } from "lucide-react";
+import { ArrowLeft, ImageOff, ImagePlus, Inbox, Loader2, MessageSquarePlus, Send, X } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import type { Ticket, TicketDetail, TicketEmbedSettings } from "../../server/embeds/types";
@@ -9,7 +9,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select } from "../ui/select";
 import { Textarea } from "../ui/textarea";
-import { EmbedError, EmbedHeader, EmbedLoading } from "./embed-state";
+import { EmbedError, EmbedHeader, EmbedInlineError, EmbedLoading } from "./embed-state";
 import { embedRequestJson, useEmbedSession } from "./use-embed-session";
 
 export function TicketsEmbedPage() {
@@ -34,7 +34,7 @@ export function TicketsEmbedPage() {
     <div className={`min-h-dvh ${settings.template === "minimal" ? "bg-surface" : "bg-background"}`}>
       <EmbedHeader eyebrow="Support Center" title="帮助与工单" description="提交问题、查看处理进度并与客服继续沟通" />
       <div className="mx-auto max-w-6xl p-4 sm:p-6">
-        {error ? <p role="alert" className="mb-4 rounded-lg border border-danger/25 bg-danger/10 px-4 py-3 text-sm text-danger">{error}</p> : null}
+        {error ? <div className="mb-4"><EmbedInlineError message={error} onRetry={() => void load()} retryLabel="重新读取工单" /></div> : null}
         {creating ? <CreateTicket settings={settings} token={auth.session.token} onCancel={() => setCreating(false)} onCreated={(ticket) => { setCreating(false); setSelected(ticket); void load(); }} />
           : selected ? <TicketConversation ticket={selected} token={auth.session.token} onBack={() => { setSelected(null); void load(); }} onChange={setSelected} />
             : <TicketList items={items} loading={loading} onCreate={() => setCreating(true)} onSelect={(id) => void openTicket(id, auth.session!.token, setSelected, setError)} />}
@@ -73,7 +73,23 @@ function TicketConversation({ ticket, token, onBack, onChange }: Readonly<{ tick
     <div className="border-t border-border p-4"><Label className="mb-1.5 block" htmlFor="ticket-reply">继续回复</Label><Textarea id="ticket-reply" className="min-h-24 resize-y" value={body} disabled={ticket.status === "closed" || saving} onChange={(event) => setBody(event.target.value)} />{error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}<Button type="button" className="mt-3 w-full sm:w-auto" disabled={!body.trim() || ticket.status === "closed" || saving} onClick={send}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}发送回复</Button></div></section>;
 }
 
-function AttachmentImage({ id, name, token }: Readonly<{ id: string; name: string; token: string }>) { const [url, setUrl] = useState(""); useEffect(() => { let objectUrl = ""; void fetch(`/api/embed/tickets/attachments/${id}`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" }).then(async (response) => { if (!response.ok) throw new Error("图片加载失败"); objectUrl = URL.createObjectURL(await response.blob()); setUrl(objectUrl); }); return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); }; }, [id, token]); return url ? <a href={url} target="_blank" rel="noreferrer" className="relative block aspect-square overflow-hidden rounded-md border border-border"><Image fill unoptimized sizes="160px" src={url} alt={name} className="object-cover" /></a> : <div className="aspect-square animate-pulse rounded-md bg-surface-muted" />; }
+function AttachmentImage({ id, name, token }: Readonly<{ id: string; name: string; token: string }>) {
+  const [url, setUrl] = useState(""); const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true; let objectUrl = "";
+    setUrl(""); setFailed(false);
+    void fetch(`/api/embed/tickets/attachments/${id}`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" }).then(async (response) => {
+      if (!response.ok) throw new Error("图片加载失败");
+      const nextUrl = URL.createObjectURL(await response.blob());
+      if (!active) { URL.revokeObjectURL(nextUrl); return; }
+      objectUrl = nextUrl; setUrl(nextUrl);
+    }).catch(() => { if (active) setFailed(true); });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [id, token]);
+  if (url) return <a href={url} target="_blank" rel="noreferrer" className="relative block aspect-square overflow-hidden rounded-md border border-border"><Image fill unoptimized sizes="160px" src={url} alt={name} className="object-cover" /></a>;
+  if (failed) return <div role="img" aria-label={`${name} 加载失败`} title={`${name} 加载失败`} className="grid aspect-square place-items-center rounded-md border border-danger/25 bg-danger/10 text-danger"><ImageOff className="size-5" /></div>;
+  return <div role="status" aria-label={`${name} 正在加载`} className="aspect-square animate-pulse rounded-md bg-surface-muted" />;
+}
 function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) { return <Label><span className="mb-1.5 block">{label}</span>{children}</Label>; }
 function option(value: string) { return { value, label: value }; }
 function Status({ status }: Readonly<{ status: Ticket["status"] }>) { const label = { open: "待处理", pending: "待跟进", replied: "已回复", closed: "已关闭" }[status]; return <span className="shrink-0 rounded-md border border-border bg-surface-muted px-2 py-1 text-xs font-semibold text-muted">{label}</span>; }

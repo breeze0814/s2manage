@@ -13,14 +13,15 @@ export function useAccountsDashboard() {
   const [rates, setRates] = useState<AccountSourceRate[]>([]);
   const [sites, setSites] = useState<AccountSourceSite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [testPendingIds, setTestPendingIds] = useState<number[]>([]);
   const [bindingPendingId, setBindingPendingId] = useState<number | null>(null);
   const [schedulePendingId, setSchedulePendingId] = useState<number | null>(null);
   const [batchTesting, setBatchTesting] = useState(false);
-  useEffect(() => { void loadDashboard({ setAccounts, setGroups, setRates, setSites, setLoading }, false); }, []);
+  useEffect(() => { void loadDashboard({ setAccounts, setGroups, setRates, setSites, setLoading, setLoadError }, false); }, []);
   return {
-    accounts, groups, rates, sites, loading, testPendingIds, bindingPendingId, schedulePendingId, batchTesting,
-    refresh: () => void loadDashboard({ setAccounts, setGroups, setRates, setSites, setLoading }, true),
+    accounts, groups, rates, sites, loading, loadError, testPendingIds, bindingPendingId, schedulePendingId, batchTesting,
+    refresh: () => void loadDashboard({ setAccounts, setGroups, setRates, setSites, setLoading, setLoadError }, true),
     bindSource: (account: TargetAccountView, binding: AccountSourceBinding | null) =>
       saveBinding({ account, binding, setAccounts, setBindingPendingId }),
     testChannel: (account: TargetAccountView) => void testChannel({ account, setAccounts, setTestPendingIds }),
@@ -49,12 +50,14 @@ async function setAccountSchedulable(input: ScheduleActions) {
 
 async function loadDashboard(actions: LoadActions, refreshRemote: boolean) {
   actions.setLoading(true);
+  actions.setLoadError("");
   try {
     const data = await fetchDashboard(refreshRemote);
     actions.setAccounts(data.accounts); actions.setGroups(data.groups);
     actions.setRates(data.rates); actions.setSites(data.sites);
     if (refreshRemote) toast.success("已从目标站刷新账号并写入本地快照");
   } catch (error) {
+    actions.setLoadError(errorMessage(error));
     toast.error(errorMessage(error));
   } finally {
     actions.setLoading(false);
@@ -145,7 +148,7 @@ async function api<T = unknown>(url: string, init?: RequestInit): Promise<T> { c
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 type SetAccounts = React.Dispatch<React.SetStateAction<TargetAccountView[]>>;
 type SetIds = React.Dispatch<React.SetStateAction<number[]>>;
-type LoadActions = { readonly setAccounts: SetAccounts; readonly setGroups: React.Dispatch<React.SetStateAction<AccountGroupOption[]>>; readonly setRates: React.Dispatch<React.SetStateAction<AccountSourceRate[]>>; readonly setSites: React.Dispatch<React.SetStateAction<AccountSourceSite[]>>; readonly setLoading: (value: boolean) => void };
+type LoadActions = { readonly setAccounts: SetAccounts; readonly setGroups: React.Dispatch<React.SetStateAction<AccountGroupOption[]>>; readonly setRates: React.Dispatch<React.SetStateAction<AccountSourceRate[]>>; readonly setSites: React.Dispatch<React.SetStateAction<AccountSourceSite[]>>; readonly setLoading: (value: boolean) => void; readonly setLoadError: (value: string) => void };
 type BindingActions = { readonly account: TargetAccountView; readonly binding: AccountSourceBinding | null; readonly setAccounts: SetAccounts; readonly setBindingPendingId: (value: number | null) => void };
 type ScheduleActions = { readonly account: TargetAccountView; readonly schedulable: boolean; readonly setAccounts: SetAccounts; readonly setSchedulePendingId: (value: number | null) => void };
 type TestActions = { readonly account: TargetAccountView; readonly setAccounts: SetAccounts; readonly setTestPendingIds: SetIds };

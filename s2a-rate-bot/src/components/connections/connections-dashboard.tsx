@@ -56,5 +56,5 @@ function HealthSummary({ connections, monitorMap }: Readonly<{ connections: read
     ["已暂停", active.filter((item) => monitorMap.get(item.id)?.state === "suspended").length, "text-danger"],
     ["未监控", active.filter((item) => !monitorMap.has(item.id)).length, "text-muted"],
   ] as const;
-  return <dl className="grid overflow-hidden rounded-lg border border-border bg-surface shadow-panel sm:grid-cols-5">{values.map(([label, value, tone]) => <div key={label} className="border-b border-border px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"><dt className="text-xs font-medium text-muted">{label}</dt><dd className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${tone}`}>{value}</dd></div>)}</dl>;
+  return <dl className="grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-surface shadow-panel sm:grid-cols-5">{values.map(([label, value, tone]) => <div key={label} className="border-b border-border px-3 py-2.5 odd:border-r last:col-span-2 last:border-r-0 sm:last:col-span-1 sm:border-b-0 sm:border-r sm:last:border-r-0"><dt className="text-xs font-medium text-muted">{label}</dt><dd className={`mt-1 font-mono text-xl font-semibold tabular-nums ${tone}`}>{value}</dd></div>)}</dl>;
 }

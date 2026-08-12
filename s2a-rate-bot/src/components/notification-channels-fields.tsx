@@ -1,7 +1,7 @@
 "use client";
 
 import { BellRing, Loader2, Plus, Send, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -16,6 +16,7 @@ const channels = Object.keys(labels) as (keyof NotificationChannelSettings)[];
 export function NotificationChannelsFields({ value, onChange, disabled }: Props) {
   const [active, setActive] = useState<keyof NotificationChannelSettings>(() => channels.find((channel) => value[channel].length > 0) ?? "telegram");
   const [testing, setTesting] = useState<string | null>(null);
+  const id = useId();
   const channel = value[active];
   const add = () => {
     const id = `${active}-${Date.now()}`;
@@ -38,10 +39,11 @@ export function NotificationChannelsFields({ value, onChange, disabled }: Props)
   };
   return <div className="space-y-4">
     <div role="tablist" aria-label="通知机器人平台" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-      {channels.map((item) => <Button key={item} type="button" role="tab" aria-selected={active === item} variant={active === item ? "secondary" : "ghost"} onClick={() => setActive(item)} className="min-w-0 gap-2 px-2">
+      {channels.map((item) => <Button key={item} id={`${id}-tab-${item}`} type="button" role="tab" aria-selected={active === item} aria-controls={`${id}-panel-${item}`} tabIndex={active === item ? 0 : -1} variant={active === item ? "secondary" : "ghost"} onClick={() => setActive(item)} onKeyDown={(event) => selectChannelWithKeyboard(event, item, setActive, id)} className="min-w-0 gap-2 px-2">
         <span className="truncate">{labels[item]}</span><span className="font-mono text-xs text-muted">{value[item].length}</span>
       </Button>)}
     </div>
+    <div id={`${id}-panel-${active}`} role="tabpanel" aria-labelledby={`${id}-tab-${active}`} tabIndex={-1}>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
       <div><h3 className="text-sm font-semibold text-foreground">{labels[active]}</h3><p className="mt-0.5 text-xs text-muted">{channel.length ? `已配置 ${channel.length} 个机器人` : "尚未配置机器人"}</p></div>
       <Button type="button" variant="secondary" onClick={add} disabled={disabled}><Plus className="size-4" />新增机器人</Button>
@@ -51,7 +53,23 @@ export function NotificationChannelsFields({ value, onChange, disabled }: Props)
       <p className="text-sm font-medium text-foreground">暂无{labels[active]}机器人</p>
       <Button type="button" variant="secondary" onClick={add} disabled={disabled}><Plus className="size-4" />新增机器人</Button>
     </div>}
+    </div>
   </div>;
+}
+
+function selectChannelWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, current: keyof NotificationChannelSettings, onChange: (channel: keyof NotificationChannelSettings) => void, id: string) {
+  const index = channels.indexOf(current);
+  const nextIndex = event.key === "ArrowRight" || event.key === "ArrowDown" ? (index + 1) % channels.length
+    : event.key === "ArrowLeft" || event.key === "ArrowUp" ? (index - 1 + channels.length) % channels.length
+      : event.key === "Home" ? 0
+        : event.key === "End" ? channels.length - 1
+          : null;
+  if (nextIndex === null) return;
+  event.preventDefault();
+  const next = channels[nextIndex];
+  if (!next) return;
+  onChange(next);
+  window.requestAnimationFrame(() => document.getElementById(`${id}-tab-${next}`)?.focus());
 }
 
 function BotCard({ bot, testing, disabled, onUpdate, onRemove, onTest }: { bot: Record<string, unknown>; testing: boolean; disabled: boolean; onUpdate: (patch: Record<string, unknown>) => void; onRemove: () => void; onTest: () => void }) {

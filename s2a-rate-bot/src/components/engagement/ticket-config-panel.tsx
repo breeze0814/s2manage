@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { TicketEmbedSettings, TicketTemplate } from "../../server/embeds/types";
 import { Button } from "../ui/button";
+import { DataLoadError } from "../ui/data-load-error";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select } from "../ui/select";
@@ -18,8 +19,11 @@ export function TicketConfigPanel() {
   const [settings, setSettings] = useState<TicketEmbedSettings | null>(null);
   const [categories, setCategories] = useState("");
   const [priorities, setPriorities] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  useEffect(() => { void loadSettings(setSettings, setCategories, setPriorities); }, []);
+  const load = () => void loadSettings({ setSettings, setCategories, setPriorities, setLoading, setError });
+  useEffect(() => { void loadSettings({ setSettings, setCategories, setPriorities, setLoading, setError }); }, []);
   const save = () => void saveSettings({ settings, categories, priorities, setSettings, setSaving });
   return (
     <section className="panel overflow-hidden">
@@ -27,7 +31,11 @@ export function TicketConfigPanel() {
         <div><h2 className="panel-title">工单表单设置</h2><p className="panel-description">控制嵌入端模板、附件和选项</p></div>
         <SlidersHorizontal className="size-5 text-primary" aria-hidden="true" />
       </div>
-      {settings ? (
+      {loading && !settings ? <div className="loading-state m-4"><Loader2 className="size-4 animate-spin" />读取设置…</div>
+        : error && !settings ? <DataLoadError message={`工单表单设置加载失败：${error}`} onRetry={load} pending={loading} className="m-4 min-h-32 justify-center" />
+          : settings ? (
+        <>
+          {error ? <DataLoadError message={`工单表单设置刷新失败：${error}`} onRetry={load} pending={loading} className="m-4 mb-0" /> : null}
         <div className="grid gap-4 p-4 lg:grid-cols-2 lg:p-5">
           <Field label="界面模板">
             <Select ariaLabel="界面模板" value={settings.template} options={TEMPLATE_OPTIONS} onValueChange={(value) => setSettings({ ...settings, template: value as TicketTemplate })} />
@@ -44,7 +52,8 @@ export function TicketConfigPanel() {
             </Button>
           </div>
         </div>
-      ) : <div className="loading-state m-4"><Loader2 className="size-4 animate-spin" />读取设置…</div>}
+        </>
+      ) : null}
     </section>
   );
 }
@@ -53,16 +62,21 @@ function Field({ label, children }: Readonly<{ label: string; children: React.Re
   return <Label className="block"><span className="mb-1.5 block">{label}</span>{children}</Label>;
 }
 
-async function loadSettings(
-  setSettings: (value: TicketEmbedSettings) => void,
-  setCategories: (value: string) => void,
-  setPriorities: (value: string) => void,
-) {
+async function loadSettings(input: Readonly<{
+  setSettings: (value: TicketEmbedSettings) => void;
+  setCategories: (value: string) => void;
+  setPriorities: (value: string) => void;
+  setLoading: (value: boolean) => void;
+  setError: (value: string) => void;
+}>) {
+  input.setLoading(true);
+  input.setError("");
   try {
     const response = await requestJson<Config>("/api/embeds/tickets/config");
     const settings = response.config as TicketEmbedSettings;
-    setSettings(settings); setCategories(settings.categoryOptions.join("\n")); setPriorities(settings.priorityOptions.join("\n"));
-  } catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+    input.setSettings(settings); input.setCategories(settings.categoryOptions.join("\n")); input.setPriorities(settings.priorityOptions.join("\n"));
+  } catch (error) { const message = error instanceof Error ? error.message : String(error); input.setError(message); toast.error(message); }
+  finally { input.setLoading(false); }
 }
 
 async function saveSettings(input: Readonly<{

@@ -8,6 +8,7 @@ import { ConfirmAlert } from "../ui/confirm-alert";
 import { OverflowAction, OverflowActions } from "../ui/overflow-actions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Tag, type TagTone } from "../ui/tag";
+import { DataLoadError } from "../ui/data-load-error";
 import { AccountInfo, LoadingAccounts, type AccountActionProps, type AccountListProps } from "./account-dashboard-support";
 import { AccountBindingDialog, AccountBindingSummary } from "./account-binding-dialog";
 import type { AccountGroupOption, AccountTestState, TargetAccountView } from "./types";
@@ -28,7 +29,7 @@ export function AccountsDashboard() {
   return <>
     <section className="page-stack">
       <header className="page-header">
-        <div>
+        <div className="min-w-0">
           <h1 className="page-heading">账号调度</h1>
           <p className="page-description">查看账号状态、倍率绑定与调度可用性</p>
         </div>
@@ -45,21 +46,26 @@ export function AccountsDashboard() {
           <OverflowActions className="page-actions-overflow"><OverflowAction disabled={view.loading || testing || view.accounts.length === 0} onClick={view.testAll}>{view.batchTesting ? <Loader2 className="animate-spin" /> : <ListChecks />}批量测试</OverflowAction></OverflowActions>
         </div>
       </header>
-      {view.loading ? (
+      {view.loading && view.accounts.length === 0 ? (
         <LoadingAccounts />
+      ) : view.loadError && view.accounts.length === 0 ? (
+        <DataLoadError message={`账号数据加载失败：${view.loadError}`} onRetry={view.refresh} pending={view.loading} className="min-h-36 justify-center" />
       ) : (
-        <AccountList
-          accounts={view.accounts}
-          groups={view.groups}
-          rates={view.rates}
-          sites={view.sites}
-          testPendingIds={view.testPendingIds}
-          bindingPendingId={view.bindingPendingId}
-          schedulePendingId={view.schedulePendingId}
-          onBind={view.bindSource}
-          onTest={view.testChannel}
-          onSchedule={requestScheduleChange}
-        />
+        <>
+          {view.loadError ? <DataLoadError message={`账号数据刷新失败：${view.loadError}`} onRetry={view.refresh} pending={view.loading} /> : null}
+          <AccountList
+            accounts={view.accounts}
+            groups={view.groups}
+            rates={view.rates}
+            sites={view.sites}
+            testPendingIds={view.testPendingIds}
+            bindingPendingId={view.bindingPendingId}
+            schedulePendingId={view.schedulePendingId}
+            onBind={view.bindSource}
+            onTest={view.testChannel}
+            onSchedule={requestScheduleChange}
+          />
+        </>
       )}
     </section>
     <ConfirmAlert
@@ -154,7 +160,7 @@ function AccountRow(props: AccountActionProps) {
 function AccountCard(props: AccountActionProps) {
   const { account } = props;
   return (
-    <article className="panel space-y-4 p-4">
+    <article className="panel space-y-3 p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate font-medium" title={account.name}>{account.name}</h2>
@@ -168,13 +174,13 @@ function AccountCard(props: AccountActionProps) {
           <ScheduleBadge schedulable={account.schedulable} />
         </div>
       </div>
-      <dl className="grid gap-4 text-sm sm:grid-cols-2">
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
         <AccountInfo label="目标分组"><GroupIds ids={account.groupIds} groups={props.groups} /></AccountInfo>
         <AccountInfo label="优先级 / 倍率"><AccountMetrics account={account} /></AccountInfo>
         <AccountInfo label="倍率采集绑定" wide><AccountBindingCell {...props} /></AccountInfo>
         <AccountInfo label="测试状态"><TestStatus test={account.lastTest} pending={props.testing} /></AccountInfo>
       </dl>
-      <div className="flex items-center justify-between border-t border-border pt-3">
+      <div className="flex items-center justify-between border-t border-border pt-2.5">
         <span className="text-sm text-muted">操作</span>
         <AccountActions {...props} />
       </div>

@@ -60,6 +60,26 @@ test("dialog forms close only after a successful save", () => {
   assert.match(sourceHook, /setDialog\(\{ open: false, site: null \}\)/);
 });
 
+test("settings and notification navigation are keyboard-accessible tab sets", () => {
+  const form = source("src/components/settings-form.tsx");
+  const navigation = source("src/components/settings-navigation.tsx");
+  const channels = source("src/components/notification-channels-fields.tsx");
+  const worker = source("src/components/worker-status-panel.tsx");
+
+  assert.match(navigation, /role="tablist"/);
+  assert.match(navigation, /role="tab"/);
+  assert.match(navigation, /aria-controls=/);
+  assert.match(navigation, /ArrowRight/);
+  assert.match(form, /role="tabpanel"/);
+  assert.match(form, /settings-page/);
+  assert.match(form, /settings-dialog/);
+  assert.match(channels, /useId/);
+  assert.match(channels, /role="tabpanel"/);
+  assert.match(channels, /ArrowRight/);
+  assert.match(worker, /role="alert"/);
+  assert.match(worker, /setError/);
+});
+
 test("centered dialogs preserve their position during open and close animations", () => {
   const styles = source("src/app/globals.css") + source("src/app/design-system.css");
   const dialogPrimitive = source("src/components/ui/dialog.tsx");
@@ -142,6 +162,104 @@ test("engagement settings and lottery editing use accessible modal dialogs", () 
   assert.doesNotMatch(lotteryEditor, /奖品权重|手动开奖/);
   assert.match(dashboards, /EngagementPageHeader/);
   assert.doesNotMatch(dashboards, /<EmbedLinkPanel|<TicketConfigPanel/);
+});
+
+test("ticket detail keeps the reply controls visible while long conversations scroll", () => {
+  const dashboard = source("src/components/engagement/tickets-dashboard.tsx");
+  const detail = source("src/components/engagement/ticket-detail-panel.tsx");
+
+  assert.match(dashboard, /onClose=\{\(\) => setSelected\(null\)\}/);
+  assert.match(detail, /aria-label="关闭工单详情"/);
+  assert.match(detail, /xl:top-\[var\(--workspace-top\)\]/);
+  assert.match(detail, /xl:h-\[calc\(100dvh-var\(--workspace-top\)-1rem\)\]/);
+  assert.match(detail, /xl:min-h-0 xl:max-h-none xl:flex-1/);
+});
+
+test("ticket queue uses compact cards before the desktop table breakpoint", () => {
+  const dashboard = source("src/components/engagement/tickets-dashboard.tsx");
+
+  assert.match(dashboard, /TicketCard/);
+  assert.match(dashboard, /space-y-2\.5 p-3 lg:hidden/);
+  assert.match(dashboard, /hidden overflow-auto xl:border-r xl:border-border lg:block/);
+  assert.match(dashboard, /aria-pressed=\{selected\}/);
+  assert.match(dashboard, /className="h-auto min-h-0 min-w-0 flex-1 justify-start truncate/);
+  assert.match(dashboard, /matchMedia\("\(max-width: 1023px\)"\)/);
+  assert.match(dashboard, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
+  assert.match(source("src\/components\/engagement\/ticket-detail-panel.tsx"), /id="ticket-detail-panel"/);
+});
+
+test("embedded pages expose retries and readable narrow-screen results", () => {
+  const state = source("src/components/embed/embed-state.tsx");
+  const lottery = source("src/components/embed/lottery-embed-page.tsx");
+  const tickets = source("src/components/embed/tickets-embed-page.tsx");
+  const leaderboard = source("src/components/embed/leaderboard-embed-page.tsx");
+  const table = source("src/components/engagement/leaderboard-table.tsx");
+
+  assert.match(state, /EmbedInlineError/);
+  assert.match(state, /retryLabel/);
+  assert.match(lottery, /重新加载活动/);
+  assert.match(tickets, /重新读取工单/);
+  assert.match(leaderboard, /重新读取排行榜/);
+  assert.match(tickets, /ImageOff/);
+  assert.match(tickets, /加载失败/);
+  assert.match(table, /LeaderboardMobileRow/);
+  assert.match(table, /divide-y divide-border md:hidden/);
+  assert.match(table, /hidden overflow-auto md:block/);
+  assert.match(table, /第 \{row\.rank\} 名/);
+});
+
+test("core data workspaces distinguish failed loading from an empty result", () => {
+  const sharedError = source("src/components/ui/data-load-error.tsx");
+  const accounts = source("src/components/accounts/accounts-dashboard.tsx");
+  const accountData = source("src/components/accounts/use-accounts-dashboard.ts");
+  const groups = source("src/components/groups/groups-dashboard.tsx");
+  const groupData = source("src/components/groups/use-groups-dashboard.ts");
+  const sources = source("src/components/sources/sources-dashboard.tsx");
+  const sourceData = source("src/components/sources/use-sources-dashboard.ts");
+
+  assert.match(sharedError, /role="alert"/);
+  assert.match(sharedError, /重试/);
+  assert.match(sharedError, /pending/);
+  assert.match(accounts, /view\.loadError && view\.accounts\.length === 0/);
+  assert.match(accounts, /账号数据刷新失败/);
+  assert.match(accountData, /setLoadError/);
+  assert.match(groups, /view\.loadError && view\.groups\.length === 0/);
+  assert.match(groups, /分组数据刷新失败/);
+  assert.match(groupData, /setLoadError/);
+  assert.match(sources, /view\.loadError && !hasData/);
+  assert.match(sources, /采集数据刷新失败/);
+  assert.match(sourceData, /setLoadError/);
+});
+
+test("engagement workspaces expose a retry path without discarding loaded context", () => {
+  const compensation = source("src/components/engagement/compensation-dashboard.tsx");
+  const leaderboard = source("src/components/engagement/leaderboard-dashboard.tsx");
+  const lottery = source("src/components/engagement/lottery-dashboard.tsx");
+  const tickets = source("src/components/engagement/tickets-dashboard.tsx");
+
+  for (const page of [compensation, leaderboard, lottery, tickets]) assert.match(page, /DataLoadError/);
+  assert.match(compensation, /订单补偿数据刷新失败/);
+  assert.match(leaderboard, /排行榜刷新失败/);
+  assert.match(lottery, /抽奖活动刷新失败/);
+  assert.match(tickets, /工单队列刷新失败/);
+  assert.match(compensation, /setError/);
+  assert.match(leaderboard, /setError/);
+  assert.match(lottery, /setError/);
+  assert.match(tickets, /setError/);
+});
+
+test("embed administration panels recover from initial configuration failures", () => {
+  const links = source("src/components/engagement/embed-link-panel.tsx");
+  const ticketConfig = source("src/components/engagement/ticket-config-panel.tsx");
+
+  assert.match(links, /DataLoadError/);
+  assert.match(links, /嵌入链接加载失败/);
+  assert.match(links, /嵌入链接刷新失败/);
+  assert.match(links, /setError/);
+  assert.match(ticketConfig, /DataLoadError/);
+  assert.match(ticketConfig, /工单表单设置加载失败/);
+  assert.match(ticketConfig, /工单表单设置刷新失败/);
+  assert.match(ticketConfig, /setError/);
 });
 
 test("customer lottery hides participant and winner counts while showing remaining prizes", () => {
