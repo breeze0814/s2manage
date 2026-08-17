@@ -68,6 +68,35 @@ test("worker collects due Sub2API and NewAPI sites with configured concurrency",
   });
 });
 
+test("worker refreshes target groups from the target site before applying rules", async () => {
+  const refreshedSources: number[] = [];
+  const appliedGroups: number[] = [];
+  let targetRefreshes = 0;
+  const dependencies = baseDependencies({
+    collection: {
+      list: async () => [site(1)],
+      refresh: async (id: number) => { refreshedSources.push(id); },
+    },
+    targetGroups: {
+      refreshAll: async () => {
+        targetRefreshes += 1;
+        return [{ id: 7, name: "Remote Target", rule: { enabled: true } }];
+      },
+      apply: async (id: number) => { appliedGroups.push(id); return { action: "update" }; },
+    },
+  });
+
+  await withWorker(dependencies, async ({ worker }) => {
+    const summary = await worker.runCycle();
+
+    assert.deepEqual(refreshedSources, [1]);
+    assert.equal(targetRefreshes, 1);
+    assert.deepEqual(appliedGroups, [7]);
+    assert.equal(summary.collectedSources, 1);
+    assert.equal(summary.appliedGroups, 1);
+  });
+});
+
 test("worker records collection and rule failures without hiding successful tasks", async () => {
   const dependencies = baseDependencies({
     collection: {
@@ -75,7 +104,7 @@ test("worker records collection and rule failures without hiding successful task
       refresh: async (id: number) => { if (id === 2) throw new Error("newapi unavailable"); },
     },
     targetGroups: {
-      list: async () => [{ id: 7, name: "A", rule: { enabled: true } }, { id: 8, name: "B", rule: { enabled: true } }, { id: 9, name: "C", rule: { enabled: false } }],
+      refreshAll: async () => [{ id: 7, name: "A", rule: { enabled: true } }, { id: 8, name: "B", rule: { enabled: true } }, { id: 9, name: "C", rule: { enabled: false } }],
       apply: async (id: number) => { if (id === 8) throw new Error("target rejected"); return { action: "update" }; },
     },
   });
@@ -91,6 +120,27 @@ test("worker records collection and rule failures without hiding successful task
     assert.match(summary.errors.join("\n"), /newapi unavailable/);
     assert.match(summary.errors.join("\n"), /target rejected/);
     assert.equal((await store.latest())?.status, "partial");
+  });
+});
+
+test("worker records target refresh failures and does not apply stale groups", async () => {
+  let applyCalls = 0;
+  const dependencies = baseDependencies({
+    collection: { list: async () => [site(1)], refresh: async () => undefined },
+    targetGroups: {
+      refreshAll: async () => { throw new Error("target unavailable"); },
+      apply: async () => { applyCalls += 1; return { action: "update" }; },
+    },
+  });
+
+  await withWorker(dependencies, async ({ worker }) => {
+    const summary = await worker.runCycle();
+
+    assert.equal(summary.collectedSources, 1);
+    assert.equal(summary.failedGroups, 1);
+    assert.equal(summary.status, "partial");
+    assert.equal(applyCalls, 0);
+    assert.match(summary.errors.join("\n"), /目标站分组刷新: target unavailable/);
   });
 });
 
@@ -158,7 +208,7 @@ function baseDependencies(overrides: Partial<WorkerDependencies> = {}): WorkerDe
   return {
     settings: async () => ({ concurrency: 2, targetConfigured: true }),
     collection: { list: async () => [], refresh: async () => undefined },
-    targetGroups: { list: async () => [], apply: async () => ({ action: "skip" }) },
+    targetGroups: { refreshAll: async () => [], apply: async () => ({ action: "skip" }) },
     notifications: { run: async () => ({ success: 0, skipped: 2, failed: 0, errors: [] }) },
     scheduled: { run: async () => undefined },
     now: () => new Date("2026-07-11T01:00:00Z"),
@@ -173,7 +223,7 @@ function site(id: number, options: Readonly<{ lastRunAt?: string | null; enabled
 type WorkerDependencies = {
   readonly settings: () => Promise<{ concurrency: number; targetConfigured: boolean }>;
   readonly collection: { readonly list: () => Promise<ReturnType<typeof site>[]>; readonly refresh: (id: number) => Promise<unknown> };
-  readonly targetGroups: { readonly list: () => Promise<Array<{ id: number; name: string; rule: { enabled: boolean } }>>; readonly apply: (id: number) => Promise<{ action: string }> };
+  readonly targetGroups: { readonly refreshAll: () => Promise<Array<{ id: number; name: string; rule: { enabled: boolean } }>>; readonly apply: (id: number) => Promise<{ action: string }> };
   readonly notifications: { readonly run: () => Promise<{ success: number; skipped: number; failed: number; errors: readonly string[] }> };
   readonly scheduled: { readonly run: () => Promise<void> };
   readonly now: () => Date;

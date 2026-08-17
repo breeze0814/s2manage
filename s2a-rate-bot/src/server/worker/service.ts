@@ -57,7 +57,7 @@ export type WorkerService = {
 export function createWorkerService(input: {
   readonly settings: () => Promise<{ readonly concurrency: number; readonly targetConfigured: boolean }>;
   readonly collection: { readonly list: () => Promise<readonly WorkerSource[]>; readonly refresh: (id: number) => Promise<unknown> };
-  readonly targetGroups: { readonly list: () => Promise<readonly WorkerGroup[]>; readonly apply: (id: number) => Promise<{ readonly action: string }> };
+  readonly targetGroups: { readonly refreshAll: () => Promise<readonly WorkerGroup[]>; readonly apply: (id: number) => Promise<{ readonly action: string }> };
   readonly notifications: { readonly run: () => Promise<TaskStats> };
   readonly scheduled: { readonly run: () => Promise<void> };
   readonly runs: WorkerRunStore;
@@ -127,13 +127,13 @@ async function refreshSource(input: WorkerDependencies, source: WorkerSource): P
 
 async function applyTargetRules(input: WorkerDependencies): Promise<TaskStats> {
   try {
-    const groups = await input.targetGroups.list();
+    const groups = await input.targetGroups.refreshAll();
     const enabled = groups.filter((group) => group.rule.enabled);
     const results = await mapConcurrent({ items: enabled, concurrency: 1, task: (group) => applyGroup(input, group) });
     const stats = summarizeResults(results);
     return { ...stats, skipped: stats.skipped + groups.length - enabled.length };
   } catch (error) {
-    return { success: 0, skipped: 0, failed: 1, errors: [`目标分组列表: ${errorMessage(error)}`] };
+    return { success: 0, skipped: 0, failed: 1, errors: [`目标站分组刷新: ${errorMessage(error)}`] };
   }
 }
 
