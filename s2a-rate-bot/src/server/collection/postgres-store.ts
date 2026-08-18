@@ -33,7 +33,7 @@ export function createPostgresCollectionStore(context: PostgresContext): Collect
 async function createSite(context: PostgresContext, site: SiteWrite) {
   const timestamp = new Date().toISOString();
   const value = await row<Record<string, unknown>>(context, `${siteInsertSql()} VALUES
-    ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17) RETURNING *`,
+    ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
   siteValues(site, timestamp));
   if (!value) throw new Error("采集站创建失败");
   return mapSite(value);
