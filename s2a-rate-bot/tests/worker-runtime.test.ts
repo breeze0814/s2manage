@@ -194,6 +194,33 @@ test("worker records partial collection errors without failing the source", asyn
   });
 });
 
+test("worker forwards site refresh failures to notifications", async () => {
+  let notificationInput: NotificationRunInput | undefined;
+  const dependencies = baseDependencies({
+    collection: {
+      list: async () => [site(1), site(2)],
+      refresh: async (id: number) => id === 1
+        ? { lastStatus: "partial", lastError: "倍率接口：HTTP 503" }
+        : Promise.reject(new Error("站点不可用")),
+    },
+    notifications: {
+      run: async (input) => {
+        notificationInput = input;
+        return { success: 1, skipped: 2, failed: 0, errors: [] };
+      },
+    },
+  });
+
+  await withWorker(dependencies, async ({ worker }) => {
+    const summary = await worker.runCycle();
+    assert.equal(summary.sentNotifications, 1);
+    assert.deepEqual(notificationInput?.refreshIssues, [
+      { siteId: 1, siteName: "Site 1", status: "partial", error: "倍率接口：HTTP 503" },
+      { siteId: 2, siteName: "Site 2", status: "failed", error: "站点不可用" },
+    ]);
+  });
+});
+
 test("worker entry and status route use the generic worker service", () => {
   const entry = readFileSync(new URL("src/worker/main.ts", ROOT), "utf8");
   const status = readFileSync(new URL("src/app/api/worker/status/route.ts", ROOT), "utf8");
@@ -224,7 +251,14 @@ type WorkerDependencies = {
   readonly settings: () => Promise<{ concurrency: number; targetConfigured: boolean }>;
   readonly collection: { readonly list: () => Promise<ReturnType<typeof site>[]>; readonly refresh: (id: number) => Promise<unknown> };
   readonly targetGroups: { readonly refreshAll: () => Promise<Array<{ id: number; name: string; rule: { enabled: boolean } }>>; readonly apply: (id: number) => Promise<{ action: string }> };
-  readonly notifications: { readonly run: () => Promise<{ success: number; skipped: number; failed: number; errors: readonly string[] }> };
+  readonly notifications: { readonly run: (input?: NotificationRunInput) => Promise<{ success: number; skipped: number; failed: number; errors: readonly string[] }> };
   readonly scheduled: { readonly run: () => Promise<void> };
   readonly now: () => Date;
 };
+
+type NotificationRunInput = { readonly refreshIssues?: ReadonlyArray<{
+  readonly siteId: number;
+  readonly siteName: string;
+  readonly status: "failed" | "partial";
+  readonly error: string;
+}> };

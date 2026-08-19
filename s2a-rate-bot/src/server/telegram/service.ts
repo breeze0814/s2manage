@@ -31,8 +31,19 @@ export type NotificationStats = {
   readonly errors: readonly string[];
 };
 
+export type SiteRefreshIssue = {
+  readonly siteId: number;
+  readonly siteName: string;
+  readonly status: "failed" | "partial";
+  readonly error: string;
+};
+
+export type NotificationRunInput = {
+  readonly refreshIssues?: readonly SiteRefreshIssue[];
+};
+
 export type TelegramNotificationService = {
-  readonly run: () => Promise<NotificationStats>;
+  readonly run: (input?: NotificationRunInput) => Promise<NotificationStats>;
   readonly test: (input: unknown) => Promise<void>;
   readonly close: () => void;
 };
@@ -46,21 +57,25 @@ export function createTelegramNotificationService(input: {
   readonly now: () => Date;
 }): TelegramNotificationService {
   return {
-    run: () => runNotifications(input),
+    run: (runInput) => runNotifications(input, runInput),
     test: (raw) => testNotification(input, raw),
     close: () => input.state.close(),
   };
 }
 
-async function runNotifications(input: TelegramDependencies) {
+async function runNotifications(input: TelegramDependencies, runInput: NotificationRunInput = {}) {
   const settings = await input.settings();
+  const issues = runInput.refreshIssues ?? [];
+  const refreshIssues = issues.length
+    ? await captureTask("站点刷新异常推送", () => pushRefreshIssues(input, settings, issues))
+    : null;
   const balance = settings.hourlyBalanceEnabled
     ? await captureTask("账户余额推送", () => pushBalance(input, settings))
     : skippedStats();
   const rateChanges = settings.rateChangeEnabled
     ? await captureTask("分组倍率变动推送", () => pushRateChanges(input, settings))
     : skippedStats();
-  return mergeStats(balance, rateChanges);
+  return mergeStats(...(refreshIssues ? [refreshIssues, balance, rateChanges] : [balance, rateChanges]));
 }
 
 async function testNotification(input: TelegramDependencies, raw: unknown) {
@@ -69,15 +84,27 @@ async function testNotification(input: TelegramDependencies, raw: unknown) {
   await input.client.sendMessage(messageInput(current, {
     botToken: provided.botToken || current.botToken,
     chatId: provided.chatId || current.chatId,
-    text: `S2A Telegram Bot 接入测试\n时间：${formatTime(input.now())}`,
+    text: `${notificationHeader("通知测试", input.now())}\n\n通知通道连接正常。`,
   }));
+}
+
+async function pushRefreshIssues(
+  input: TelegramDependencies,
+  settings: TelegramRuntimeSettings,
+  issues: readonly SiteRefreshIssue[],
+): Promise<NotificationStats> {
+  const header = `${notificationHeader("站点刷新异常", input.now())}\n\n异常明细：`;
+  const messages = messageBatches(header, refreshIssueLines(issues)).map((batch) => batch.text);
+  for (const text of messages) await sendNotification(input, settings, text);
+  return successStats(messages.length);
 }
 
 async function pushBalance(input: TelegramDependencies, settings: TelegramRuntimeSettings): Promise<NotificationStats> {
   const state = await input.state.get();
   if (!balanceDue(state.lastBalancePushAt, input.now())) return skippedStats();
   const sites = (await input.collection.list()).filter((site) => site.enabled);
-  const header = `S2A 采集站账户余额\n时间：${formatTime(input.now())}`;
+  const total = sites.reduce((sum, site) => sum + (site.balance ?? 0), 0);
+  const header = `${notificationHeader("采集站账户余额", input.now())}\n\n总余额：${formatNumber(total)}\n\n站点明细：`;
   const messages = messageBatches(header, balanceLines(sites)).map((batch) => batch.text);
   for (const text of messages) await sendNotification(input, settings, text);
   await input.state.markBalancePushed(input.now().toISOString());
@@ -91,7 +118,7 @@ async function pushRateChanges(input: TelegramDependencies, settings: TelegramRu
   while (true) {
     const changes = await input.collection.changes({ afterId: cursor, limit: RATE_CHANGE_PAGE_SIZE });
     if (!changes.length) return sent ? successStats(sent) : skippedStats();
-    const header = `S2A 分组倍率变动\n时间：${formatTime(input.now())}`;
+    const header = `${notificationHeader("分组倍率变动", input.now())}\n\n变动明细：`;
     for (const batch of messageBatches(header, rateChangeLines(changes))) {
       await sendNotification(input, settings, batch.text);
       cursor = batch.lastId;
@@ -129,22 +156,27 @@ function messageBatches(header: string, entries: readonly MessageEntry[]) {
 }
 
 function balanceLines(sites: readonly CollectionSiteView[]): MessageEntry[] {
-  const total = sites.reduce((sum, site) => sum + (site.balance ?? 0), 0);
-  const rows = sites.map((site) => ({
+  return sites.map((site) => ({
     id: site.id,
-    line: `- ${site.name}${site.accountLabel ? ` (${site.accountLabel})` : ""}：${site.balance === null ? "未采集" : formatNumber(site.balance)}`,
+    line: `- ${site.name}${site.accountLabel ? `（${site.accountLabel}）` : ""}：${site.balance === null ? "未采集" : formatNumber(site.balance)}`,
   }));
-  return sites.length ? [{ id: 0, line: `总余额：${formatNumber(total)}` }, ...rows] : [];
+}
+
+function refreshIssueLines(issues: readonly SiteRefreshIssue[]): MessageEntry[] {
+  return issues.map((issue) => ({
+    id: issue.siteId,
+    line: `- ${issue.siteName}（ID: ${issue.siteId}，${issue.status === "failed" ? "刷新失败" : "部分失败"}）：${issue.error}`,
+  }));
 }
 
 function rateChangeLines(changes: readonly CollectionRateChange[]): MessageEntry[] {
-  return changes.map((change) => ({ id: change.id, line: `- [${change.sourceSiteName}] ${change.groupName}：${rateDescription(change)}` }));
+  return changes.map((change) => ({ id: change.id, line: `- ${change.sourceSiteName} / ${change.groupName}：${rateDescription(change)}` }));
 }
 
 function rateDescription(change: CollectionRateChange) {
-  if (change.changeType === "added") return `新增 ${formatNumber(change.newRate!)}`;
-  if (change.changeType === "deleted") return `删除 ${formatNumber(change.oldRate!)}`;
-  return `${formatNumber(change.oldRate!)} -> ${formatNumber(change.newRate!)}`;
+  if (change.changeType === "added") return `新增倍率 ${formatNumber(change.newRate!)}`;
+  if (change.changeType === "deleted") return `删除倍率 ${formatNumber(change.oldRate!)}`;
+  return `倍率 ${formatNumber(change.oldRate!)} → ${formatNumber(change.newRate!)}`;
 }
 
 function messageInput(settings: TelegramRuntimeSettings, values: Readonly<{ text: string; botToken?: string; chatId?: string }>): TelegramMessageInput {
@@ -182,6 +214,7 @@ function successStats(count: number): NotificationStats { return { success: coun
 function skippedStats(): NotificationStats { return { success: 0, skipped: 1, failed: 0, errors: [] }; }
 function formatNumber(value: number) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(value); }
 function formatTime(value: Date) { return value.toLocaleString("zh-CN", { timeZone: CHINA_TIME_ZONE, hour12: false }); }
+function notificationHeader(title: string, now: Date) { return `【S2A Rate Bot】${title}\n时间：${formatTime(now)}`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 
 type MessageEntry = { readonly id: number; readonly line: string };

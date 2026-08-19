@@ -45,7 +45,7 @@ export function createNotificationDispatcher(input: {
     test: async (raw) => {
       const timeoutMs = await input.timeoutMs();
       const proxyUrl = await input.proxyUrl();
-      const message = `S2A Rate Bot 通知测试\n时间：${new Date().toISOString()}`;
+      const message = `【S2A Rate Bot】通知测试\n时间：${formatTime(new Date())}\n\n通知通道连接正常。`;
       switch (raw.channel) {
         case "dingtalk": return sendDingtalk(request, required(raw.webhook), raw.secret ?? "", message, "text", timeoutMs, proxyUrl);
         case "wecom": return sendWecom(request, required(raw.webhook), message, "text", timeoutMs, proxyUrl);
@@ -111,5 +111,6 @@ async function postWebhook(request: <T>(request: JsonRequest) => Promise<T>, url
 
 function markdownForChannel(message: string, format: NotificationMessageFormat) { return format === "html" ? message.replace(/<[^>]+>/g, "") : message; }
 function telegramHtml(message: string) { return message.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, ""); }
+function formatTime(value: Date) { return value.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }); }
 function required(value: string | undefined) { const normalized = value?.trim() ?? ""; if (!normalized) throw new Error("机器人配置不完整"); return normalized; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }

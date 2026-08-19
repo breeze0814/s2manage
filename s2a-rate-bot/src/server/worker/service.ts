@@ -49,6 +49,13 @@ type WorkerGroup = {
   readonly rule: { readonly enabled: boolean };
 };
 
+type SiteRefreshIssue = {
+  readonly siteId: number;
+  readonly siteName: string;
+  readonly status: "failed" | "partial";
+  readonly error: string;
+};
+
 export type WorkerService = {
   readonly runCycle: () => Promise<WorkerCycleResult>;
   readonly latest: () => Promise<WorkerRunRecord | null>;
@@ -58,7 +65,7 @@ export function createWorkerService(input: {
   readonly settings: () => Promise<{ readonly concurrency: number; readonly targetConfigured: boolean }>;
   readonly collection: { readonly list: () => Promise<readonly WorkerSource[]>; readonly refresh: (id: number) => Promise<unknown> };
   readonly targetGroups: { readonly refreshAll: () => Promise<readonly WorkerGroup[]>; readonly apply: (id: number) => Promise<{ readonly action: string }> };
-  readonly notifications: { readonly run: () => Promise<TaskStats> };
+  readonly notifications: { readonly run: (input?: { readonly refreshIssues?: readonly SiteRefreshIssue[] }) => Promise<TaskStats> };
   readonly scheduled: { readonly run: () => Promise<void> };
   readonly runs: WorkerRunStore;
   readonly now: () => Date;
@@ -100,7 +107,8 @@ async function executeCycle(input: WorkerDependencies, startedAt: string) {
   const groupStats = settings.targetConfigured
     ? await applyTargetRules(input)
     : emptyStats();
-  const notificationStats = await runNotifications(input);
+  const refreshIssues = sourceResults.flatMap((result) => result.refreshIssue ? [result.refreshIssue] : []);
+  const notificationStats = await runNotifications(input, refreshIssues);
   const scheduledErrors = await runScheduled(input);
   return completedSummary({
     startedAt,
@@ -117,11 +125,20 @@ async function refreshSource(input: WorkerDependencies, source: WorkerSource): P
   try {
     const refreshed = await input.collection.refresh(source.id);
     if (isPartialRefresh(refreshed)) {
-      return { outcome: "success", error: `采集站 ${source.name}(${source.id}): ${refreshed.lastError}` };
+      return {
+        outcome: "success",
+        error: `采集站 ${source.name}(${source.id}): ${refreshed.lastError}`,
+        refreshIssue: { siteId: source.id, siteName: source.name, status: "partial", error: refreshed.lastError },
+      };
     }
     return { outcome: "success" };
   } catch (error) {
-    return { outcome: "failed", error: `采集站 ${source.name}(${source.id}): ${errorMessage(error)}` };
+    const message = errorMessage(error);
+    return {
+      outcome: "failed",
+      error: `采集站 ${source.name}(${source.id}): ${message}`,
+      refreshIssue: { siteId: source.id, siteName: source.name, status: "failed", error: message },
+    };
   }
 }
 
@@ -187,11 +204,11 @@ function isPartialRefresh(value: unknown): value is { readonly lastStatus: "part
   return refresh.lastStatus === "partial" && typeof refresh.lastError === "string";
 }
 
-async function runNotifications(input: WorkerDependencies): Promise<TaskStats> {
+async function runNotifications(input: WorkerDependencies, refreshIssues: readonly SiteRefreshIssue[]): Promise<TaskStats> {
   try {
-    return await input.notifications.run();
+    return await input.notifications.run({ refreshIssues });
   } catch (error) {
-    return { success: 0, skipped: 0, failed: 1, errors: [`Telegram 通知: ${errorMessage(error)}`] };
+    return { success: 0, skipped: 0, failed: 1, errors: [`机器人通知: ${errorMessage(error)}`] };
   }
 }
 
@@ -233,6 +250,6 @@ function skippedCycle(): Extract<WorkerCycleResult, { status: "skipped" }> {
 
 function emptyStats(): TaskStats { return { success: 0, skipped: 0, failed: 0, errors: [] }; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
-type TaskResult = { readonly outcome: "success" | "skipped" | "failed"; readonly error?: string };
+type TaskResult = { readonly outcome: "success" | "skipped" | "failed"; readonly error?: string; readonly refreshIssue?: SiteRefreshIssue };
 type TaskStats = { readonly success: number; readonly skipped: number; readonly failed: number; readonly errors: readonly string[] };
 type WorkerDependencies = Parameters<typeof createWorkerService>[0];

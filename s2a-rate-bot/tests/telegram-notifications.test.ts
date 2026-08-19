@@ -58,15 +58,50 @@ test("notifications push hourly balances and only future rate changes", async ()
   const firstResult = await first.run();
 
   assert.deepEqual(firstResult, { success: 1, skipped: 1, failed: 0, errors: [] });
-  assert.match(messages[0] ?? "", /采集站账户余额/);
+  assert.equal(messages[0], [
+    "【S2A Rate Bot】采集站账户余额",
+    "时间：2026/7/21 12:00:00",
+    "",
+    "总余额：12.5",
+    "",
+    "站点明细：",
+    "- Source（source@example.com）：12.5",
+  ].join("\n"));
   assert.equal((await state.get()).lastBalancePushAt, NOW.toISOString());
   assert.equal((await state.get()).lastRateChangeId, 9);
 
   const second = notificationService({ state, messages, changes: [rateChange(10)] });
   const secondResult = await second.run();
   assert.deepEqual(secondResult, { success: 1, skipped: 1, failed: 0, errors: [] });
-  assert.match(messages[1] ?? "", /2 -> 2\.5/);
+  assert.match(messages[1] ?? "", /Source \/ VIP：倍率 2 → 2\.5/);
   assert.equal((await state.get()).lastRateChangeId, 10);
+});
+
+test("notifications immediately report failed and partial site refreshes", async () => {
+  const state = memoryState({ lastBalancePushAt: NOW.toISOString(), lastRateChangeId: 9 });
+  const messages: string[] = [];
+  const service = createTelegramNotificationService({
+    settings: async () => ({ ...SETTINGS, hourlyBalanceEnabled: false, rateChangeEnabled: false }),
+    collection: collection([]),
+    state,
+    client: { sendMessage: async (message) => { messages.push(message.text); } },
+    now: () => NOW,
+  });
+
+  const result = await service.run({ refreshIssues: [
+    { siteId: 2, siteName: "NewAPI", status: "failed", error: "HTTP 503" },
+    { siteId: 3, siteName: "Sub2API", status: "partial", error: "倍率接口请求超时" },
+  ] });
+
+  assert.deepEqual(result, { success: 1, skipped: 2, failed: 0, errors: [] });
+  assert.equal(messages[0], [
+    "【S2A Rate Bot】站点刷新异常",
+    "时间：2026/7/21 12:00:00",
+    "",
+    "异常明细：",
+    "- NewAPI（ID: 2，刷新失败）：HTTP 503",
+    "- Sub2API（ID: 3，部分失败）：倍率接口请求超时",
+  ].join("\n"));
 });
 
 test("failed rate change delivery does not advance the cursor", async () => {
